@@ -35,7 +35,7 @@ gradtest = False
 #gradient tests require the variable save_vars_indict to be set to true
 
 import forwardmodel as fwdm
-import adjoint_modelling as am
+import inverse_modelling as im
 import copy as cp
 import numpy as np
 testinput = fwdm.model_input()
@@ -173,7 +173,7 @@ testinput.nr_nodes_for_filewr = 5
 testmodel = fwdm.model(testinput)
 testmodel.run(checkpoint=False,updatevals_surf_lay=False,delete_at_end=False,save_vars_indict=False)
 #run testmodel to initialise properly
-adjoint_modelling = am.adjoint_modelling(testmodel)
+adjoint_modelling = im.adjoint_modelling(testmodel)
 adjoint_modelling.all_tests_pass = True
 
 #testing of surface layer

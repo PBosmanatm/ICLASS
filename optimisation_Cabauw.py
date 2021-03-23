@@ -7,7 +7,7 @@ Created on Mon Dec 16 13:52:00 2019
 import numpy as np
 import copy as cp
 import forwardmodel as fwdm
-import adjoint_modelling as am
+import inverse_modelling as im
 from scipy import optimize
 from scipy import stats
 import matplotlib.pyplot as plt
@@ -15,13 +15,15 @@ import shutil
 import os
 import multiprocessing
 from joblib import Parallel, delayed
-import csv
 import pandas as pd
 import math
+import glob
+import matplotlib.style as style
+style.use('classic')
 
-
-
-#switches
+##################################
+###### user input: settings ######
+##################################
 ana_deriv = True
 use_backgr_in_cost = True
 write_to_f = True
@@ -33,7 +35,7 @@ if use_ensemble:
     plot_perturbed_obs = False #only for posterior pdf, obs are only perturbed there
 maxnr_of_restarts = 3 #only implemented for tnc method at the moment
 imposeparambounds = True
-remove_all_prev = True
+remove_all_prev = True #Use with caution, be careful for other files in working directory!!
 optim_method = 'tnc' #bfgs or tnc
 stopcrit = 1.0
 use_mean = False #switch for using mean of obs over several days
@@ -43,24 +45,31 @@ if use_weights:
 if (use_backgr_in_cost and use_weights):
     obs_vs_backgr_weight = 1.0 # a scaling factor for the importance of all the observations in the cost function
 discard_nan_minims = False #if False, if in a minimisation nan is encountered, it will use the state from the best simulation so far, if True, the minimisation will result in a state with nan's
+plt.rc('font', size=12) #plot font size
+######################################
+###### end user input: settings ######
+######################################
 
+#remove previous files
+if remove_all_prev:
+    filelist_list = []
+    filelist_list += [glob.glob('Optimfile*')] #add Everything starting with 'Optimfile' to the list
+    filelist_list += [glob.glob('Gradfile*')]
+    filelist_list += [glob.glob('Optstatsfile*')]
+    filelist_list += [glob.glob('pdf_posterior*')]
+    filelist_list += [glob.glob('fig_fit*')]
+    for filelist in filelist_list:
+        for filename in filelist:
+            if os.path.isfile(filename): #in case file occurs in two filelists in filelist_list, two attempts to remove would give error
+                os.remove(filename)
 
-#obs
+##################################
+###### user input: load obs ######
+##################################
 canopy_height = 0 #m
 #constants
 Eps = 18.005/28.964 #p3.3 intro atm
 g = 9.81
-
-#plot font size
-plt.rc('font', size=12)
-
-#remove previous files
-if remove_all_prev:
-    os.system('rm Optimfile*')
-    os.system('rm Gradfile*')
-    os.system('rm pdf_posterior*')
-    os.system('rm fig_fit*')
-    os.system('rm fig*')
     
 selectedyears = [2003.]
 selectedmonths = [9]
@@ -430,10 +439,15 @@ else:
         stdevCO2_120_hourly[i] = np.std(CO2_120toaverage)
         stdevCO2_60_hourly[i] = np.std(CO2_60toaverage)
         stdevCO2_20_hourly[i] = np.std(CO2_20toaverage)
-    
+######################################
+###### end user input: load obs ######
+######################################    
 
 #optimisation
 priormodinput = fwdm.model_input()
+###########################################
+###### user input: prior model param ######
+########################################### 
 priormodinput.COS        = 0.400 #ppb
 priormodinput.CO2measuring_height = 200. - canopy_height
 priormodinput.CO2measuring_height2 = 120 - canopy_height
@@ -534,7 +548,7 @@ priormodinput.wwilt      = 0.314     # volumetric water content wilting point [-
 priormodinput.C1sat      = 0.342     
 priormodinput.C2ref      = 0.3
 priormodinput.LAI        = 2.        # leaf area index [-]
-priormodinput.gD         = 0.0       # correction factor transpiration for VPD [-]
+priormodinput.gD         = None       # correction factor transpiration for VPD [-]
 priormodinput.rsmin      = 110.      # minimum resistance transpiration [s m-1]
 priormodinput.rssoilmin  = 50.       # minimun resistance soil evaporation [s m-1]
 priormodinput.alpha      = 0.25      # surface albedo [-]
@@ -549,7 +563,7 @@ priormodinput.Cs         = 1e12      # drag coefficient for scalars [-]
 priormodinput.sw_dynamicsl_border = True
 priormodinput.sw_model_stable_con = True
 priormodinput.sw_printwarnings = False
-priormodinput.sw_use_ribtol = False
+priormodinput.sw_use_ribtol = True
 priormodinput.sw_advfp = True #prescribed advection to take place over full profile (also in Free troposphere), only in ML if FALSE
 priormodinput.sw_dyn_beta = True
 #tsteps = int(np.floor(priormodinput.runtime / priormodinput.dt)) #the number of timesteps, used below
@@ -573,7 +587,6 @@ priormodinput.wCO2       = 0.0000001
 priormodinput.wq       = 0.0000001
 priormodinput.wtheta       = 0.0000001
 
-
 #soil COS model
 priormodinput.soilCOSmodeltype   = None #can be set to None or 'Sun_Ogee'
 priormodinput.uptakemodel = 'Ogee'
@@ -591,83 +604,111 @@ priormodinput.layer1_2division = 0.3
 priormodinput.write_soilCOS_to_f = False
 priormodinput.nr_nodes_for_filewr = 5
 
+###############################################
+###### end user input: prior model param ######
+###############################################
+
+#run priormodel to initialise properly
 priormodel = fwdm.model(priormodinput)
 priormodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False,save_vars_indict=False) #delete_at_end should be false, to keep tsteps of model
-#run priormodel to initialise properly
 priorinput = cp.deepcopy(priormodinput) #below we can add some input necessary for the state in the optimisation, that is not part of the model input (a scale for some of the observations in the costfunction if desired).
-priorinput.obs_sca_cf_H = 1.2 #Always use this format, 'obs_sca_cf_' plus the observation type you want to scale
-#e.g. priorinput.obs_sca_cf_H = 1.5 means that in the cost function all obs of H will be multiplied with 1.5. But only if obs_sca_cf_H also in the state!
-priorinput.obs_sca_cf_LE = 1.2
 
-#state=['h','q','theta','gammatheta','deltatheta','deltaq','alpha','gammaq','wg','wtheta','z0h','z0m','ustar','wq','divU']
-state=['advtheta','advq','advCO2','deltatheta','gammatheta','deltaq','gammaq','deltaCO2','gammaCO2','alfa_sto','obs_sca_cf_H','obs_sca_cf_LE']
+###############################################################
+###### user input: obs scales,state and list of used obs ######
+###############################################################
+priorinput.obs_sca_cf_H = 1.0 #Always use this format, 'obs_sca_cf_' plus the observation type you want to scale
+#e.g. priorinput.obs_sca_cf_H = 1.5 means that in the cost function all obs of H will be multiplied with 1.5. But only if obs_sca_cf_H also in the state!
+priorinput.obs_sca_cf_LE = 1.0
+#e.g. state=['h','q','theta','gammatheta','deltatheta','deltaq','alpha','gammaq','wg','wtheta','z0h','z0m','ustar','wq','divU']
+state=['advtheta','advq','advCO2','deltatheta','gammatheta','deltaq','gammaq','deltaCO2','gammaCO2','alfa_sto','alpha','obs_sca_cf_H','obs_sca_cf_LE','z0m','z0h']
+obslist =['Tmh','Tmh2','Tmh3','Tmh4','Tmh5','Tmh6','Tmh7','qmh','qmh2','qmh3','qmh4','qmh5','qmh6','qmh7','CO2mh','CO2mh2','CO2mh3','CO2mh4','h','LE','H','wCO2','Swout']
+
+###################################################################
+###### end user input: obs scales,state and list of used obs ######
+###################################################################
+
+if use_backgr_in_cost or use_ensemble:
+    priorvar = {}   
+###########################################################
+###### user input: prior information (if used) ############
+###########################################################
+    #if not optim.use_backgr_in_cost, than these are only used for perturbing the ensemble (when use_ensemble = True)
+    #prior variances of the items in the state:
+    priorvar['alpha'] = 0.1**2
+    priorvar['gammatheta'] = 0.003**2 
+    priorvar['gammatheta2'] = 0.003**2 
+    priorvar['gammaq'] = (0.003e-3)**2
+    priorvar['gammaCO2'] = (60.e-3)**2 
+    priorvar['deltatheta'] = 1.5**2
+    priorvar['deltaq'] = 0.002**2
+    priorvar['theta'] = 1**2
+    priorvar['deltaCO2'] = 40**2
+    priorvar['CO2'] = 30**2
+    priorvar['alfa_sto'] = 0.25**2
+    priorvar['z0m'] = 0.1**2
+    priorvar['z0h'] = 0.1**2
+    priorvar['advtheta'] = (2/3600)**2 
+    priorvar['advq'] = (0.002/3600)**2 
+    priorvar['advCO2'] = (40/3600)**2
+    priorvar['obs_sca_cf_H'] = 0.4**2 
+    priorvar['obs_sca_cf_LE'] = 0.4**2 
+#    priorvar['wtheta'] = (150/1.1/1005)**2
+#    priorvar['wq'] = (0.1e-3)**2
+#    priorvar['ustar'] = (0.7)**2
+#    priorvar['h'] = 200**2
+#    priorvar['q'] = 0.003**2
+#    priorvar['wg'] = 0.2**2
+#    priorvar['deltaCOS'] = 0.02**2
+#    priorvar['COS'] = 0.1**2
+#    priorvar['fCA'] = 1.e3**2
+#    priorvar['divU'] = 0.0001**2
+#    priorvar['u'] = 1.5**2
+#    priorvar['v'] = 1.5**2
+#    priorvar['deltau'] = 1.5**2
+#    priorvar['deltav'] = 1.5**2
+#    priorvar['gammau'] = 0.02**2
+#    priorvar['gammav'] = 0.02**2
+#    priorvar['advu'] = 0.0006**2
+#    priorvar['advv'] = 0.0006**2
+    pars_priorvar = np.zeros(len(state))
+    i = 0
+    for item in state:
+        pars_priorvar[i] = priorvar[item]
+        i += 1
+    b_cov = np.diag(pars_priorvar)  #b_cov stands for background covariance matrix, b already exists as model parameter
+    #here we can specify covariances as well, in the background information matrix
+    #this can be done by e.g. b_cov[5,1] = 0.5
+###########################################################
+###### end user input: prior information (if used) ########
+###########################################################             
+else:
+     b_cov = None         
+
+#create inverse modelling framework, do check,...
+optim = im.adjoint_modelling(priormodel,write_to_file=write_to_f,use_backgr_in_cost=use_backgr_in_cost,imposeparambounds=True,state=state,pri_err_cov_matr=b_cov)
+optim.obs = obslist
 for item in priorinput.__dict__: #just a check
     if item.startswith('obs_sca_cf') and (item not in state):
         raise Exception(item +' given in priorinput, but not part of state. Remove from priorinput or add '+item+' to the state')
-optim = am.adjoint_modelling(priormodel,write_to_file=write_to_f,use_backgr_in_cost=use_backgr_in_cost,imposeparambounds=True,state=state)
-#optim.obs=['COSmh','COSmh2','Tmh','qmh','qmh2','CO2mh','CO2mh2','wCO2A','wCO2R','wCOS','wCOSS','ustar','H','LE']
-optim.obs=['Tmh','Tmh2','Tmh3','Tmh4','Tmh5','Tmh6','Tmh7','qmh','qmh2','qmh3','qmh4','qmh5','qmh6','qmh7','CO2mh','CO2mh2','CO2mh3','CO2mh4','h','LE','H','wCO2']
 Hx_prior = {}
 for item in optim.obs:
     Hx_prior[item] = priormodel.out.__dict__[item]
 checkpoint_prior = priormodel.cpx
 checkpoint_init_prior = priormodel.cpx_init
 
-#if not optim.use_backgr_in_cost, than these are only used for perturbing the ensemble (when use_ensemble = True)
-priorvar = {}
-priorvar['alpha'] = 0.1**2
-priorvar['gammatheta'] = 0.003**2 
-priorvar['gammatheta2'] = 0.003**2 
-priorvar['gammaq'] = (0.003e-3)**2
-priorvar['gammaCO2'] = (60.e-3)**2 
-priorvar['deltatheta'] = 2.**2
-priorvar['deltaq'] = 0.003**2
-priorvar['theta'] = 1**2
-priorvar['wtheta'] = (150/1.1/1005)**2
-priorvar['wq'] = (0.1e-3)**2
-priorvar['ustar'] = (0.7)**2
-priorvar['h'] = 200**2
-priorvar['q'] = 0.003**2
-priorvar['wg'] = 0.2**2
-priorvar['deltaCOS'] = 0.02**2
-priorvar['deltaCO2'] = 50**2
-priorvar['COS'] = 0.1**2
-priorvar['CO2'] = 50**2
-priorvar['alfa_sto'] = 0.4**2
-priorvar['fCA'] = 1.e3**2
-priorvar['divU'] = 0.0001**2
-priorvar['z0m'] = 0.1**2
-priorvar['z0h'] = 0.1**2
-priorvar['u'] = 1.5**2
-priorvar['v'] = 1.5**2
-priorvar['deltau'] = 1.5**2
-priorvar['deltav'] = 1.5**2
-priorvar['gammau'] = 0.02**2
-priorvar['gammav'] = 0.02**2
-priorvar['advu'] = 0.0006**2
-priorvar['advv'] = 0.0006**2
-priorvar['advtheta'] = (3/3600)**2 
-priorvar['advq'] = (0.003/3600)**2 
-priorvar['advCO2'] = (50/3600)**2
-priorvar['obs_sca_cf_H'] = 0.5**2 
-priorvar['obs_sca_cf_LE'] = 0.5**2 
-pars_priorvar = np.zeros(len(state))
-i = 0
-for item in state:
-    pars_priorvar[i] = priorvar[item]
-    i += 1
-if optim.use_backgr_in_cost:
-    optim.b_cov = np.diag(pars_priorvar)  #b_cov stands for background covariance matrix, b already exists
-    optim.binv = np.linalg.inv(optim.b_cov)
-          
-########################################
 #The observations
-########################################
 obs_times = {}
 obs_weights = {}
 obs_units = {}
 display_names = {}
 for item in optim.obs:
+###########################################################
+###### user input: observation information ################
+########################################################### 
+    #for each of the variables provided in the observation list, link the model output variable 
+    #to the correct observations that were read in. Also, specify the times and observational errors, and optional weights 
+    #Optionally, you can provide a display name here, a name which name will be shown for the observations in the plots
+    #please use np.array or list as datastructure for the obs, obs errors, observation times or weights
     if use_mean:
         if item == 'Tmh':
             optim.__dict__['obs_'+item] = np.ndarray.flatten(Temp200_mean) #flatten becuase it is from the second datafile, which has a different structure
@@ -706,40 +747,40 @@ for item in optim.obs:
             obs_times[item] = hours_mean * 3600.
             obs_units[item] = 'K'
         elif item == 'CO2mh':
-            optim.__dict__['obs_'+item] = CO2_200_mean
+            optim.__dict__['obs_'+item] = np.array(CO2_200_mean)
             optim.__dict__['error_obs_' + item] = stdevCO2_200_hourly
             obs_times[item] = hours_mean * 3600. #same as for temperature
             obs_units[item] = 'ppm'
             if use_weights:
                 obs_weights[item] = [1./4 for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'CO2mh2':
-            optim.__dict__['obs_'+item] = CO2_120_mean
+            optim.__dict__['obs_'+item] = np.array(CO2_120_mean)
             optim.__dict__['error_obs_' + item] = stdevCO2_120_hourly
             obs_times[item] = hours_mean * 3600.
             if use_weights:
                 obs_weights[item] = [1./4 for j in range(len(optim.__dict__['obs_'+item]))]
             obs_units[item] = 'ppm'
         elif item == 'CO2mh3':
-            optim.__dict__['obs_'+item] = CO2_60_mean
+            optim.__dict__['obs_'+item] = np.array(CO2_60_mean)
             optim.__dict__['error_obs_' + item] = stdevCO2_60_hourly
             obs_times[item] = hours_mean * 3600.
             if use_weights:
                 obs_weights[item] = [1./4 for j in range(len(optim.__dict__['obs_'+item]))]
             obs_units[item] = 'ppm'
         elif item == 'CO2mh4':
-            optim.__dict__['obs_'+item] = CO2_20_mean
+            optim.__dict__['obs_'+item] = np.array(CO2_20_mean)
             optim.__dict__['error_obs_' + item] = stdevCO2_20_hourly
             obs_times[item] = hours_mean * 3600.
             if use_weights:
                 obs_weights[item] = [1./4 for j in range(len(optim.__dict__['obs_'+item]))]
             obs_units[item] = 'ppm'
         elif item == 'wCO2':
-            optim.__dict__['obs_'+item] = wCO2_mean
+            optim.__dict__['obs_'+item] = np.array(wCO2_mean)
             optim.__dict__['error_obs_' + item] = stdevwCO2_hourly
             obs_times[item] = hours_mean * 3600.
             obs_units[item] = 'mg CO2 m-2 s-1'
         elif item == 'h':
-            optim.__dict__['obs_'+item] = BLH_mean #we just have one day
+            optim.__dict__['obs_'+item] = np.array(BLH_mean) #we just have one day
             print('WARNING: the obs of h are not really a mean...')
             optim.__dict__['error_obs_' + item] = [100 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = np.array(dhour_BLH_mean) * 3600.
@@ -747,27 +788,27 @@ for item in optim.obs:
                 obs_times[item][i] = round(obs_times[item][i],0) #Very important, since otherwise the obs will be a fraction of a second off and will not be used
             obs_units[item] = 'm'
         elif item == 'qmh':
-            optim.__dict__['obs_'+item] = q200_mean
-            optim.__dict__['error_obs_' + item] = stdevq200_hourly
+            optim.__dict__['obs_'+item] = np.array(q200_mean)
+            optim.__dict__['error_obs_' + item] = np.array(stdevq200_hourly)
             obs_times[item] = hours_mean * 3600.
             obs_units[item] = 'kg kg-1'
         elif item == 'qmh2':
-            optim.__dict__['obs_'+item] = q140_mean
-            optim.__dict__['error_obs_' + item] = stdevq140_hourly
+            optim.__dict__['obs_'+item] = np.array(q140_mean)
+            optim.__dict__['error_obs_' + item] = np.array(stdevq140_hourly)
             obs_times[item] = hours_mean * 3600.
             obs_units[item] = 'kg kg-1'
         elif item == 'qmh3':
-            optim.__dict__['obs_'+item] = q80_mean
-            optim.__dict__['error_obs_' + item] = stdevq80_hourly
+            optim.__dict__['obs_'+item] = np.array(q80_mean)
+            optim.__dict__['error_obs_' + item] = np.array(stdevq80_hourly)
             obs_times[item] = hours_mean * 3600.
             obs_units[item] = 'kg kg-1'
         elif item == 'qmh4':
-            optim.__dict__['obs_'+item] = q40_mean
-            optim.__dict__['error_obs_' + item] = stdevq40_hourly
+            optim.__dict__['obs_'+item] = np.array(q40_mean)
+            optim.__dict__['error_obs_' + item] = np.array(stdevq40_hourly)
             obs_times[item] = hours_mean * 3600.
             obs_units[item] = 'kg kg-1'
         elif item == 'qmh5':
-            optim.__dict__['obs_'+item] = q20_mean
+            optim.__dict__['obs_'+item] = np.array(q20_mean)
             optim.__dict__['error_obs_' + item] = stdevq20_hourly
             obs_times[item] = hours_mean * 3600.
             obs_units[item] = 'kg kg-1'
@@ -797,6 +838,8 @@ for item in optim.obs:
             obs_times[item] = hours_mean * 3600.
             obs_units[item] = 'W m-2'
     else:
+        refnumobs = np.sum(~np.isnan(np.array(BLH_selected))) #only for the weights, a reference number of the number of non-nan obs, chosen to be based on h here. When e.g. wco2 has more obs than this number,
+        #it will be given a lower weight per individual observation than h
         obstimes_T = []
         for i in range(starthour,endhour):
             for minute in selectedminutes:
@@ -808,7 +851,7 @@ for item in optim.obs:
             obs_units[item] = 'K'
             display_names[item] = 'T_200'
             if use_weights:
-                obs_weights[item] = [1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+                obs_weights[item] = [1./7*refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
                 # np.sum(~np.isnan(optim.__dict__['obs_'+item])) used here instead of len(optim.__dict__['obs_'+item]), since nan data should not count for the length of the observation array. ~ inverts the np.isnan array. 
         if item == 'Tmh2':
             optim.__dict__['obs_'+item] = np.array(Temp140_selected) #flatten becuase it is from the second datafile, which has a different structure
@@ -817,7 +860,7 @@ for item in optim.obs:
             obs_units[item] = 'K'
             display_names[item] = 'T_140'
             if use_weights:
-                obs_weights[item] = [1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+                obs_weights[item] = [1./7*refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         if item == 'Tmh3':
             optim.__dict__['obs_'+item] = np.array(Temp80_selected) #flatten becuase it is from the second datafile, which has a different structure
             optim.__dict__['error_obs_' + item] = [0.5 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
@@ -825,7 +868,7 @@ for item in optim.obs:
             obs_units[item] = 'K'
             display_names[item] = 'T_80'
             if use_weights:
-                obs_weights[item] = [1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+                obs_weights[item] = [1./7*refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         if item == 'Tmh4':
             optim.__dict__['obs_'+item] = np.array(Temp40_selected) #flatten becuase it is from the second datafile, which has a different structure
             optim.__dict__['error_obs_' + item] = [0.5 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
@@ -833,7 +876,7 @@ for item in optim.obs:
             obs_units[item] = 'K'
             display_names[item] = 'T_40'
             if use_weights:
-                obs_weights[item] = [1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+                obs_weights[item] = [1./7*refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         if item == 'Tmh5':
             optim.__dict__['obs_'+item] = np.array(Temp20_selected) #flatten becuase it is from the second datafile, which has a different structure
             optim.__dict__['error_obs_' + item] = [0.5 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
@@ -841,7 +884,7 @@ for item in optim.obs:
             obs_units[item] = 'K'
             display_names[item] = 'T_20'
             if use_weights:
-                obs_weights[item] = [1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+                obs_weights[item] = [1./7*refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         if item == 'Tmh6':
             optim.__dict__['obs_'+item] = np.array(Temp10_selected) #flatten becuase it is from the second datafile, which has a different structure
             optim.__dict__['error_obs_' + item] = [0.5 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
@@ -849,7 +892,7 @@ for item in optim.obs:
             obs_units[item] = 'K'
             display_names[item] = 'T_10'
             if use_weights:
-                obs_weights[item] = [1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+                obs_weights[item] = [1./7*refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         if item == 'Tmh7':
             optim.__dict__['obs_'+item] = np.array(Temp2_selected) #flatten becuase it is from the second datafile, which has a different structure
             optim.__dict__['error_obs_' + item] = [0.5 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
@@ -857,13 +900,13 @@ for item in optim.obs:
             obs_units[item] = 'K'
             display_names[item] = 'T_2'
             if use_weights:
-                obs_weights[item] = [1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+                obs_weights[item] = [1./7*refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'CO2mh':
             optim.__dict__['obs_'+item] = np.array(CO2_200_selected)
             optim.__dict__['error_obs_' + item] = [5 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = hour_CO2_selected * 3600
             if use_weights:
-                obs_weights[item] = [1./4*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+                obs_weights[item] = [1./4*refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
             obs_units[item] = 'ppm'
             display_names[item] = 'CO2_200'
         elif item == 'CO2mh2':
@@ -871,7 +914,7 @@ for item in optim.obs:
             optim.__dict__['error_obs_' + item] = [5 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = hour_CO2_selected * 3600
             if use_weights:
-                obs_weights[item] = [1./4*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+                obs_weights[item] = [1./4*refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
             obs_units[item] = 'ppm'
             display_names[item] = 'CO2_120'
         elif item == 'CO2mh3':
@@ -879,7 +922,7 @@ for item in optim.obs:
             optim.__dict__['error_obs_' + item] = [5 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = hour_CO2_selected * 3600
             if use_weights:
-                obs_weights[item] = [1./4*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+                obs_weights[item] = [1./4*refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
             obs_units[item] = 'ppm'
             display_names[item] = 'CO2_60'
         elif item == 'CO2mh4':
@@ -887,7 +930,7 @@ for item in optim.obs:
             optim.__dict__['error_obs_' + item] = [5 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = hour_CO2_selected * 3600
             if use_weights:
-                obs_weights[item] = [1./4*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+                obs_weights[item] = [1./4*refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
             obs_units[item] = 'ppm'
             display_names[item] = 'CO2_20'
         elif item == 'wCO2':
@@ -896,16 +939,16 @@ for item in optim.obs:
             obs_times[item] = np.array(obstimes_T)
             obs_units[item] = 'mg CO2 m-2 s-1'
             if use_weights:
-                obs_weights[item] = [1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+                obs_weights[item] = [refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'h':
             optim.__dict__['obs_'+item] = np.array(BLH_selected) #we just have one day
-            optim.__dict__['error_obs_' + item] = [100 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
+            optim.__dict__['error_obs_' + item] = [120 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = np.array(dhour_BLH_selected) * 3600
             for i in range(len(obs_times[item])):
                 obs_times[item][i] = round(obs_times[item][i],0) #Very important, since otherwise the obs will be a fraction of a second off and will not be used
             obs_units[item] = 'm'
             if use_weights:
-                obs_weights[item] = [1./3*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+                obs_weights[item] = [refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'qmh':
             optim.__dict__['obs_'+item] = np.array(q200_selected)
             optim.__dict__['error_obs_' + item] = [0.00025 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
@@ -913,7 +956,7 @@ for item in optim.obs:
             obs_units[item] = 'kg kg-1'
             display_names[item] = 'q_200'
             if use_weights:
-                obs_weights[item] = [1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+                obs_weights[item] = [refnumobs*1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'qmh2':
             optim.__dict__['obs_'+item] = np.array(q140_selected)
             optim.__dict__['error_obs_' + item] = [0.00025 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
@@ -921,7 +964,7 @@ for item in optim.obs:
             obs_units[item] = 'kg kg-1'
             display_names[item] = 'q_140'
             if use_weights:
-                obs_weights[item] = [1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+                obs_weights[item] = [refnumobs*1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'qmh3':
             optim.__dict__['obs_'+item] = np.array(q80_selected)
             optim.__dict__['error_obs_' + item] = [0.00025 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
@@ -929,7 +972,7 @@ for item in optim.obs:
             obs_units[item] = 'kg kg-1'
             display_names[item] = 'q_80'
             if use_weights:
-                obs_weights[item] = [1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+                obs_weights[item] = [refnumobs*1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'qmh4':
             optim.__dict__['obs_'+item] = np.array(q40_selected)
             optim.__dict__['error_obs_' + item] = [0.00025 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
@@ -937,7 +980,7 @@ for item in optim.obs:
             obs_units[item] = 'kg kg-1'
             display_names[item] = 'q_40'
             if use_weights:
-                obs_weights[item] = [1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+                obs_weights[item] = [refnumobs*1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'qmh5':
             optim.__dict__['obs_'+item] = np.array(q20_selected)
             optim.__dict__['error_obs_' + item] = [0.00025 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
@@ -945,7 +988,7 @@ for item in optim.obs:
             obs_units[item] = 'kg kg-1'
             display_names[item] = 'q_20'
             if use_weights:
-                obs_weights[item] = [1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+                obs_weights[item] = [refnumobs*1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'qmh6':
             optim.__dict__['obs_'+item] = np.array(q10_selected)
             optim.__dict__['error_obs_' + item] = [0.00025 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
@@ -953,7 +996,7 @@ for item in optim.obs:
             obs_units[item] = 'kg kg-1'
             display_names[item] = 'q_10'
             if use_weights:
-                obs_weights[item] = [1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+                obs_weights[item] = [refnumobs*1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'qmh7':
             optim.__dict__['obs_'+item] = np.array(q2_selected)
             optim.__dict__['error_obs_' + item] = [0.00025 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
@@ -961,48 +1004,69 @@ for item in optim.obs:
             obs_units[item] = 'kg kg-1'
             display_names[item] = 'q_2'
             if use_weights:
-                obs_weights[item] = [1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+                obs_weights[item] = [refnumobs*1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'ustar':
             optim.__dict__['obs_'+item] = np.array(ustar_selected)
             optim.__dict__['error_obs_' + item] = [0.15 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = np.array(obstimes_T)
             obs_units[item] = 'm s-1'
             if use_weights:
-                obs_weights[item] = [1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+                obs_weights[item] = [refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'H':
             optim.__dict__['obs_'+item] = np.array(H_selected)
             optim.__dict__['error_obs_' + item] = [70 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = np.array(obstimes_T)
             obs_units[item] = 'W m-2'
             if use_weights:
-                obs_weights[item] = [1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+                obs_weights[item] = [refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'LE':
             optim.__dict__['obs_'+item] = np.array(LE_selected)
             optim.__dict__['error_obs_' + item] = [70 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = np.array(obstimes_T)
             obs_units[item] = 'W m-2'
             if use_weights:
-                obs_weights[item] = [1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+                obs_weights[item] = [refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'u':
             optim.__dict__['obs_'+item] = np.array(u200_selected)
             optim.__dict__['error_obs_' + item] = np.array(stdevWindsp200_selected) #not fully correct, includes variation in v...
             obs_times[item] = np.array(obstimes_T)
             obs_units[item] = 'm s-1'
             if use_weights:
-                obs_weights[item] = [1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+                obs_weights[item] = [refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'v':
             optim.__dict__['obs_'+item] = np.array(v200_selected)
             optim.__dict__['error_obs_' + item] = np.array(stdevWindsp200_selected)
             obs_times[item] = np.array(obstimes_T)
             obs_units[item] = 'm s-1'
             if use_weights:
-                obs_weights[item] = [1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+                obs_weights[item] = [refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+        elif item == 'Swout':
+            optim.__dict__['obs_'+item] = np.array(SWU_selected)
+            optim.__dict__['error_obs_' + item] = [20 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
+            obs_times[item] = np.array(obstimes_T)
+            obs_units[item] = 'W m-2'
+            if use_weights:
+                obs_weights[item] = [refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
+###########################################################
+###### end user input: observation information ############
+###########################################################
+    if (not hasattr(optim,'obs_'+item) or not hasattr(optim,'error_obs_'+item)): #a check to see wether all info is specified
+        raise Exception('Incomplete or no information on obs of ' + item)
+    if type(optim.__dict__['obs_'+item]) not in [np.ndarray,list]: #a check to see whether data is of a correct type
+        raise Exception('Please convert observation data into type \'numpy.ndarray\' or list!')
+    if type(optim.__dict__['error_obs_'+item]) not in [np.ndarray,list]:
+        raise Exception('Please convert observation error data into type \'numpy.ndarray\' or list!')
+    if type(obs_times[item]) not in [np.ndarray,list]:
+        raise Exception('Please convert observation time data into type \'numpy.ndarray\' or list!')
+    if use_weights and item in obs_weights:
+        if type(obs_weights[item]) not in [np.ndarray,list]:
+            raise Exception('Please convert observation weight data into type \'numpy.ndarray\' or list!')
     itoremove = []
     for i in range(len(optim.__dict__['obs_'+item])):
         if math.isnan(optim.__dict__['obs_'+item][i]):
             itoremove += [i]
     optim.__dict__['obs_'+item] = np.delete(optim.__dict__['obs_'+item],itoremove) #exclude the nan obs
-    optim.__dict__['error_obs_'+item] = np.delete(optim.__dict__['error_obs_'+item],itoremove) #as a side effect, this turns the array into an numpy.ndarray if not already the case.
+    optim.__dict__['error_obs_'+item] = np.delete(optim.__dict__['error_obs_'+item],itoremove) #as a side effect, this turns the array into an numpy.ndarray if not already the case (or gives error).
     obs_times[item] = np.delete(obs_times[item],itoremove)#exclude the times,errors and weights as well (of the nan obs)
     if item in obs_weights:
         obs_weights[item] = np.delete(obs_weights[item],itoremove)
@@ -1026,7 +1090,7 @@ for item in optim.obs:
     if len(obs_times[item]) != len(optim.__dict__['obs_'+item]):
         raise Exception('Error: size of obs and obstimes inconsistent!') 
     for num in obs_times[item]:
-        if round(num, 3) not in [round(num2, 3) for num2 in priormodel.out.t * 3600]:
+        if round(num, 10) not in [round(num2, 10) for num2 in priormodel.out.t * 3600]:
             raise Exception('Error: obs occuring at a time that is not modelled (' + str(item) +')')
 
 print('total number of obs:')
@@ -1067,10 +1131,10 @@ for item in optim.obs:
     weight = 1.0 # a weight for the observations in the cost function, modified below if weights are specified. For each variable in the obs, provide either no weights or a weight for every time there is an observation for that variable 
     k = 0 #index for observations
     for ti in range(priormodel.tsteps):
-        if round(priormodel.out.t[ti] * 3600,3) in [round(num, 3) for num in obs_times[item]]: #so if we are at a time where we have an obs        
+        if round(priormodel.out.t[ti] * 3600,10) in [round(num, 10) for num in obs_times[item]]: #so if we are at a time where we have an obs        
             if item in obs_weights:
                 weight = obs_weights[item][k]
-            forcing = weight * (Hx_prior[item][ti]- obs_scale * optim.__dict__['obs_'+item][k])/(optim.__dict__['error_obs_' + item][k]**2)
+            forcing = weight * (Hx_prior[item][ti] - obs_scale * optim.__dict__['obs_'+item][k])/(optim.__dict__['error_obs_' + item][k]**2)
             optim.forcing[ti][item] = forcing
             k += 1
 if optim_method == 'bfgs':
@@ -1095,43 +1159,44 @@ elif optim_method == 'tnc':
             minimisation = optimize.fmin_tnc(optim.min_func,optim.pstate,fprime=optim.num_deriv,args=params,bounds=bounds,maxfun=None)
         state_opt0 = minimisation[0]
         min_costf = optim.cost_func(state_opt0,optiminput,state,obs_times,obs_weights)
-    except (am.nan_incostfError):
+    except (im.nan_incostfError):
         print('Minimisation aborted due to nan')
         open('Optimfile.txt','a').write('\n')
         open('Optimfile.txt','a').write('{0:>25s}'.format('nan reached, no restart'))
         open('Gradfile.txt','a').write('\n')
         open('Gradfile.txt','a').write('{0:>25s}'.format('nan reached, no restart'))
         if (discard_nan_minims == False and len(optim.Statelist) > 0): #len(optim.Statelist) > 0 to check wether there is already a non-nan result in the optimisation, if not we choose nan as result
-                min_costf = np.min(optim.Costflist)
-                min_costf_ind = optim.Costflist.index(min(optim.Costflist)) #find the number of the simulation where costf was minimal
-                state_opt0 = optim.Statelist[min_costf_ind]
-                optim.stop = True
+            min_costf = np.min(optim.Costflist)
+            min_costf_ind = optim.Costflist.index(min(optim.Costflist)) #find the number of the simulation where costf was minimal
+            state_opt0 = optim.Statelist[min_costf_ind]
+            optim.stop = True
         else:
             state_opt0 = np.array([np.nan for x in range(len(state))])
             min_costf = np.nan
-    except (am.static_costfError):
+    except (im.static_costfError):
         print('Minimisation aborted as it proceeded too slow')
-        state_opt0 = optim.Statelist[-1]
-        min_costf = optim.Costflist[-1]
+        open('Optimfile.txt','a').write('\nMinimisation aborted as it proceeded too slow') #\n to make it start on a new line
+        open('Gradfile.txt','a').write('\nMinimisation aborted as it proceeded too slow')
+        min_costf = np.min(optim.Costflist)
+        min_costf_ind = optim.Costflist.index(min(optim.Costflist)) #find the number of the simulation where costf was minimal
+        state_opt0 = optim.Statelist[min_costf_ind]
     for i in range(maxnr_of_restarts):
         if (min_costf > stopcrit and (not hasattr(optim,'stop'))): #will evaluate to False if min_costf is equal to nan
-            optim.nr_of_restarted_sim = optim.sim_nr
+            optim.nr_of_sim_bef_restart = optim.sim_nr
             open('Optimfile.txt','a').write('\n')
-            open('Optimfile.txt','a').write('{0:>25s}'.format('restart from end'))
+            open('Optimfile.txt','a').write('{0:>25s}'.format('restart'))
             open('Gradfile.txt','a').write('\n')
-            open('Gradfile.txt','a').write('{0:>25s}'.format('restart from end'))
+            open('Gradfile.txt','a').write('{0:>25s}'.format('restart'))
             try:
                 if ana_deriv:
-                    minimisation = optimize.fmin_tnc(optim.min_func,state_opt0,fprime=optim.ana_deriv,args=params,bounds=bounds,maxfun=None) #restart from end point to make it better if costf still too large
+                    minimisation = optimize.fmin_tnc(optim.min_func,state_opt0,fprime=optim.ana_deriv,args=params,bounds=bounds,maxfun=None) #restart from best sim so far to make it better if costf still too large
                 else:
-                    minimisation = optimize.fmin_tnc(optim.min_func,state_opt0,fprime=optim.num_deriv,args=params,bounds=bounds,maxfun=None) #restart from end point to make it better if costf still too large
+                    minimisation = optimize.fmin_tnc(optim.min_func,state_opt0,fprime=optim.num_deriv,args=params,bounds=bounds,maxfun=None) #restart from best sim so far to make it better if costf still too large
                 state_opt0 = minimisation[0]
-            except (am.nan_incostfError):
+            except (im.nan_incostfError):
                 print('Minimisation aborted due to nan, no restart')
-                open('Optimfile.txt','a').write('\n')
-                open('Optimfile.txt','a').write('{0:>25s}'.format('nan reached, no restart'))
-                open('Gradfile.txt','a').write('\n')
-                open('Gradfile.txt','a').write('{0:>25s}'.format('nan reached, no restart'))
+                open('Optimfile.txt','a').write('\nnan reached, no restart')
+                open('Gradfile.txt','a').write('\nnan reached, no restart')
                 if discard_nan_minims == False:
                     min_costf = np.min(optim.Costflist)
                     min_costf_ind = optim.Costflist.index(min(optim.Costflist)) #find the number of the simulation where costf was minimal
@@ -1140,10 +1205,13 @@ elif optim_method == 'tnc':
                     state_opt0 = np.array([np.nan for x in range(len(state))])
                     min_costf = np.nan
                 break
-            except (am.static_costfError):
+            except (im.static_costfError):
                 print('Minimisation aborted as it proceeded too slow')
-                state_opt0 = optim.Statelist[-1]
-                min_costf = optim.Costflist[-1]
+                open('Optimfile.txt','a').write('\nMinimisation aborted as it proceeded too slow') #\n to make it start on a new line
+                open('Gradfile.txt','a').write('\nMinimisation aborted as it proceeded too slow')
+                min_costf = np.min(optim.Costflist)
+                min_costf_ind = optim.Costflist.index(min(optim.Costflist)) #find the number of the simulation where costf was minimal
+                state_opt0 = optim.Statelist[min_costf_ind]
             for j in range (len(state)):
                 optiminput.__dict__[state[j]] = state_opt0[j]
             min_costf = optim.cost_func(state_opt0,optiminput,state,obs_times,obs_weights)
@@ -1172,7 +1240,7 @@ def run_ensemble_member(counter,seed):
 #    for j in range(len(state)):
 #        open('errorfile'+str(counter)+'.txt','a').write('{0:>25s}'.format(str(priorinput_mem.__dict__[state[j]])))
     priormodel_mem.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False,save_vars_indict=False) #delete_at_end should be false, to keep tsteps of model
-    optim_mem = am.adjoint_modelling(priormodel_mem,write_to_file=write_to_f,use_backgr_in_cost=use_backgr_in_cost,imposeparambounds=imposeparambounds,state=state,Optimfile='Optimfile'+str(counter)+'.txt',Gradfile='Gradfile'+str(counter)+'.txt')
+    optim_mem = im.adjoint_modelling(priormodel_mem,write_to_file=write_to_f,use_backgr_in_cost=use_backgr_in_cost,imposeparambounds=imposeparambounds,state=state,Optimfile='Optimfile'+str(counter)+'.txt',Gradfile='Gradfile'+str(counter)+'.txt',pri_err_cov_matr=b_cov)
     optim_mem.obs = cp.deepcopy(optim.obs)
     for item in optim_mem.obs:
         optim_mem.__dict__['obs_'+item] = cp.deepcopy(optim.__dict__['obs_'+item])
@@ -1202,8 +1270,6 @@ def run_ensemble_member(counter,seed):
                     plt.savefig('fig_obs_'+optim.obs[i]+'_mem'+str(counter)+'.png', format='png')
     checkpoint_prior_mem = priormodel_mem.cpx
     checkpoint_init_prior_mem = priormodel_mem.cpx_init
-    if use_backgr_in_cost: 
-       optim_mem.binv = cp.deepcopy(optim.binv)
     obs_sca_cf_mem = {}
     optim_mem.pstate = []
     for item in state:
@@ -1224,10 +1290,10 @@ def run_ensemble_member(counter,seed):
         weight = 1.0 # a weight for the observations in the cost function, modified below if weights are specified. For each variable in the obs, provide either no weights or a weight for every time there is an observation for that variable 
         k = 0 #counter for the observations (specific for each type of obs) 
         for ti in range(priormodel_mem.tsteps):
-            if round(priormodel_mem.out.t[ti] * 3600,3) in [round(num, 3) for num in obs_times[item]]: #so if we are at a time where we have an obs
+            if round(priormodel_mem.out.t[ti] * 3600,10) in [round(num, 10) for num in obs_times[item]]: #so if we are at a time where we have an obs
                 if item in obs_weights:
                     weight = obs_weights[item][k]
-                forcing = weight * (Hx_prior_mem[item][ti]- obs_scale * optim_mem.__dict__['obs_'+item][k])/(optim_mem.__dict__['error_obs_' + item][k]**2) #don't include the backgorund term of the cost function in the forcing!
+                forcing = weight * (Hx_prior_mem[item][ti] - obs_scale * optim_mem.__dict__['obs_'+item][k])/(optim_mem.__dict__['error_obs_' + item][k]**2) #don't include the backgorund term of the cost function in the forcing!
                 optim_mem.forcing[ti][item] = forcing
                 k += 1
     if optim_method == 'bfgs':
@@ -1245,7 +1311,7 @@ def run_ensemble_member(counter,seed):
                 minimisation_mem = optimize.fmin_tnc(optim_mem.min_func,optim_mem.pstate,fprime=optim_mem.num_deriv,args=params,bounds=bounds,maxfun=None)
             state_opt_mem = minimisation_mem[0]
             min_costf_mem = optim_mem.cost_func(state_opt_mem,optiminput_mem,state,obs_times,obs_weights)    
-        except (am.nan_incostfError):
+        except (im.nan_incostfError):
             print('Minimisation aborted due to nan') #discard_nan_minims == False allows to use last non-nan result in the optimisation, otherwise we throw away the optimisation
             open('Optimfile'+str(counter)+'.txt','a').write('\n')
             open('Optimfile'+str(counter)+'.txt','a').write('{0:>25s}'.format('nan reached, no restart'))
@@ -1259,27 +1325,30 @@ def run_ensemble_member(counter,seed):
             else:
                 state_opt_mem = np.array([np.nan for x in range(len(state))])
                 min_costf_mem = np.nan
-        except (am.static_costfError):
+        except (im.static_costfError):
             print('Minimisation aborted as it proceeded too slow')
-            state_opt_mem = optim_mem.Statelist[-1]
-            min_costf_mem = optim_mem.Costflist[-1]
+            open('Optimfile'+str(counter)+'.txt','a').write('\nMinimisation aborted as it proceeded too slow') #\n to make it start on a new line
+            open('Gradfile'+str(counter)+'.txt','a').write('\nMinimisation aborted as it proceeded too slow')
+            min_costf_mem = np.min(optim_mem.Costflist)
+            min_costf_mem_ind = optim_mem.Costflist.index(min(optim_mem.Costflist)) #find the number of the simulation where costf was minimal
+            state_opt_mem = optim_mem.Statelist[min_costf_mem_ind]
         for i in range(maxnr_of_restarts):
             if (min_costf_mem > stopcrit and (not hasattr(optim_mem,'stop'))): #will evaluate to False if min_costf_mem is equal to nan
-                optim_mem.nr_of_restarted_sim = optim_mem.sim_nr
+                optim_mem.nr_of_sim_bef_restart = optim_mem.sim_nr
                 open('Optimfile'+str(counter)+'.txt','a').write('\n')
-                open('Optimfile'+str(counter)+'.txt','a').write('{0:>25s}'.format('restart from end'))
+                open('Optimfile'+str(counter)+'.txt','a').write('{0:>25s}'.format('restart'))
                 open('Gradfile'+str(counter)+'.txt','a').write('\n')
-                open('Gradfile'+str(counter)+'.txt','a').write('{0:>25s}'.format('restart from end'))
+                open('Gradfile'+str(counter)+'.txt','a').write('{0:>25s}'.format('restart'))
                 try:
                     if ana_deriv:
-                        minimisation_mem = optimize.fmin_tnc(optim_mem.min_func,state_opt_mem,fprime=optim_mem.ana_deriv,args=params,bounds=bounds,maxfun=None) #restart from end point to make it better if costf still too large
+                        minimisation_mem = optimize.fmin_tnc(optim_mem.min_func,state_opt_mem,fprime=optim_mem.ana_deriv,args=params,bounds=bounds,maxfun=None) #restart from best sim so far to make it better if costf still too large
                     else:
-                        minimisation_mem = optimize.fmin_tnc(optim_mem.min_func,state_opt_mem,fprime=optim_mem.num_deriv,args=params,bounds=bounds,maxfun=None) #restart from end point to make it better if costf still too large
+                        minimisation_mem = optimize.fmin_tnc(optim_mem.min_func,state_opt_mem,fprime=optim_mem.num_deriv,args=params,bounds=bounds,maxfun=None) #restart from best sim so far to make it better if costf still too large
                     state_opt_mem = minimisation_mem[0]
-                except (am.nan_incostfError):
+                except (im.nan_incostfError):
                     print('Minimisation aborted due to nan, no restart for this member')
-                    open('Optimfile'+str(counter)+'.txt','a').write('\n')
-                    open('Optimfile'+str(counter)+'.txt','a').write('{0:>25s}'.format('nan reached, no restart'))
+                    open('Optimfile'+str(counter)+'.txt','a').write('\nnan reached, no restart')
+                    open('Gradfile'+str(counter)+'.txt','a').write('\nnan reached, no restart')
                     if discard_nan_minims == False:
                         min_costf_mem = np.min(optim_mem.Costflist)
                         min_costf_mem_ind = optim_mem.Costflist.index(min(optim_mem.Costflist)) #find the number of the simulation where costf was minimal
@@ -1288,10 +1357,13 @@ def run_ensemble_member(counter,seed):
                         state_opt_mem = np.array([np.nan for x in range(len(state))])
                         min_costf_mem = np.nan
                     break
-                except (am.static_costfError):
+                except (im.static_costfError):
                     print('Minimisation aborted as it proceeded too slow')
-                    state_opt_mem = optim_mem.Statelist[-1]
-                    min_costf_mem = optim_mem.Costflist[-1]
+                    open('Optimfile'+str(counter)+'.txt','a').write('\nMinimisation aborted as it proceeded too slow') #\n to make it start on a new line
+                    open('Gradfile'+str(counter)+'.txt','a').write('\nMinimisation aborted as it proceeded too slow')
+                    min_costf_mem = np.min(optim_mem.Costflist)
+                    min_costf_mem_ind = optim_mem.Costflist.index(min(optim_mem.Costflist)) #find the number of the simulation where costf was minimal
+                    state_opt_mem = optim_mem.Statelist[min_costf_mem_ind]
                 for j in range (len(state)):
                     optiminput_mem.__dict__[state[j]] = state_opt_mem[j]
                 min_costf_mem = optim_mem.cost_func(state_opt_mem,optiminput_mem,state,obs_times,obs_weights)
@@ -1320,7 +1392,8 @@ if use_ensemble:
     print('whole ensemble:')
     print(ensemble)
     seq = np.array([x['min_costf'] for x in ensemble]) #iterate over the dictionaries
-    opt_sim_nr = np.where(seq == np.nanmin(seq))[0][0]
+    min_costf_ensemble = np.nanmin(seq)
+    opt_sim_nr = np.where(seq == min_costf_ensemble)[0][0]
     state_opt = ensemble[opt_sim_nr]['state_opt']
     print('optimal state ensemble '+ str(state) +':')
     print(state_opt)
@@ -1356,13 +1429,89 @@ for item in state:
 optimalmodel = fwdm.model(optimalinput)
 optimalmodel.run(checkpoint=False,updatevals_surf_lay=True,delete_at_end=False)
 
-for i in range(len(optim.obs)):
+############################
+#stats file
+############################
+if use_ensemble:
+    if use_backgr_in_cost:
+        if use_weights:
+            chi_sq = min_costf_ensemble/(sum_of_weights + number_of_params)
+        else:
+            chi_sq = min_costf_ensemble/(number_of_obs + number_of_params) #calculation of chi squared statistic
+    else:
+        if use_weights:
+            chi_sq = min_costf_ensemble/(sum_of_weights)
+        else:
+            chi_sq = min_costf_ensemble/(number_of_obs)
+else:
+    if use_backgr_in_cost:
+        if use_weights:
+            chi_sq = min_costf/(sum_of_weights + number_of_params)
+        else:
+            chi_sq = min_costf/(number_of_obs + number_of_params) #calculation of chi squared statistic
+    else:
+        if use_weights:
+            chi_sq = min_costf/(sum_of_weights)
+        else:
+            chi_sq = min_costf/(number_of_obs)
+if write_to_f:
+    open('Optstatsfile.txt','w').write('{0:>9s}'.format('nr of obs')) #here we make the file   
+    if use_weights:
+        open('Optstatsfile.txt','a').write('{0:>40s}'.format('total nr obs, corrected for weights'))
+    open('Optstatsfile.txt','a').write('{0:>35s}'.format('number of params to optimise'))
+    open('Optstatsfile.txt','a').write('{0:>25s}'.format('chi squared'))
+    if use_ensemble:
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(' (of member with lowest costf)'))
+    open('Optstatsfile.txt','a').write('\n')
+    open('Optstatsfile.txt','a').write('{0:>9s}'.format(str(number_of_obs)))
+    if use_weights:
+        open('Optstatsfile.txt','a').write('{0:>40s}'.format(str(sum_of_weights)))
+    open('Optstatsfile.txt','a').write('{0:>35s}'.format(str(number_of_params)))
+    open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(chi_sq)))
+    open('Optstatsfile.txt','a').write('\n\n')
+    open('Optstatsfile.txt','a').write('{0:>31s}'.format('optimal state without ensemble:'))
+    open('Optstatsfile.txt','a').write('\n')
+    open('Optstatsfile.txt','a').write('      ')
+    for item in state:
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(item)))
+    open('Optstatsfile.txt','a').write('\n')
+    open('Optstatsfile.txt','a').write('      ')
+    for item in state_opt0:
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(item)))
+    open('Optstatsfile.txt','a').write('\n')
+    if use_ensemble:
+        open('Optstatsfile.txt','a').write('{0:>31s}'.format('optimal state with ensemble:'))
+        open('Optstatsfile.txt','a').write('\n')
+        open('Optstatsfile.txt','a').write('      ')
+        for item in state_opt:
+            open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(item)))
+        open('Optstatsfile.txt','a').write('\n')
+        open('Optstatsfile.txt','a').write('{0:>31s}'.format('index member with best state:'))
+        open('Optstatsfile.txt','a').write('\n')
+        open('Optstatsfile.txt','a').write('{0:>31s}'.format(str(opt_sim_nr)))
+        open('Optstatsfile.txt','a').write('\n')
+        open('Optstatsfile.txt','a').write('\n')
+        open('Optstatsfile.txt','a').write('{0:>9s}'.format('ensemble members:'))
+        open('Optstatsfile.txt','a').write('\n')
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format('minimum costf'))
+        for item in state:
+            open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(item)))
+        open('Optstatsfile.txt','a').write('\n')
+        for item in ensemble:
+            open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(item['min_costf'])))
+            for param in item['state_opt']:
+                open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(param)))
+            open('Optstatsfile.txt','a').write('\n')
+
+for i in range(len(obslist)):
     fig = plt.figure()
     if not optim.obs[i].startswith('qmh'): #q should be plotted differently for clarity
         plt.plot(priormodel.out.t,priormodel.out.__dict__[optim.obs[i]], linestyle=' ', marker='o',color='yellow',label = 'prior')
         plt.plot(priormodel.out.t,optimalmodel.out.__dict__[optim.obs[i]], linestyle=' ', marker='o',color='red',label = 'post')
         plt.plot(obs_times[optim.obs[i]]/3600,optim.__dict__['obs_'+optim.obs[i]], linestyle=' ', marker='o',color = 'black')
         plt.errorbar(obs_times[optim.obs[i]]/3600,optim.__dict__['obs_'+optim.obs[i]],yerr=optim.__dict__['error_obs_' + optim.obs[i]],ecolor='black',fmt='None')
+        if 'obs_sca_cf_'+obslist[i] in state: #plot the obs scaled with the scaling factors (if determined)
+            plt.plot(obs_times[obslist[i]]/3600,optimalinput.__dict__['obs_sca_cf_'+obslist[i]]*optim.__dict__['obs_'+obslist[i]], linestyle=' ', marker='o',color = 'red')
         if optim.obs[i] in display_names:
             plt.ylabel(display_names[optim.obs[i]] +' ('+ obs_units[optim.obs[i]] + ')')
         else:
@@ -1386,7 +1535,9 @@ for i in range(len(optim.obs)):
             plt.savefig('fig_fit_'+optim.obs[i]+'.png', format='png')
 
     
-        
+########################################################
+###### user input: additional plotting etc. ############
+########################################################       
 
 #fig = plt.figure()
 #plt.plot(optimalmodel.out.t,priormodel.out.wCO2, linestyle='--', marker='o',color='yellow')
