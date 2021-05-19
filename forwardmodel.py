@@ -318,7 +318,12 @@ class model:
         self.vw         = None                  # surface momentum flux in v-direction [m2 s-2]
         self.z0m        = self.input.z0m        # roughness length for momentum [m]
         self.z0h        = self.input.z0h        # roughness length for scalars [m]
-        self.Cs         = self.input.Cs         # drag coefficient for scalars [-]
+        if hasattr(self.input,'Cs'):
+            self.Cs         = self.input.Cs         # drag coefficient for scalars [-]
+        else:
+            self.Cs         = 1e12                  # drag coefficient for scalars [-]
+        #Cm is calculated before it used, no need to specify it here, even though this was done in the original CLASS from 2019
+        self.L          = None                  # Obukhov length [m]
         self.Rib        = None                  # bulk Richardson number [-]
         self.ra         = None                  # aerodynamic resistance [s m-1]
         self.sw_useWilson = False
@@ -338,7 +343,8 @@ class model:
         self.Swout      = None                  # outgoing short wave radiation [W m-2]
         self.Lwin       = None                  # incoming long wave radiation [W m-2]
         self.Lwout      = None                  # outgoing long wave radiation [W m-2]
-#        self.Q          = self.input.Q          # net radiation [W m-2]
+        self.sinlea     = None
+        self.Q          = self.input.Q          # net radiation [W m-2], this value is not used if sw_rad == True. But if sw_rad == False and sw_ls == True, the model will crash as Swin is None...
         self.dFz        = self.input.dFz        # cloud top radiative divergence [W m-2] 
   
         # initialize land surface
@@ -396,7 +402,11 @@ class model:
         # initialize A-Gs surface scheme
         self.c3c4       = self.input.c3c4       # plant type ('c3' or 'c4')
         if hasattr(self.input,'ags_C_mode'): #only if using the normal a-gs, not if using the canopy model
-            self.ags_C_mode = self.input.ags_C_mode # which mixing ratios to use in ags, 'surf' or 'MXL' 
+            self.ags_C_mode = self.input.ags_C_mode # which mixing ratios to use in ags, 'surf' or 'MXL'
+            if self.ags_C_mode == 'surf' and self.sw_sl == False:
+                raise Exception('When ags_C_mode set to surf, turn on the surface layer')
+        else:
+            self.ags_C_mode = 'MXL'
  
         # initialize cumulus parameterization
         self.sw_cu      = self.input.sw_cu      # Cumulus parameterization switch
@@ -416,6 +426,8 @@ class model:
         self.COS        = self.input.COS        # initial mixed-layer COS [ppb]
         if hasattr(self.input,'alfa_sto'):
             self.alfa_sto = self.input.alfa_sto #dimensionless coefficient for multiplying stomatal conductance with 
+        else:
+            self.alfa_sto = 1.0
         self.COSmeasuring_height = 10. #assume 10 if not given
         if hasattr(self.input,'COSmeasuring_height'):
             self.COSmeasuring_height = self.input.COSmeasuring_height        # height COS mixing rat measurements [m]   
@@ -529,8 +541,7 @@ class model:
         self.advCO2     = self.input.advCO2     # advection of CO2 [ppm s-1]
         self.advCOS     = self.input.advCOS     # advection of COS [ppb s-1]
         self.wCO2       = self.input.wCO2       # surface kinematic CO2 flux [ppm m s-1]
-        if(self.sw_sl): #used in surf layer module before calculated in land surface
-            self.wCOS       = self.input.wCOS
+        self.wCOS       = self.input.wCOS # surface kinematic COS flux [ppb m s-1] #used in surf layer module before calculated in ags (via call to land surface)
         self.wCO2A      = 0                     # surface assimulation CO2 flux [ppm m s-1]
         self.wCO2R      = 0                     # surface respiration CO2 flux [ppm m s-1]
         self.wCO2e      = None                  # entrainment CO2 flux [ppm m s-1]
@@ -690,7 +701,7 @@ class model:
         else:
             RHlcl = 0.9998 
 
-        itmax = 50 
+        itmax = 50 #Peter Bosman: I have increased this to from 30 to 50
         it = 0
         while(((RHlcl <= 0.9999) or (RHlcl >= 1.0001)) and it<itmax):
             self.lcl    += (1.-RHlcl)*1000.
@@ -785,11 +796,11 @@ class model:
                 self.cpx[self.t]['rc_CO22_h_middle']    = self.CO22_h
                 self.cpx[self.t]['rc_COS2_h_middle']    = self.COS2_h
         if self.q2_h <= 0.:
-            self.q2_h   = 1.e-23 #This I (Peter) added to prevent problems with values becoming infinity, see below, that gives problems to adjoint.
+            self.q2_h   = 1.e-200 #This I (Peter Bosman) added to prevent problems with values becoming infinity, see below, that gives problems to adjoint.
         if self.CO22_h <= 0.:
-            self.CO22_h   = 1.e-23 #This I (Peter) added to prevent problems with the derivative of self.wCO2M below, derivative not defined when self.CO22_h = 0
+            self.CO22_h   = 1.e-200 #This I (Peter Bosman) added to prevent problems with the derivative of self.wCO2M below, derivative not defined when self.CO22_h = 0
         if self.COS2_h <= 0.:
-            self.COS2_h   = 1.e-23
+            self.COS2_h   = 1.e-200 #This I (Peter Bosman) added
         # calculate cloud core fraction (ac), mass flux (M) and moisture flux (wqM)
         qsat_variable_rc = qsat(self.T_h, self.P_h)
         self.ac     = max(0., 0.5 + (0.36 * np.arctan(1.55 * ((self.q - qsat_variable_rc) / self.q2_h**0.5))))
@@ -1197,10 +1208,11 @@ class model:
                 self.cpx[self.t]['rsl_COSmeasuring_height']    = self.COSmeasuring_height
                 self.cpx[self.t]['rsl_z0m']    = self.z0m
                 self.cpx[self.t]['rsl_z0h']    = self.z0h
-            
-        ueff           = np.sqrt(self.u**2. + self.v**2. + self.wstar**2.) #length of wind vector (m s-1)
+        
+        ueff           = max(0.01, np.sqrt(self.u**2. + self.v**2. + self.wstar**2.))#length of wind vector (m s-1)
         if ueff < 0.01:
-            raise Exception('ueff too small')
+            if self.sw_printwarnings:
+                print('ueff < 0.01!')
         self.COSsurf = self.COS + self.wCOS / (self.Cs * ueff) #3.45,3.43 rewritten using COS (wCOS = (COSsurf - COS)/ra rewritten) and self.ra = (self.Cs * ueff)**-1., see land surface module 
 #        print('forwm cossurf')
 #        print(self.COSsurf )
@@ -1226,33 +1238,33 @@ class model:
                 else:
                     self.cpx[self.t]['rsl_Rib_middle']    = self.Rib
             self.Rib  = min(self.Rib, 0.2)
-            L     = self.ribtol(self.Rib, self.zsl, self.z0m, self.z0h, iterationnumber,call_from_init)
+            self.L     = self.ribtol(self.Rib, self.zsl, self.z0m, self.z0h, iterationnumber,call_from_init)
         else: #more simple
-            L     = self.thetav * self.ustar**3 /(self.k * self.g * -1 * self.wthetav)
+            self.L     = self.thetav * self.ustar**3 /(self.k * self.g * -1 * self.wthetav)
             if self.wthetav ==0 :
                 if self.sw_printwarnings:
                     print('zero virt temp flux')
-        Cm   = self.k**2. / (np.log(self.zsl / self.z0m) - self.psim(self.zsl / L) + self.psim(self.z0m / L)) ** 2. #eq 3.46 AVSI, height zu is taken at top of surface layer
-        Cs   = self.k**2. / (np.log(self.zsl / self.z0m) - self.psim(self.zsl / L) + self.psim(self.z0m / L)) / (np.log(self.zsl / self.z0h) - self.psih(self.zsl / L) + self.psih(self.z0h / L)) #eq 3.46 AVSI, height ztheta is taken at top of surface layer
-        ustar = np.sqrt(Cm) * ueff #3.45
-        if self.updatevals_surf_lay:
+        self.Cm   = self.k**2. / (np.log(self.zsl / self.z0m) - self.psim(self.zsl / self.L) + self.psim(self.z0m / self.L)) ** 2. #eq 3.46 AVSI, height zu is taken at top of surface layer
+        Cs   = self.k**2. / (np.log(self.zsl / self.z0m) - self.psim(self.zsl / self.L) + self.psim(self.z0m / self.L)) / (np.log(self.zsl / self.z0h) - self.psih(self.zsl / self.L) + self.psih(self.z0h / self.L)) #eq 3.46 AVSI, height ztheta is taken at top of surface layer
+        ustar = np.sqrt(self.Cm) * ueff #3.45
+        if self.updatevals_surf_lay:#Peter Bosman: this switch and the se of a self and a non-self variable was added by me
             self.Cs   = Cs
             self.ustar = ustar
         
-        self.uw    = - Cm * ueff * self.u #3.45 with 3.17 (mind that u is total horizontal wind in 3.17): -u*w = tau_x/rho = Cm*ueff*u (x momentum transported down) ? 
+        self.uw    = - self.Cm * ueff * self.u #3.45 with 3.17 (mind that u is total horizontal wind in 3.17): -u*w = tau_x/rho = Cm*ueff*u (x momentum transported down) ? 
         #or can be seen by looking at 3.43 using ram = 1 /(ueff * Cm), see notes next to eq 3.45, so: uw = tau_x/rho = - (u(zu) - u(surf))/ram = - Cm * ueff * self.u, given that u(surf) = 0
-        self.vw    = - Cm * ueff * self.v
+        self.vw    = - self.Cm * ueff * self.v
      
         # diagnostic meteorological variables
         #never calculate a variable at a height lower than its roughness length, e.g. never calculate qmh at a height lower than z0h, or a wind variable below a height z0m. thetasurf is the value of theta at height z0h
-        self.T2m    = self.thetasurf - self.wtheta / ustar / self.k * (np.log(2. / self.z0h) - self.psih(2. / L) + self.psih(self.z0h / L)) #3.42 with 3.17
-        self.thetamh    = self.thetasurf - self.wtheta / ustar / self.k * (np.log(self.Tmeasuring_height / self.z0h) - self.psih(self.Tmeasuring_height / L) + self.psih(self.z0h / L))
-        self.thetamh2    = self.thetasurf - self.wtheta / ustar / self.k * (np.log(self.Tmeasuring_height2 / self.z0h) - self.psih(self.Tmeasuring_height2 / L) + self.psih(self.z0h / L))
-        self.thetamh3    = self.thetasurf - self.wtheta / ustar / self.k * (np.log(self.Tmeasuring_height3 / self.z0h) - self.psih(self.Tmeasuring_height3 / L) + self.psih(self.z0h / L))
-        self.thetamh4    = self.thetasurf - self.wtheta / ustar / self.k * (np.log(self.Tmeasuring_height4 / self.z0h) - self.psih(self.Tmeasuring_height4 / L) + self.psih(self.z0h / L))
-        self.thetamh5    = self.thetasurf - self.wtheta / ustar / self.k * (np.log(self.Tmeasuring_height5 / self.z0h) - self.psih(self.Tmeasuring_height5 / L) + self.psih(self.z0h / L))
-        self.thetamh6    = self.thetasurf - self.wtheta / ustar / self.k * (np.log(self.Tmeasuring_height6 / self.z0h) - self.psih(self.Tmeasuring_height6 / L) + self.psih(self.z0h / L))
-        self.thetamh7    = self.thetasurf - self.wtheta / ustar / self.k * (np.log(self.Tmeasuring_height7 / self.z0h) - self.psih(self.Tmeasuring_height7 / L) + self.psih(self.z0h / L))
+        self.T2m    = self.thetasurf - self.wtheta / ustar / self.k * (np.log(2. / self.z0h) - self.psih(2. / self.L) + self.psih(self.z0h / self.L)) #3.42 with 3.17
+        self.thetamh    = self.thetasurf - self.wtheta / ustar / self.k * (np.log(self.Tmeasuring_height / self.z0h) - self.psih(self.Tmeasuring_height / self.L) + self.psih(self.z0h / self.L))
+        self.thetamh2    = self.thetasurf - self.wtheta / ustar / self.k * (np.log(self.Tmeasuring_height2 / self.z0h) - self.psih(self.Tmeasuring_height2 / self.L) + self.psih(self.z0h / self.L))
+        self.thetamh3    = self.thetasurf - self.wtheta / ustar / self.k * (np.log(self.Tmeasuring_height3 / self.z0h) - self.psih(self.Tmeasuring_height3 / self.L) + self.psih(self.z0h / self.L))
+        self.thetamh4    = self.thetasurf - self.wtheta / ustar / self.k * (np.log(self.Tmeasuring_height4 / self.z0h) - self.psih(self.Tmeasuring_height4 / self.L) + self.psih(self.z0h / self.L))
+        self.thetamh5    = self.thetasurf - self.wtheta / ustar / self.k * (np.log(self.Tmeasuring_height5 / self.z0h) - self.psih(self.Tmeasuring_height5 / self.L) + self.psih(self.z0h / self.L))
+        self.thetamh6    = self.thetasurf - self.wtheta / ustar / self.k * (np.log(self.Tmeasuring_height6 / self.z0h) - self.psih(self.Tmeasuring_height6 / self.L) + self.psih(self.z0h / self.L))
+        self.thetamh7    = self.thetasurf - self.wtheta / ustar / self.k * (np.log(self.Tmeasuring_height7 / self.z0h) - self.psih(self.Tmeasuring_height7 / self.L) + self.psih(self.z0h / self.L))
         self.Tmh = self.thetamh * ((self.Ps - self.rho * self.g * self.Tmeasuring_height) / 100000)**(self.Rd/self.cp)
         self.Tmh2 = self.thetamh2 * ((self.Ps - self.rho * self.g * self.Tmeasuring_height2) / 100000)**(self.Rd/self.cp)
         self.Tmh3 = self.thetamh3 * ((self.Ps - self.rho * self.g * self.Tmeasuring_height3) / 100000)**(self.Rd/self.cp)
@@ -1260,25 +1272,25 @@ class model:
         self.Tmh5 = self.thetamh5 * ((self.Ps - self.rho * self.g * self.Tmeasuring_height5) / 100000)**(self.Rd/self.cp)
         self.Tmh6 = self.thetamh6 * ((self.Ps - self.rho * self.g * self.Tmeasuring_height6) / 100000)**(self.Rd/self.cp)
         self.Tmh7 = self.thetamh7 * ((self.Ps - self.rho * self.g * self.Tmeasuring_height7) / 100000)**(self.Rd/self.cp)
-        self.q2m    = self.qsurf     - self.wq     / ustar / self.k * (np.log(2. / self.z0h) - self.psih(2. / L) + self.psih(self.z0h / L))
-        self.qmh    = self.qsurf     - self.wq     / ustar / self.k * (np.log(self.qmeasuring_height / self.z0h) - self.psih(self.qmeasuring_height / L) + self.psih(self.z0h / L))
-        self.qmh2    = self.qsurf     - self.wq     / ustar / self.k * (np.log(self.qmeasuring_height2 / self.z0h) - self.psih(self.qmeasuring_height2 / L) + self.psih(self.z0h / L))
-        self.qmh3    = self.qsurf     - self.wq     / ustar / self.k * (np.log(self.qmeasuring_height3 / self.z0h) - self.psih(self.qmeasuring_height3 / L) + self.psih(self.z0h / L))
-        self.qmh4    = self.qsurf     - self.wq     / ustar / self.k * (np.log(self.qmeasuring_height4 / self.z0h) - self.psih(self.qmeasuring_height4 / L) + self.psih(self.z0h / L))
-        self.qmh5    = self.qsurf     - self.wq     / ustar / self.k * (np.log(self.qmeasuring_height5 / self.z0h) - self.psih(self.qmeasuring_height5 / L) + self.psih(self.z0h / L))
-        self.qmh6    = self.qsurf     - self.wq     / ustar / self.k * (np.log(self.qmeasuring_height6 / self.z0h) - self.psih(self.qmeasuring_height6 / L) + self.psih(self.z0h / L))
-        self.qmh7    = self.qsurf     - self.wq     / ustar / self.k * (np.log(self.qmeasuring_height7 / self.z0h) - self.psih(self.qmeasuring_height7 / L) + self.psih(self.z0h / L))
-        self.COS2m =      self.COSsurf - self.wCOS / ustar / self.k * (np.log(2. / self.z0h) - self.psih(2. / L) + self.psih(self.z0h / L))
-        self.COSmh =     self.COSsurf - self.wCOS / ustar / self.k * (np.log(self.COSmeasuring_height / self.z0h) - self.psih(self.COSmeasuring_height / L) + self.psih(self.z0h / L))
-        self.COSmh2 =     self.COSsurf - self.wCOS / ustar / self.k * (np.log(self.COSmeasuring_height2 / self.z0h) - self.psih(self.COSmeasuring_height2 / L) + self.psih(self.z0h / L))
-        self.COSmh3 =     self.COSsurf - self.wCOS / ustar / self.k * (np.log(self.COSmeasuring_height3 / self.z0h) - self.psih(self.COSmeasuring_height3 / L) + self.psih(self.z0h / L))
-        self.CO22m =      self.CO2surf - self.wCO2 / ustar / self.k * (np.log(2. / self.z0h) - self.psih(2. / L) + self.psih(self.z0h / L))
-        self.CO2mh =     self.CO2surf - self.wCO2 / ustar / self.k * (np.log(self.CO2measuring_height / self.z0h) - self.psih(self.CO2measuring_height / L) + self.psih(self.z0h / L))
-        self.CO2mh2 =     self.CO2surf - self.wCO2 / ustar / self.k * (np.log(self.CO2measuring_height2 / self.z0h) - self.psih(self.CO2measuring_height2 / L) + self.psih(self.z0h / L))
-        self.CO2mh3 =     self.CO2surf - self.wCO2 / ustar / self.k * (np.log(self.CO2measuring_height3 / self.z0h) - self.psih(self.CO2measuring_height3 / L) + self.psih(self.z0h / L)) #CO2 mixing ratio at measuring height 3
-        self.CO2mh4 =     self.CO2surf - self.wCO2 / ustar / self.k * (np.log(self.CO2measuring_height4 / self.z0h) - self.psih(self.CO2measuring_height4 / L) + self.psih(self.z0h / L)) #CO2 mixing ratio at measuring height 4
-        self.u2m    = - self.uw     / ustar / self.k * (np.log(2. / self.z0m) - self.psim(2. / L) + self.psim(self.z0m / L)) #3.42 with 3.17 (-uw = ustar**2 but u is total wind in AVSI...)
-        self.v2m    = - self.vw     / ustar / self.k * (np.log(2. / self.z0m) - self.psim(2. / L) + self.psim(self.z0m / L)) #vstar?? ustar cannot be equal to both uw and vw!!
+        self.q2m    = self.qsurf     - self.wq     / ustar / self.k * (np.log(2. / self.z0h) - self.psih(2. / self.L) + self.psih(self.z0h / self.L))
+        self.qmh    = self.qsurf     - self.wq     / ustar / self.k * (np.log(self.qmeasuring_height / self.z0h) - self.psih(self.qmeasuring_height / self.L) + self.psih(self.z0h / self.L))
+        self.qmh2    = self.qsurf     - self.wq     / ustar / self.k * (np.log(self.qmeasuring_height2 / self.z0h) - self.psih(self.qmeasuring_height2 / self.L) + self.psih(self.z0h / self.L))
+        self.qmh3    = self.qsurf     - self.wq     / ustar / self.k * (np.log(self.qmeasuring_height3 / self.z0h) - self.psih(self.qmeasuring_height3 / self.L) + self.psih(self.z0h / self.L))
+        self.qmh4    = self.qsurf     - self.wq     / ustar / self.k * (np.log(self.qmeasuring_height4 / self.z0h) - self.psih(self.qmeasuring_height4 / self.L) + self.psih(self.z0h / self.L))
+        self.qmh5    = self.qsurf     - self.wq     / ustar / self.k * (np.log(self.qmeasuring_height5 / self.z0h) - self.psih(self.qmeasuring_height5 / self.L) + self.psih(self.z0h / self.L))
+        self.qmh6    = self.qsurf     - self.wq     / ustar / self.k * (np.log(self.qmeasuring_height6 / self.z0h) - self.psih(self.qmeasuring_height6 / self.L) + self.psih(self.z0h / self.L))
+        self.qmh7    = self.qsurf     - self.wq     / ustar / self.k * (np.log(self.qmeasuring_height7 / self.z0h) - self.psih(self.qmeasuring_height7 / self.L) + self.psih(self.z0h / self.L))
+        self.COS2m =      self.COSsurf - self.wCOS / ustar / self.k * (np.log(2. / self.z0h) - self.psih(2. / self.L) + self.psih(self.z0h / self.L))
+        self.COSmh =     self.COSsurf - self.wCOS / ustar / self.k * (np.log(self.COSmeasuring_height / self.z0h) - self.psih(self.COSmeasuring_height / self.L) + self.psih(self.z0h / self.L))
+        self.COSmh2 =     self.COSsurf - self.wCOS / ustar / self.k * (np.log(self.COSmeasuring_height2 / self.z0h) - self.psih(self.COSmeasuring_height2 / self.L) + self.psih(self.z0h / self.L))
+        self.COSmh3 =     self.COSsurf - self.wCOS / ustar / self.k * (np.log(self.COSmeasuring_height3 / self.z0h) - self.psih(self.COSmeasuring_height3 / self.L) + self.psih(self.z0h / self.L))
+        self.CO22m =      self.CO2surf - self.wCO2 / ustar / self.k * (np.log(2. / self.z0h) - self.psih(2. / self.L) + self.psih(self.z0h / self.L))
+        self.CO2mh =     self.CO2surf - self.wCO2 / ustar / self.k * (np.log(self.CO2measuring_height / self.z0h) - self.psih(self.CO2measuring_height / self.L) + self.psih(self.z0h / self.L))
+        self.CO2mh2 =     self.CO2surf - self.wCO2 / ustar / self.k * (np.log(self.CO2measuring_height2 / self.z0h) - self.psih(self.CO2measuring_height2 / self.L) + self.psih(self.z0h / self.L))
+        self.CO2mh3 =     self.CO2surf - self.wCO2 / ustar / self.k * (np.log(self.CO2measuring_height3 / self.z0h) - self.psih(self.CO2measuring_height3 / self.L) + self.psih(self.z0h / self.L)) #CO2 mixing ratio at measuring height 3
+        self.CO2mh4 =     self.CO2surf - self.wCO2 / ustar / self.k * (np.log(self.CO2measuring_height4 / self.z0h) - self.psih(self.CO2measuring_height4 / self.L) + self.psih(self.z0h / self.L)) #CO2 mixing ratio at measuring height 4
+        self.u2m    = - self.uw     / ustar / self.k * (np.log(2. / self.z0m) - self.psim(2. / self.L) + self.psim(self.z0m / self.L)) #3.42 with 3.17 (-uw = ustar**2 but u is total wind in AVSI...)
+        self.v2m    = - self.vw     / ustar / self.k * (np.log(2. / self.z0m) - self.psim(2. / self.L) + self.psim(self.z0m / self.L)) #vstar?? ustar cannot be equal to both uw and vw!!
         self.esat2m = 0.611e3 * np.exp(17.2694 * (self.T2m - 273.16) / (self.T2m - 35.86)) #intro atm
         self.e2m    = self.q2m * self.Ps / 0.622 #intro atm
         
@@ -1341,8 +1353,8 @@ class model:
                 self.cpx_init[iterationnumber]['rsl_qsurf_end']    = self.qsurf
                 self.cpx_init[iterationnumber]['rsl_thetasurf_end'] = self.thetasurf
                 self.cpx_init[iterationnumber]['rsl_zsl_end']    = self.zsl
-                self.cpx_init[iterationnumber]['rsl_L_end']    = L
-                self.cpx_init[iterationnumber]['rsl_Cm_end']    = Cm
+                self.cpx_init[iterationnumber]['rsl_L_end']    = self.L
+                self.cpx_init[iterationnumber]['rsl_Cm_end']    = self.Cm
                 self.cpx_init[iterationnumber]['rsl_Cs_end']    = Cs
                 self.cpx_init[iterationnumber]['rsl_ustar_end']    = ustar
                 self.cpx_init[iterationnumber]['rsl_uw_end']    = self.uw
@@ -1354,8 +1366,8 @@ class model:
                 self.cpx[self.t]['rsl_qsurf_end']    = self.qsurf
                 self.cpx[self.t]['rsl_thetasurf_end'] = self.thetasurf
                 self.cpx[self.t]['rsl_zsl_end']    = self.zsl
-                self.cpx[self.t]['rsl_L_end']    = L
-                self.cpx[self.t]['rsl_Cm_end']    = Cm
+                self.cpx[self.t]['rsl_L_end']    = self.L
+                self.cpx[self.t]['rsl_Cm_end']    = self.Cm
                 self.cpx[self.t]['rsl_Cs_end']    = Cs
                 self.cpx[self.t]['rsl_ustar_end']    = ustar
                 self.cpx[self.t]['rsl_uw_end']    = self.uw
@@ -1484,28 +1496,75 @@ class model:
                 #eq 32 paper Beljaars and Holtslag 1990
             else:
                 psih = np.nan 
-                #print("stable conditions cannot be modelled,returning nan")
+                if self.sw_printwarnings:
+                    print("stable conditions cannot be modelled,returning nan")
         return psih
  
-    def jarvis_stewart(self):
+    def jarvis_stewart(self,call_from_init=False):
         # calculate surface resistances using Jarvis-Stewart model
+        self.vars_js = {} #a dictionary of all defined variables for testing purposes 
+        if self.checkpoint: 
+            if call_from_init:
+                self.cpx_init[0]['js_Swin'] = self.Swin
+                self.cpx_init[0]['js_w2'] = self.w2
+                self.cpx_init[0]['js_wwilt'] = self.wwilt
+                self.cpx_init[0]['js_wfc'] = self.wfc
+                self.cpx_init[0]['js_gD'] = self.gD
+                self.cpx_init[0]['js_e'] = self.e
+                self.cpx_init[0]['js_esatvar'] = self.esatvar
+                self.cpx_init[0]['js_theta'] = self.theta
+                self.cpx_init[0]['js_LAI'] = self.LAI
+                self.cpx_init[0]['js_rsmin'] = self.rsmin
+            else:
+                self.cpx[self.t]['js_Swin'] = self.Swin
+                self.cpx[self.t]['js_w2'] = self.w2
+                self.cpx[self.t]['js_wwilt'] = self.wwilt
+                self.cpx[self.t]['js_wfc'] = self.wfc
+                self.cpx[self.t]['js_gD'] = self.gD
+                self.cpx[self.t]['js_e'] = self.e
+                self.cpx[self.t]['js_esatvar'] = self.esatvar
+                self.cpx[self.t]['js_theta'] = self.theta
+                self.cpx[self.t]['js_LAI'] = self.LAI
+                self.cpx[self.t]['js_rsmin'] = self.rsmin       
         if(self.sw_rad):
             f1 = 1. / min(1.,((0.004 * self.Swin + 0.05) / (0.81 * (0.004 * self.Swin + 1.))))
         else:
             f1 = 1.
   
         if(self.w2 > self.wwilt):# and self.w2 <= self.wfc):
-            f2 = (self.wfc - self.wwilt) / (self.w2 - self.wwilt)
+            f2js = (self.wfc - self.wwilt) / (self.w2 - self.wwilt)  #•Peter Bosman: I have changed variable f2 into f2js, to prevent two vars with the same name
         else:
-            f2 = 1.e8
+            f2js = 1.e8
  
-        # Limit f2 in case w2 > wfc, where f2 < 1
-        f2 = max(f2, 1.);
+        # Limit f2js in case w2 > wfc, where f2js < 1
+        if self.checkpoint: 
+            if call_from_init:
+                self.cpx_init[0]['js_f2js_middle'] = f2js
+            else:
+                self.cpx[self.t]['js_f2js_middle'] = f2js
+        f2js = max(f2js, 1.);
  
-        f3 = 1. / np.exp(- self.gD * (self.esat - self.e) / 100.)
+        f3 = 1. / np.exp(- self.gD * (self.esatvar - self.e) / 100.) #Peter Bosman: I have adapted self.esat into self.esatvar
         f4 = 1./ (1. - 0.0016 * (298.0-self.theta)**2.)
   
-        self.rs = self.rsmin / self.LAI * f1 * f2 * f3 * f4
+        self.rs = self.rsmin / self.LAI * f1 * f2js * f3 * f4
+        
+        if self.checkpoint:
+            if call_from_init:
+                self.cpx_init[0]['js_f1_end'] = f1
+                self.cpx_init[0]['js_f2js_end'] = f2js
+                self.cpx_init[0]['js_f3_end'] = f3
+                self.cpx_init[0]['js_f4_end'] = f4 
+            else:
+                self.cpx[self.t]['js_f1_end'] = f1
+                self.cpx[self.t]['js_f2js_end'] = f2js
+                self.cpx[self.t]['js_f3_end'] = f3
+                self.cpx[self.t]['js_f4_end'] = f4 
+        if self.save_vars_indict:
+            the_locals = cp.deepcopy(locals()) #to prevent error 'dictionary changed size during iteration'
+            for variablename in the_locals: #note that the self variables are not included
+                if str(variablename) != 'self':
+                    self.vars_js.update({variablename: the_locals[variablename]})
 
     def factorial(self,k):
         factorial = 1
@@ -1524,12 +1583,12 @@ class model:
         if self.checkpoint:
             if call_from_init:
                 self.cpx_init[0]['ags_COS'] = self.COS
-                self.cpx_init[0]['ags_COSsurf'] = self.COSsurf
+                if self.ags_C_mode == 'surf':
+                    self.cpx_init[0]['ags_COSsurf'] = self.COSsurf
                 self.cpx_init[0]['ags_cveg'] = self.cveg
                 self.cpx_init[0]['ags_thetasurf'] = self.thetasurf
                 self.cpx_init[0]['ags_Ts'] = self.Ts
                 self.cpx_init[0]['ags_CO2'] = self.CO2
-                self.cpx_init[0]['ags_CO2surf'] = self.CO2surf
                 self.cpx_init[0]['ags_wg'] = self.wg
                 self.cpx_init[0]['ags_Swin'] = self.Swin
                 self.cpx_init[0]['ags_ra'] = self.ra
@@ -1537,14 +1596,18 @@ class model:
                 self.cpx_init[0]['ags_alfa_sto'] = self.alfa_sto
                 self.cpx_init[0]['ags_LAI'] = self.LAI
                 self.cpx_init[0]['ags_PARfract'] = self.PARfract
+                self.cpx_init[0]['ags_w2'] = self.w2
+                self.cpx_init[0]['ags_wfc'] = self.wfc
+                self.cpx_init[0]['ags_wwilt'] = self.wwilt
+                self.cpx_init[0]['ags_R10'] = self.R10
             else:
                 self.cpx[self.t]['ags_COS'] = self.COS
-                self.cpx[self.t]['ags_COSsurf'] = self.COSsurf
+                if self.ags_C_mode == 'surf':
+                    self.cpx[self.t]['ags_COSsurf'] = self.COSsurf
                 self.cpx[self.t]['ags_cveg'] = self.cveg
                 self.cpx[self.t]['ags_thetasurf'] = self.thetasurf
                 self.cpx[self.t]['ags_Ts'] = self.Ts
                 self.cpx[self.t]['ags_CO2'] = self.CO2
-                self.cpx[self.t]['ags_CO2surf'] = self.CO2surf
                 self.cpx[self.t]['ags_wg'] = self.wg
                 self.cpx[self.t]['ags_Swin'] = self.Swin
                 self.cpx[self.t]['ags_ra'] = self.ra
@@ -1552,6 +1615,10 @@ class model:
                 self.cpx[self.t]['ags_alfa_sto'] = self.alfa_sto
                 self.cpx[self.t]['ags_LAI'] = self.LAI
                 self.cpx[self.t]['ags_PARfract'] = self.PARfract
+                self.cpx[self.t]['ags_w2'] = self.w2
+                self.cpx[self.t]['ags_wfc'] = self.wfc
+                self.cpx[self.t]['ags_wwilt'] = self.wwilt
+                self.cpx[self.t]['ags_R10'] = self.R10
         # Select index for plant type
         if(self.c3c4 == 'c3'):
             c = 0
@@ -1609,6 +1676,13 @@ class model:
                 P = 7.6 * self.c_beta - 0.3
             else:
                 P = 2**(3.66 * self.c_beta + 0.34) - 1
+            if self.checkpoint:
+                if call_from_init:
+                    self.cpx_init[0]['ags_P_end'] = P
+                    self.cpx_init[0]['ags_betaw_end'] = betaw
+                else:
+                    self.cpx[self.t]['ags_P_end'] = P
+                    self.cpx[self.t]['ags_betaw_end'] = betaw
             fstr = (1. - np.exp(-P * betaw)) / (1 - np.exp(-P))
   
         # calculate gross assimilation rate (Am)
@@ -1723,7 +1797,6 @@ class model:
                 self.cpx_init[0]['ags_Dstar_end'] = Dstar
                 self.cpx_init[0]['ags_gciCOS_end'] = self.gciCOS
                 self.cpx_init[0]['ags_gctCOS_end'] = gctCOS
-                self.cpx_init[0]['ags_rs_end'] = self.rs
                 self.cpx_init[0]['ags_texp_end'] = texp
                 self.cpx_init[0]['ags_fw_end'] = fw
                 self.cpx_init[0]['ags_rsCO2_end'] = rsCO2
@@ -1766,7 +1839,6 @@ class model:
                 self.cpx[self.t]['ags_Dstar_end'] = Dstar
                 self.cpx[self.t]['ags_gciCOS_end'] = self.gciCOS
                 self.cpx[self.t]['ags_gctCOS_end'] = gctCOS
-                self.cpx[self.t]['ags_rs_end'] = self.rs
                 self.cpx[self.t]['ags_texp_end'] = texp
                 self.cpx[self.t]['ags_fw_end'] = fw
                 self.cpx[self.t]['ags_rsCO2_end'] = rsCO2
@@ -1792,7 +1864,6 @@ class model:
                 self.cpx_init[0]['rls_LAI'] = self.LAI
                 self.cpx_init[0]['rls_Wl'] = self.Wl
                 self.cpx_init[0]['rls_cveg'] = self.cveg
-                self.cpx_init[0]['rls_rs'] = self.rs
                 self.cpx_init[0]['rls_Lambda'] = self.Lambda
                 self.cpx_init[0]['rls_q'] = self.q
                 self.cpx_init[0]['rls_Tsoil'] = self.Tsoil
@@ -1801,6 +1872,13 @@ class model:
                 self.cpx_init[0]['rls_w2'] = self.w2
                 self.cpx_init[0]['rls_wsat'] = self.wsat
                 self.cpx_init[0]['rls_ustar'] = self.ustar
+                self.cpx_init[0]['rls_rssoilmin'] = self.rssoilmin
+                self.cpx_init[0]['rls_CGsat'] = self.CGsat
+                self.cpx_init[0]['rls_b'] = self.b
+                self.cpx_init[0]['rls_C1sat'] = self.C1sat
+                self.cpx_init[0]['rls_C2ref'] = self.C2ref
+                self.cpx_init[0]['rls_a'] = self.a
+                self.cpx_init[0]['rls_p'] = self.p
             else:
                 self.cpx[self.t]['rls_u'] = self.u
                 self.cpx[self.t]['rls_v'] = self.v
@@ -1814,7 +1892,6 @@ class model:
                 self.cpx[self.t]['rls_LAI'] = self.LAI
                 self.cpx[self.t]['rls_Wl'] = self.Wl
                 self.cpx[self.t]['rls_cveg'] = self.cveg
-                self.cpx[self.t]['rls_rs'] = self.rs
                 self.cpx[self.t]['rls_Lambda'] = self.Lambda
                 self.cpx[self.t]['rls_q'] = self.q
                 self.cpx[self.t]['rls_Tsoil'] = self.Tsoil
@@ -1823,6 +1900,13 @@ class model:
                 self.cpx[self.t]['rls_w2'] = self.w2
                 self.cpx[self.t]['rls_wsat'] = self.wsat
                 self.cpx[self.t]['rls_ustar'] = self.ustar
+                self.cpx[self.t]['rls_rssoilmin'] = self.rssoilmin
+                self.cpx[self.t]['rls_CGsat'] = self.CGsat
+                self.cpx[self.t]['rls_b'] = self.b
+                self.cpx[self.t]['rls_C1sat'] = self.C1sat
+                self.cpx[self.t]['rls_C2ref'] = self.C2ref
+                self.cpx[self.t]['rls_a'] = self.a
+                self.cpx[self.t]['rls_p'] = self.p
         # compute ra
         ueff = np.sqrt(self.u ** 2. + self.v ** 2. + self.wstar**2.)
 
@@ -1839,9 +1923,9 @@ class model:
         self.e       = self.q * self.Ps / 0.622
 
         if(self.ls_type == 'js'): 
-            self.jarvis_stewart() 
+            self.jarvis_stewart(call_from_init) 
         elif(self.ls_type == 'ags'):
-            self.ags(call_from_init=call_from_init)
+            self.ags(call_from_init)
         elif(self.ls_type == 'canopy_model'):
             #first respiration flux as we don't run ags that normally calculates it:
             fw           = self.Cw * self.wmax / (self.wg + self.wmin)
@@ -1950,7 +2034,6 @@ class model:
         else:
           f2        = 1.e8
         self.rssoil = self.rssoilmin * f2 
-     
         if(self.ls_type != 'canopy_model'):
             Wlmx = self.LAI * self.Wmax
             self.cliq = min(1., self.Wl / Wlmx)
@@ -2087,6 +2170,8 @@ class model:
                 self.cpx_init[0]['rls_d1_end'] = d1
                 self.cpx_init[0]['rls_LEsoil_end'] = self.LEsoil
                 self.cpx_init[0]['rls_wgeq_end'] = wgeq
+                self.cpx_init[0]['rls_rs_end'] = self.rs
+                self.cpx_init[0]['rls_f2_end'] = f2
             else:
                 self.cpx[self.t]['rls_ueff_end'] = ueff
                 self.cpx[self.t]['rls_esatvar_end'] = self.esatvar
@@ -2119,6 +2204,8 @@ class model:
                 self.cpx[self.t]['rls_d1_end'] = d1
                 self.cpx[self.t]['rls_LEsoil_end'] = self.LEsoil
                 self.cpx[self.t]['rls_wgeq_end'] = wgeq
+                self.cpx[self.t]['rls_rs_end'] = self.rs
+                self.cpx[self.t]['rls_f2_end'] = f2
         
         if self.save_vars_indict:
             the_locals = cp.deepcopy(locals()) #to prevent error 'dictionary changed size during iteration'
@@ -2180,8 +2267,9 @@ class model:
         self.out.wCO2M[t]      = self.wCO2M * fac
         self.out.wCOS[t]       = self.wCOS
         if self.sw_ls:
-            self.out.wCOSP[t]      = self.wCOSP
-            self.out.wCOSS[t]      = self.wCOSS
+            if self.ls_type=='ags':
+                self.out.wCOSP[t]      = self.wCOSP
+                self.out.wCOSS[t]      = self.wCOSS
         if self.ls_type=='canopy_model':
             self.out.wCOSS_molm2s[t]      = self.wCOSS_molm2s
             self.out.C_COS_veglayer_ppb[t]      = self.C_COS_veglayer_ppb
@@ -2217,8 +2305,13 @@ class model:
         self.out.deltav[t]     = self.deltav
         self.out.vw[t]         = self.vw
         
+        self.out.T2m[t]        = self.T2m
+        self.out.q2m[t]        = self.q2m
+        self.out.u2m[t]        = self.u2m
+        self.out.v2m[t]        = self.v2m
+        self.out.e2m[t]        = self.e2m
+        self.out.esat2m[t]     = self.esat2m
         if self.sw_sl:
-            self.out.T2m[t]        = self.T2m
             self.out.thetamh[t]    = self.thetamh
             self.out.thetamh2[t]   = self.thetamh2
             self.out.thetamh3[t]   = self.thetamh3
@@ -2233,7 +2326,6 @@ class model:
             self.out.Tmh5[t]       = self.Tmh5
             self.out.Tmh6[t]       = self.Tmh6
             self.out.Tmh7[t]       = self.Tmh7
-            self.out.q2m[t]        = self.q2m
             self.out.qmh[t]        = self.qmh
             self.out.qmh2[t]       = self.qmh2
             self.out.qmh3[t]       = self.qmh3
@@ -2241,10 +2333,6 @@ class model:
             self.out.qmh5[t]       = self.qmh5
             self.out.qmh6[t]       = self.qmh6
             self.out.qmh7[t]       = self.qmh7
-            self.out.u2m[t]        = self.u2m
-            self.out.v2m[t]        = self.v2m
-            self.out.e2m[t]        = self.e2m
-            self.out.esat2m[t]     = self.esat2m
             self.out.COSmh[t]      = self.COSmh
             self.out.COSmh2[t]     = self.COSmh2
             self.out.COSmh3[t]     = self.COSmh3
@@ -2257,12 +2345,13 @@ class model:
             self.out.COSsurf[t]    = self.COSsurf
             self.out.CO2surf[t]    = self.CO2surf
             self.out.Tsurf[t]      = self.Tsurf
-        
-            self.out.thetasurf[t]  = self.thetasurf
-            self.out.thetavsurf[t] = self.thetavsurf
-            self.out.qsurf[t]      = self.qsurf
+            self.out.Cm[t]         = self.Cm
+        self.out.thetasurf[t]  = self.thetasurf
+        self.out.thetavsurf[t] = self.thetavsurf
+        self.out.qsurf[t]      = self.qsurf
         self.out.ustar[t]      = self.ustar
         self.out.Cs[t]         = self.Cs
+        self.out.L[t]          = self.L
         self.out.Rib[t]        = self.Rib
   
         self.out.Swin[t]       = self.Swin
@@ -2384,8 +2473,11 @@ class model:
         del(self.uw)
         del(self.vw)
         del(self.z0m)
-        del(self.z0h)             
+        del(self.z0h) 
+        if self.sw_sl:
+            del(self.Cm)            
         del(self.Cs)
+        del(self.L)
         del(self.Rib)
         del(self.ra)
   
@@ -2434,6 +2526,7 @@ class model:
         del(self.Lambda)
         
         del(self.Q)
+        del(self.sinlea)
         del(self.H)
         del(self.LE)
         del(self.LEliq)
@@ -2522,45 +2615,50 @@ class model_output:
 
         # diagnostic meteorological variables
         self.T2m        = np.zeros(tsteps)    # 2m temperature [K]
-        self.thetamh    = np.zeros(tsteps)    # pot temperature at measuring height [K]
-        self.thetamh2    = np.zeros(tsteps)    # pot temperature at measuring height2 [K]
-        self.thetamh3    = np.zeros(tsteps)    # pot temperature at measuring height3 [K]
-        self.thetamh4    = np.zeros(tsteps)    # pot temperature at measuring height4 [K]
-        self.thetamh5    = np.zeros(tsteps)    # pot temperature at measuring height5 [K]
-        self.thetamh6    = np.zeros(tsteps)    # pot temperature at measuring height6 [K]
-        self.thetamh7    = np.zeros(tsteps)    # pot temperature at measuring height7 [K]
-        self.Tmh        = np.zeros(tsteps)    # temperature at measuring height [K]
-        self.Tmh2        = np.zeros(tsteps)    # temperature at measuring height2 [K]
-        self.Tmh3       = np.zeros(tsteps)    # temperature at measuring height3 [K]
-        self.Tmh4       = np.zeros(tsteps)    # temperature at measuring height4 [K]
-        self.Tmh5       = np.zeros(tsteps)    # temperature at measuring height5 [K]
-        self.Tmh6       = np.zeros(tsteps)    # temperature at measuring height6 [K]
-        self.Tmh7       = np.zeros(tsteps)    # temperature at measuring height7 [K]
         self.q2m        = np.zeros(tsteps)    # 2m specific humidity [kg kg-1]
-        self.qmh        = np.zeros(tsteps)    # specific humidity at measuring height [kg kg-1]
-        self.qmh2       = np.zeros(tsteps)    # specific humidity at measuring height 2 [kg kg-1]
-        self.qmh3       = np.zeros(tsteps)    # specific humidity at measuring height 3 [kg kg-1]
-        self.qmh4       = np.zeros(tsteps)    # specific humidity at measuring height 4 [kg kg-1]
-        self.qmh5       = np.zeros(tsteps)    # specific humidity at measuring height 5 [kg kg-1]
-        self.qmh6       = np.zeros(tsteps)    # specific humidity at measuring height 6 [kg kg-1]
-        self.qmh7       = np.zeros(tsteps)    # specific humidity at measuring height 7 [kg kg-1]
         self.u2m        = np.zeros(tsteps)    # 2m u-wind [m s-1]    
         self.v2m        = np.zeros(tsteps)    # 2m v-wind [m s-1]    
         self.e2m        = np.zeros(tsteps)    # 2m vapor pressure [Pa]
         self.esat2m     = np.zeros(tsteps)    # 2m saturated vapor pressure [Pa]
-        self.COSmh      = np.zeros(tsteps)    # COS at measuring height [ppb]
-        self.COSmh2     = np.zeros(tsteps)    # COS at measuring height2 [ppb]
-        self.COSmh3     = np.zeros(tsteps)    # COS at measuring height3 [ppb]
-        self.CO2mh      = np.zeros(tsteps)    # CO2 at measuring height [ppb]
-        self.CO2mh2     = np.zeros(tsteps)    # CO2 at measuring height2 [ppb]
-        self.CO2mh3     = np.zeros(tsteps)    # CO2 at measuring height3 [ppb]
-        self.CO2mh4     = np.zeros(tsteps)    # CO2 at measuring height4 [ppb]
-        self.COS2m      = np.zeros(tsteps)    # COS at 2m height [ppb]
-        self.CO22m      = np.zeros(tsteps)    # CO2 at 2m height [ppm]
-        self.COSsurf    = np.zeros(tsteps)    # COS at the surface [ppb]
-        self.CO2surf    = np.zeros(tsteps)    # CO2 at the surface [ppm]
-        self.Tsurf      = np.zeros(tsteps)    # Temp at the surface [K]
 
+        
+        if model.sw_sl:
+            self.thetamh    = np.zeros(tsteps)    # pot temperature at measuring height [K]
+            self.thetamh2    = np.zeros(tsteps)    # pot temperature at measuring height2 [K]
+            self.thetamh3    = np.zeros(tsteps)    # pot temperature at measuring height3 [K]
+            self.thetamh4    = np.zeros(tsteps)    # pot temperature at measuring height4 [K]
+            self.thetamh5    = np.zeros(tsteps)    # pot temperature at measuring height5 [K]
+            self.thetamh6    = np.zeros(tsteps)    # pot temperature at measuring height6 [K]
+            self.thetamh7    = np.zeros(tsteps)    # pot temperature at measuring height7 [K]
+            self.Tmh        = np.zeros(tsteps)    # temperature at measuring height [K]
+            self.Tmh2        = np.zeros(tsteps)    # temperature at measuring height2 [K]
+            self.Tmh3       = np.zeros(tsteps)    # temperature at measuring height3 [K]
+            self.Tmh4       = np.zeros(tsteps)    # temperature at measuring height4 [K]
+            self.Tmh5       = np.zeros(tsteps)    # temperature at measuring height5 [K]
+            self.Tmh6       = np.zeros(tsteps)    # temperature at measuring height6 [K]
+            self.Tmh7       = np.zeros(tsteps)    # temperature at measuring height7 [K]
+            self.COSmh      = np.zeros(tsteps)    # COS at measuring height [ppb]
+            self.COSmh2     = np.zeros(tsteps)    # COS at measuring height2 [ppb]
+            self.COSmh3     = np.zeros(tsteps)    # COS at measuring height3 [ppb]
+            self.CO2mh      = np.zeros(tsteps)    # CO2 at measuring height [ppb]
+            self.CO2mh2     = np.zeros(tsteps)    # CO2 at measuring height2 [ppb]
+            self.CO2mh3     = np.zeros(tsteps)    # CO2 at measuring height3 [ppb]
+            self.CO2mh4     = np.zeros(tsteps)    # CO2 at measuring height4 [ppb]
+            self.COS2m      = np.zeros(tsteps)    # COS at 2m height [ppb]
+            self.CO22m      = np.zeros(tsteps)    # CO2 at 2m height [ppm]
+            self.COSsurf    = np.zeros(tsteps)    # COS at the surface [ppb]
+            self.CO2surf    = np.zeros(tsteps)    # CO2 at the surface [ppm]
+            self.Tsurf      = np.zeros(tsteps)    # Temp at the surface [K]
+            self.qmh        = np.zeros(tsteps)    # specific humidity at measuring height [kg kg-1]
+            self.qmh2       = np.zeros(tsteps)    # specific humidity at measuring height 2 [kg kg-1]
+            self.qmh3       = np.zeros(tsteps)    # specific humidity at measuring height 3 [kg kg-1]
+            self.qmh4       = np.zeros(tsteps)    # specific humidity at measuring height 4 [kg kg-1]
+            self.qmh5       = np.zeros(tsteps)    # specific humidity at measuring height 5 [kg kg-1]
+            self.qmh6       = np.zeros(tsteps)    # specific humidity at measuring height 6 [kg kg-1]
+            self.qmh7       = np.zeros(tsteps)    # specific humidity at measuring height 7 [kg kg-1]
+            self.Cm         = np.zeros(tsteps)    # drag coefficient for momentum []
+                
+            
         # surface-layer variables
         self.thetasurf  = np.zeros(tsteps)    # surface potential temperature [K]
         self.thetavsurf = np.zeros(tsteps)    # surface virtual potential temperature [K]
@@ -2569,6 +2667,7 @@ class model_output:
         self.z0m        = np.zeros(tsteps)    # roughness length for momentum [m]
         self.z0h        = np.zeros(tsteps)    # roughness length for scalars [m]
         self.Cs         = np.zeros(tsteps)    # drag coefficient for scalars []
+        self.L          = np.zeros(tsteps)    # Obukhov length [m]
         self.Rib        = np.zeros(tsteps)    # bulk Richardson number [-]
 
         # radiation variables
@@ -2636,6 +2735,7 @@ class model_input:
         self.gammaCOS   = None
         self.advCO2     = None  # advection of heat [K s-1]
         self.wCO2       = None  # surface kinematic heat flux [K m s-1]
+        self.wCOS       = None  # surface kinematic COS flux [ppb m s-1]
         
         self.sw_wind    = None  # prognostic wind switch
         self.u          = None  # initial mixed-layer u-wind speed [m s-1]

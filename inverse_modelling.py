@@ -9,7 +9,6 @@ import copy as cp
 import sys
 import forwardmodel as fwdm
 import math
-import time
 
 def esat(T):
     return 0.611e3 * np.exp(17.2694 * (T - 273.16) / (T - 35.86))
@@ -28,10 +27,10 @@ class nan_incostfError(Exception):
 class static_costfError(Exception):
     pass
 
-class adjoint_modelling:
+class inverse_modelling:
     
-    def __init__(self,model,write_to_file=False,use_backgr_in_cost=False,imposeparambounds=False,state=None,Optimfile='Optimfile.txt',Gradfile='Gradfile.txt',pri_err_cov_matr=None):                         
-        self.adjointtestingags = False
+    def __init__(self,model,write_to_file=False,use_backgr_in_cost=False,StateVarNames=[],obsvarlist=[],Optimfile='Optimfile.txt',Gradfile='Gradfile.txt',pri_err_cov_matr=None,paramboundspenalty=False,boundedvars={}):                         
+        self.adjointtestingags = False #adjoint test of one module at one single time step
         self.adjointtestingrun_surf_lay = False
         self.adjointtestingribtol = False
         self.adjointtestingrun_mixed_layer = False
@@ -43,31 +42,19 @@ class adjoint_modelling:
         self.adjointtestingrun_cumulus = False
         self.adjointtestingrun_soil_COS_mod = False
         self.adjointtestingstore = False
-        self.gradienttestingags = False
-        self.gradienttestingrun_surf_lay = False
-        self.gradienttestingribtol = False
-        self.gradienttestingrun_mixed_layer = False
-        self.gradienttestingint_mixed_layer = False
-        self.gradienttestingrun_radiation = False
-        self.gradienttestingrun_land_surface = False
-        self.gradienttestingint_land_surface = False
-        self.gradienttestingstatistics = False
-        self.gradienttestingrun_cumulus = False
-        self.gradienttestingrun_soil_COS_mod = False
-        self.gradienttestingstore = False
+        self.adjointtestingjarvis_stewart = False
         self.manualadjointtesting = False
         self.adjointtesting = False
         self.gradienttesting = False
-        self.imposeparambounds = imposeparambounds
+        self.paramboundspenalty = paramboundspenalty
         self.model = model
-        if self.imposeparambounds:
-            self.constructparambounds()
+        self.boundedvars = cp.deepcopy(boundedvars)
         self.forcing = []
         self.checkpoint = [] #list of dictionaries
         for i in range(model.tsteps):
             self.checkpoint.append ({})
             self.forcing.append ({})
-        self.obs=['']
+        self.obsvarlist = obsvarlist
         self.use_backgr_in_cost = use_backgr_in_cost
         if pri_err_cov_matr is not None:
             self.binv = np.linalg.inv(pri_err_cov_matr) #invert prior error covariance matrix
@@ -81,7 +68,7 @@ class adjoint_modelling:
             self.Optimf = Optimfile
             self.Gradf = Gradfile
             open(self.Optimf,'w').write('{0:>25s}'.format('sim_nr')) #here we make the file
-            for item in state:
+            for item in StateVarNames:
                 open(self.Optimf,'a').write('{0:>25s}'.format(item))
             open(self.Optimf,'a').write('{0:>25s}'.format('data'))
             if self.use_backgr_in_cost:
@@ -89,13 +76,13 @@ class adjoint_modelling:
             open(self.Optimf,'a').write('{0:>25s}'.format('Costf'))
             
             open(self.Gradf,'w').write('{0:>25s}'.format('sim_nr')) #here we make the file
-            for item in state:
+            for item in StateVarNames:
                 open(self.Gradf,'a').write('{0:>25s}'.format(item))
             if self.use_backgr_in_cost:
-                for item in state:
-                    open(self.Gradf,'a').write('{0:>25s}'.format('backgr_grad_'+item))
-            for item in state:
-                open(self.Gradf,'a').write('{0:>25s}'.format('Costf_grad_'+item))
+                for item in StateVarNames:
+                    open(self.Gradf,'a').write('{0:>30s}'.format('backgr_grad_'+item))
+            for item in StateVarNames:
+                open(self.Gradf,'a').write('{0:>30s}'.format('Costf_grad_'+item))
     
     def min_func(self,state_to_opt,inputdata,state_var_names,obs_times,obs_weights={}): #some dummy vars as arg list of min_func and deriv_func needs to be the same
         cost = 0
@@ -110,7 +97,16 @@ class adjoint_modelling:
                 obs_sca_cf[item] = state_to_opt[i]
         model = fwdm.model(inputdata)
         model.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
-        for item in self.obs:
+        for item in self.obsvarlist:
+            if 'EnBalDiffObsHFrac' in state_var_names:
+                if item not in ['H','LE']:
+                    observations_item = self.__dict__['obs_'+item]
+                elif item == 'H':
+                    observations_item = cp.deepcopy(self.__dict__['obs_H']) + state_to_opt[state_var_names.index('EnBalDiffObsHFrac')] * self.EnBalDiffObs_atHtimes
+                elif item == 'LE':
+                    observations_item = cp.deepcopy(self.__dict__['obs_LE']) + (1 - state_to_opt[state_var_names.index('EnBalDiffObsHFrac')]) * self.EnBalDiffObs_atLEtimes  
+            else:
+                observations_item = self.__dict__['obs_'+item]
             if item in obs_sca_cf:
                 obs_scale = obs_sca_cf[item] #a scale for increasing/decreasing the magnitude of the observation in the cost function, useful if observations are possibly biased (scale not time dependent).
             else:
@@ -121,24 +117,26 @@ class adjoint_modelling:
                 if round(model.out.t[i] * 3600,3) in [round(num, 3) for num in obs_times[item]]: #so if we are at a time where we have an obs
                     if item in obs_weights:
                         weight = obs_weights[item][k]
-                    cost += weight * (model.out.__dict__[item][i] - obs_scale * self.__dict__['obs_'+item][k])**2/(self.__dict__['error_obs_' + item][k]**2)
-                    forcing = weight * (model.out.__dict__[item][i]- obs_scale * self.__dict__['obs_'+item][k])/(self.__dict__['error_obs_' + item][k]**2)
+                    cost += weight * (model.out.__dict__[item][i] - obs_scale * observations_item[k])**2/(self.__dict__['error_obs_' + item][k]**2)
+                    forcing = weight * (model.out.__dict__[item][i]- obs_scale * observations_item[k])/(self.__dict__['error_obs_' + item][k]**2)
                     self.forcing[i][item] = forcing #so here the model observation mismatch is calculated for use in the next call of the analytical derivative calculation
                     k += 1
         for i in range (model.tsteps):
             self.checkpoint[i] = model.cpx[i]
         self.checkpoint_init = model.cpx_init
-        if self.imposeparambounds: #note that the code under this if statement will not perform any action if tnc method is used, since in case of tnc with parameter bounds, the state variables are always within the specified bounds. 
+        if self.paramboundspenalty: #note that the code under this if statement will not perform any action if tnc method is used, since in case of tnc with parameter bounds, the state variables are always within the specified bounds. 
             for i in range(len(state_var_names)):
                 if state_var_names[i] in self.boundedvars:
                     if state_to_opt[i] < self.boundedvars[state_var_names[i]][0]: #lower than lower bound
-#                        if math.isnan(cost):
-#                            cost = 0 #to avoid ending up with a lot of nans. note that nan + a number gives nan. Assume nans only occur when outside of param bounds, than these statements will lead to a high costf...
-                        cost += 1/6*(2 - (state_to_opt[i] - self.boundedvars[state_var_names[i]][0]))**6 #note that this will always be positive
+                        if self.setNanCostfOutBoundsTo0:
+                            if math.isnan(cost):
+                                cost = 0 #to avoid ending up with a lot of nans. note that nan + a number gives nan. Assume nans only occur when outside of param bounds, than these statements will lead to a high costf...
+                        cost += 1/self.penalty_exp*(2 - (state_to_opt[i] - self.boundedvars[state_var_names[i]][0]))**self.penalty_exp #note that this will always be positive
                     elif state_to_opt[i] > self.boundedvars[state_var_names[i]][1]: #higher than higher bound
-#                        if math.isnan(cost):
-#                            cost = 0
-                        cost += 1/6*(2 + (state_to_opt[i] - self.boundedvars[state_var_names[i]][1]))**6 
+                        if self.setNanCostfOutBoundsTo0:
+                            if math.isnan(cost):
+                                cost = 0
+                        cost += 1/self.penalty_exp*(2 + (state_to_opt[i] - self.boundedvars[state_var_names[i]][1]))**self.penalty_exp 
         if self.write_to_f:
             open(self.Optimf,'a').write('\n')
             open(self.Optimf,'a').write('{0:>25s}'.format(str(self.sim_nr)))
@@ -165,8 +163,9 @@ class adjoint_modelling:
                 if abs(diff) > 0.001:
                     too_small_diff = False #prevent too many sims without a reasonable change in costf
             if too_small_diff == True:
-                open(self.Optimf,'a').write('\n')
-                open(self.Optimf,'a').write('{0:>25s}'.format('aborted minimisation'))
+                if self.write_to_f:
+                    open(self.Optimf,'a').write('\n')
+                    open(self.Optimf,'a').write('{0:>25s}'.format('aborted minimisation'))
                 self.nr_of_sim_bef_restart = self.sim_nr 
                 raise static_costfError('too slow progress in costf')
         return cost
@@ -181,7 +180,16 @@ class adjoint_modelling:
                 obs_sca_cf[item] = state_to_opt[i]
         model = fwdm.model(inputdata)
         model.run(checkpoint=False,updatevals_surf_lay=True,delete_at_end=False)
-        for item in self.obs: #do not provide obs at a time that is not modelled, this will lead to false results! (make a check for this in the optimisation file!)
+        for item in self.obsvarlist: #do not provide obs at a time that is not modelled, this will lead to false results! (make a check for this in the optimisation file!)
+            if 'EnBalDiffObsHFrac' in state_var_names:
+                if item not in ['H','LE']:
+                    observations_item = self.__dict__['obs_'+item]
+                elif item == 'H':
+                    observations_item = cp.deepcopy(self.__dict__['obs_H']) + state_to_opt[state_var_names.index('EnBalDiffObsHFrac')] * self.EnBalDiffObs_atHtimes
+                elif item == 'LE':
+                    observations_item = cp.deepcopy(self.__dict__['obs_LE']) + (1 - state_to_opt[state_var_names.index('EnBalDiffObsHFrac')]) * self.EnBalDiffObs_atLEtimes  
+            else:
+                observations_item = self.__dict__['obs_'+item]
             if item in obs_sca_cf:
                 obs_scale = obs_sca_cf[item] #a scale for increasing/decreasing the magnitude of the observation in the cost function, useful if observations are possibly biased (scale not time dependent).
             else:
@@ -192,15 +200,21 @@ class adjoint_modelling:
                 if round(model.out.t[i] * 3600,3) in [round(num, 3) for num in obs_times[item]]: #so if we are at a time where we have an obs
                     if item in obs_weights:
                         weight = obs_weights[item][k]
-                    cost += weight * (model.out.__dict__[item][i]- obs_scale * self.__dict__['obs_'+item][k])**2/(self.__dict__['error_obs_' + item][k]**2)
+                    cost += weight * (model.out.__dict__[item][i]- obs_scale * observations_item[k])**2/(self.__dict__['error_obs_' + item][k]**2)
                     k += 1
-        if self.imposeparambounds: #note that the code under this if statement will not perform any action if tnc method is used, since in case of tnc with parameter bounds, the state variables are always within the specified bounds. 
+        if self.paramboundspenalty: #note that the code under this if statement will not perform any action if tnc method is used, since in case of tnc with parameter bounds, the state variables are always within the specified bounds. 
             for i in range(len(state_var_names)):
                 if state_var_names[i] in self.boundedvars:
                     if state_to_opt[i] < self.boundedvars[state_var_names[i]][0]: #lower than lower bound
-                        cost += 1/6*(2 - (state_to_opt[i] - self.boundedvars[state_var_names[i]][0]))**6 #note that this will always be positive
+                        if self.setNanCostfOutBoundsTo0:
+                            if math.isnan(cost):
+                                cost = 0 #to avoid ending up with a lot of nans. note that nan + a number gives nan. 
+                        cost += 1/self.penalty_exp*(2 - (state_to_opt[i] - self.boundedvars[state_var_names[i]][0]))**self.penalty_exp #note that this will always be positive
                     elif state_to_opt[i] > self.boundedvars[state_var_names[i]][1]: #higher than higher bound
-                        cost += 1/6*(2 + (state_to_opt[i] - self.boundedvars[state_var_names[i]][1]))**6 
+                        if self.setNanCostfOutBoundsTo0:
+                            if math.isnan(cost):
+                                cost = 0 #to avoid ending up with a lot of nans. note that nan + a number gives nan. 
+                        cost += 1/self.penalty_exp*(2 + (state_to_opt[i] - self.boundedvars[state_var_names[i]][1]))**self.penalty_exp 
         if self.use_backgr_in_cost:
             Jbackground = self.background_costf(state_to_opt)
             cost += Jbackground
@@ -218,26 +232,16 @@ class adjoint_modelling:
         gradient = np.zeros(len(state_to_opt))
         returnvariables = []
         for item in state_var_names:
-            if not item.startswith('obs_sca_cf_'):
+            if not (item.startswith('obs_sca_cf_') or item == 'EnBalDiffObsHFrac'):
                 returnvariables.append('ad'+item)
         checkpoint_init = self.checkpoint_init
         self.initialise_adjoint()
         HTy = self.adjoint(self.forcing,self.checkpoint,checkpoint_init,model,returnvariables=returnvariables)
         HTy_counter = 0
         for i in range(len(state_var_names)):
-            if not state_var_names[i].startswith('obs_sca_cf_'):
-                gradient[i] += 2*HTy[HTy_counter]
+            if not (state_var_names[i].startswith('obs_sca_cf_') or state_var_names[i] == 'EnBalDiffObsHFrac'):
+                gradient[i] += 2*HTy[HTy_counter] #see second part of 11.77 in chapter inverse modelling Brasseur and Jacob 2017, where adjoint is K^T, and the forcing is SO^-1*(F(x) - y)? 
                 HTy_counter += 1
-            if self.imposeparambounds: #note that the code under this if statement will not perform any action if tnc method is used, since in case of tnc with parameter bounds, the state variables are always within the specified bounds. 
-                if state_var_names[i] in self.boundedvars:
-                    if state_to_opt[i] < self.boundedvars[state_var_names[i]][0]: #lower than lower bound
-                        if math.isnan(gradient[i]): #note that nan + something = nan
-                            gradient[i] = 0 #to avoid ending up with a lot of nans. Assume nans only occur when outside of param bounds.
-                        gradient[i] += -(2 - (state_to_opt[i] - self.boundedvars[state_var_names[i]][0]))**5 #this is the derivative of what is in min_func. Note that also without nan we get a large gradient with this statement
-                    elif state_to_opt[i] > self.boundedvars[state_var_names[i]][1]: #higher than higher bound
-                        if math.isnan(gradient[i]):
-                            gradient[i] = 0
-                        gradient[i] += (2 + (state_to_opt[i] - self.boundedvars[state_var_names[i]][1]))**5 
             #now add the gradients for the obs scaling that is possibly included in the state
             if state_var_names[i].startswith('obs_sca_cf_'):
                 obsname = state_var_names[i].split("obs_sca_cf_",1)[1] #split so we get the part after obs_sca_cf_
@@ -247,16 +251,47 @@ class adjoint_modelling:
                         forcinglist.append(dictio[obsname])           
                 gradient[i] += np.sum(np.array(forcinglist) * -2 * self.__dict__['obs_'+obsname][:]) #this is the derivative of the cost function to the obs scale parameter. 
                 #Note that forcing is a part of this derivative (obs part of cost function for one obs = w*(Hx - obs_scale*y)²/sigma_y², derivative to obs_scale = 2w * -y * (Hx - obs_scale*y)/sigma_y² = -2y* forcing, total observation part of cost function is sum of cost functions for individual obs)
+            elif state_var_names[i] == 'EnBalDiffObsHFrac':
+                deriv_H_obs_to_EnBalDiffObsHFrac = []
+                deriv_LE_obs_to_EnBalDiffObsHFrac = []
+                forcinglist_H = []
+                forcinglist_LE = []
+                ti = 0
+                ti2 = 0
+                for dictio in self.forcing: #one dictionary for every timestep
+                    if 'H' in dictio: #               
+                        forcinglist_H.append(dictio['H'])
+                        deriv_H_obs_to_EnBalDiffObsHFrac.append(self.EnBalDiffObs_atHtimes[ti]) #only add to deriv_to_H_obs_EnBalDiffObsHFrac if an obs of H is used at that timestep 
+                        ti += 1 #EnBalDiffObs_atHtimes should be available at (and only at) the times of H. It is also allowed to use only H or LE instead of both
+                    if 'LE' in dictio:
+                        forcinglist_LE.append(dictio['LE'])
+                        deriv_LE_obs_to_EnBalDiffObsHFrac.append(-1 * self.EnBalDiffObs_atLEtimes[ti2])
+                        ti2 += 1
+                gradient[i] += np.sum(np.array(forcinglist_H) * -2 * np.array(deriv_H_obs_to_EnBalDiffObsHFrac)) #derivative to EnBalDiffObsHFrac (via observations_item, called y here) is 
+                #2w * (Hx - obs_scale*y)/sigma_y² * -obs_scale * d_y/d_EnBalDiffObsHFrac = -2*obsscale* forcing * d_y/d_EnBalDiffObsHFrac. obsscale always 1 for H and LE obs if EnBalDiffObsHFrac in state
+                gradient[i] += np.sum(np.array(forcinglist_LE) * -2 * np.array(deriv_LE_obs_to_EnBalDiffObsHFrac))
+            if self.paramboundspenalty: #note that the code under this if statement will not perform any action if tnc method is used, since in case of tnc with parameter bounds, the state variables are always within the specified bounds. 
+                if state_var_names[i] in self.boundedvars:
+                    if state_to_opt[i] < self.boundedvars[state_var_names[i]][0]: #lower than lower bound
+                        if self.setNanCostfOutBoundsTo0:
+                            if math.isnan(gradient[i]): #note that nan + something = nan
+                                gradient[i] = 0 #to avoid ending up with a lot of nans. Assume nans only occur when outside of param bounds.
+                        gradient[i] += -(2 - (state_to_opt[i] - self.boundedvars[state_var_names[i]][0]))**(self.penalty_exp-1) #this is the derivative of what is in min_func. Note that also without nan we get a large gradient with this statement
+                    elif state_to_opt[i] > self.boundedvars[state_var_names[i]][1]: #higher than higher bound
+                        if self.setNanCostfOutBoundsTo0:
+                            if math.isnan(gradient[i]):
+                                gradient[i] = 0
+                        gradient[i] += (2 + (state_to_opt[i] - self.boundedvars[state_var_names[i]][1]))**(self.penalty_exp-1) 
         #add the background part of the cost function
         if self.use_backgr_in_cost:
-            dcostf_dbackground = 2*np.matmul(self.binv,state_to_opt-self.pstate)
+            dcostf_dbackground = 2*np.matmul(self.binv,state_to_opt-self.pstate) #see first term of 11.77 in chapter inverse modelling Brasseur and Jacob 2017
             for i in range(len(state_to_opt)):
                 gradient[i] += dcostf_dbackground[i] 
                 if self.write_to_f:
-                    open(self.Gradf,'a').write('{0:>25s}'.format(str(dcostf_dbackground[i])))
+                    open(self.Gradf,'a').write('{0:>30s}'.format(str(dcostf_dbackground[i])))
         if self.write_to_f:
             for item in gradient:
-                open(self.Gradf,'a').write('{0:>25s}'.format(str(item)))
+                open(self.Gradf,'a').write('{0:>30s}'.format(str(item)))
         print ('grad'+str(gradient))
         print('end deriv_func')
         return np.array(gradient) #!!!!must return an array!!
@@ -274,13 +309,30 @@ class adjoint_modelling:
         delta = 0.000001
         obs_sca_cf = {}
         for i in range(len(state_var_names)):
+            if state_var_names[i].startswith('obs_sca_cf_'):
+                item = state_var_names[i].split("obs_sca_cf_",1)[1] #split so we get the part after obs_sca_cf_
+                obs_sca_cf[item] = state_to_opt[i] #set the obsscales
+        for i in range(len(state_var_names)):
             inputdata.__dict__[state_var_names[i]] = state_to_opt[i] + delta
             if state_var_names[i].startswith('obs_sca_cf_'):
                 item = state_var_names[i].split("obs_sca_cf_",1)[1] #split so we get the part after obs_sca_cf_
-                obs_sca_cf[item] = state_to_opt[i] + delta
+                obs_sca_cf[item] = state_to_opt[i] + delta 
+            if state_var_names[i] == 'EnBalDiffObsHFrac': #no elif here
+                EnBalDiffObsHFrac = state_to_opt[i] + delta
+            elif 'EnBalDiffObsHFrac' in state_var_names:
+                EnBalDiffObsHFrac = state_to_opt[state_var_names.index('EnBalDiffObsHFrac')]
             model = fwdm.model(inputdata)
             model.run(checkpoint=False,updatevals_surf_lay=True,delete_at_end=False)
-            for item in self.obs:
+            for item in self.obsvarlist:
+                if 'EnBalDiffObsHFrac' in state_var_names:
+                    if item not in ['H','LE']:
+                        observations_item = self.__dict__['obs_'+item]
+                    elif item == 'H':
+                        observations_item = cp.deepcopy(self.__dict__['obs_H']) + EnBalDiffObsHFrac * self.EnBalDiffObs_atHtimes
+                    elif item == 'LE':
+                        observations_item = cp.deepcopy(self.__dict__['obs_LE']) + (1 - EnBalDiffObsHFrac) * self.EnBalDiffObs_atLEtimes  
+                else:
+                    observations_item = self.__dict__['obs_'+item]
                 if item in obs_sca_cf:
                     obs_scale = obs_sca_cf[item] #a scale for increasing/decreasing the magnitude of the observation in the cost function, useful if observations are possibly biased (scale not time dependent).
                 else:
@@ -291,15 +343,26 @@ class adjoint_modelling:
                     if round(model.out.t[j] * 3600,3) in [round(num, 3) for num in obs_times[item]]: #so if we are at a time where we have an obs
                         if item in obs_weights:
                             weight = obs_weights[item][r]
-                        cost_forw += weight * (model.out.__dict__[item][j]- obs_scale * self.__dict__['obs_'+item][r])**2/(self.__dict__['error_obs_' + item][r]**2)
+                        cost_forw += weight * (model.out.__dict__[item][j]- obs_scale * observations_item[r])**2/(self.__dict__['error_obs_' + item][r]**2)
                         r += 1
             inputdata.__dict__[state_var_names[i]] = state_to_opt[i] - delta
             if state_var_names[i].startswith('obs_sca_cf_'):
                 item = state_var_names[i].split("obs_sca_cf_",1)[1] #split so we get the part after obs_sca_cf_
                 obs_sca_cf[item] = state_to_opt[i] - delta
+            elif state_var_names[i] == 'EnBalDiffObsHFrac': 
+                EnBalDiffObsHFrac = state_to_opt[i] - delta
             model = fwdm.model(inputdata)
             model.run(checkpoint=False,updatevals_surf_lay=True,delete_at_end=False)
-            for item in self.obs:
+            for item in self.obsvarlist:
+                if 'EnBalDiffObsHFrac' in state_var_names:
+                    if item not in ['H','LE']:
+                        observations_item = self.__dict__['obs_'+item]
+                    elif item == 'H':
+                        observations_item = cp.deepcopy(self.__dict__['obs_H']) + EnBalDiffObsHFrac * self.EnBalDiffObs_atHtimes
+                    elif item == 'LE':
+                        observations_item = cp.deepcopy(self.__dict__['obs_LE']) + (1 - EnBalDiffObsHFrac) * self.EnBalDiffObs_atLEtimes  
+                else:
+                    observations_item = self.__dict__['obs_'+item]
                 if item in obs_sca_cf:
                     obs_scale = obs_sca_cf[item] #a scale for increasing/decreasing the magnitude of the observation in the cost function, useful if observations are possibly biased (scale not time dependent).
                 else:
@@ -310,19 +373,24 @@ class adjoint_modelling:
                     if round(model.out.t[k] * 3600,3) in [round(num, 3) for num in obs_times[item]]: #so if we are at a time where we have an obs
                         if item in obs_weights:
                             weight = obs_weights[item][r]
-                        cost_backw += weight * (model.out.__dict__[item][k]- obs_scale * self.__dict__['obs_'+item][r])**2/(self.__dict__['error_obs_' + item][r]**2)
+                        cost_backw += weight * (model.out.__dict__[item][k]- obs_scale * observations_item[r])**2/(self.__dict__['error_obs_' + item][r]**2)
                         r += 1
+            if state_var_names[i].startswith('obs_sca_cf_'):
+                item = state_var_names[i].split("obs_sca_cf_",1)[1] #split so we get the part after obs_sca_cf_
+                obs_sca_cf[item] = state_to_opt[i] #reset the obs scale since delta was subtracted, for use with the other parameters in the state
             gradient[i] = (cost_forw - cost_backw) / (2 * delta)
-            if self.imposeparambounds: #note that the code under this if statement will not perform any action if tnc method is used, since in case of tnc with parameter bounds, the state variables are always within the specified bounds. 
+            if self.paramboundspenalty: #note that the code under this if statement will not perform any action if tnc method is used, since in case of tnc with parameter bounds, the state variables are always within the specified bounds. 
                 if state_var_names[i] in self.boundedvars:
                     if state_to_opt[i] < self.boundedvars[state_var_names[i]][0]: #lower than lower bound
-                        if math.isnan(gradient[i]): #note that nan + something = nan 
-                            gradient[i] = 0 #to avoid ending up with a lot of nans. Assume nans only occur when outside of param bounds.
-                        gradient[i] += -(2 - (state_to_opt[i] - self.boundedvars[state_var_names[i]][0]))**5 #this is the derivative of what is in min_func. Note that also without nan we get a large gradient with this statement
+                        if self.setNanCostfOutBoundsTo0:
+                            if math.isnan(gradient[i]): #note that nan + something = nan 
+                                gradient[i] = 0 #to avoid ending up with a lot of nans. Assume nans only occur when outside of param bounds.
+                        gradient[i] += -(2 - (state_to_opt[i] - self.boundedvars[state_var_names[i]][0]))**(self.penalty_exp-1) #this is the derivative of what is in min_func. Note that also without nan we get a large gradient with this statement
                     elif state_to_opt[i] > self.boundedvars[state_var_names[i]][1]: #higher than higher bound
-                        if math.isnan(gradient[i]):
-                            gradient[i] = 0
-                        gradient[i] += (2 + (state_to_opt[i] - self.boundedvars[state_var_names[i]][1]))**5 
+                        if self.setNanCostfOutBoundsTo0:        
+                            if math.isnan(gradient[i]):
+                                gradient[i] = 0
+                        gradient[i] += (2 + (state_to_opt[i] - self.boundedvars[state_var_names[i]][1]))**(self.penalty_exp-1) 
             if self.use_backgr_in_cost:
                 forw_state = cp.deepcopy(state_to_opt)
                 forw_state[i] += delta
@@ -336,10 +404,10 @@ class adjoint_modelling:
                 dcostf_dbackground = (backgr_forw - backgr_backw) / (2 * delta) #for one variable
                 gradient[i] += dcostf_dbackground
                 if self.write_to_f:
-                    open(self.Gradf,'a').write('{0:>25s}'.format(str(dcostf_dbackground)))
+                    open(self.Gradf,'a').write('{0:>30s}'.format(str(dcostf_dbackground)))
         if self.write_to_f:
             for item in gradient:
-                open(self.Gradf,'a').write('{0:>25s}'.format(str(item)))
+                open(self.Gradf,'a').write('{0:>30s}'.format(str(item)))
         print ('grad'+str(gradient))
         print('end num_deriv')
         return np.array(gradient)
@@ -348,30 +416,6 @@ class adjoint_modelling:
         '''function that returns the background part of the cost function'''
         Jb = np.matmul(np.matrix.transpose(np.array(state)-np.array(self.pstate)),np.matmul(self.binv,np.array(state)-np.array(self.pstate)))
         return Jb
-    
-    def constructparambounds(self):
-        #you can overwrite these bounds in the optimisation file by including e.g. a line optim.boundedvars['deltatheta'] = [0.9,3], assuming your adjoint modelling object is called optim
-        self.boundedvars = {}
-        self.boundedvars['deltatheta'] = [0.2,7] #lower and upper bound
-        self.boundedvars['deltaCO2'] = [-200,200]
-        self.boundedvars['deltaq'] = [-0.007,0.007]
-        self.boundedvars['alpha'] = [0.05,0.6] 
-        self.boundedvars['alfa_sto'] = [0.1,5]
-        self.boundedvars['wg'] = [self.model.wwilt+0.001,self.model.wsat-0.001]
-        self.boundedvars['theta'] = [274,310]
-        self.boundedvars['h'] = [50,3200]
-        self.boundedvars['wtheta'] = [0.05,0.6]
-        self.boundedvars['gammatheta'] = [0.002,0.018]
-        self.boundedvars['gammatheta2'] = [0.002,0.018]
-        self.boundedvars['gammaq'] = [-9e-6,9e-6]
-        self.boundedvars['z0m'] = [0.0001,5]
-        self.boundedvars['z0h'] = [0.0001,5]
-        self.boundedvars['q'] = [0.002,0.020]
-        self.boundedvars['divU'] = [0,1e-4]
-        self.boundedvars['fCA'] = [0.1,1e8]
-        self.boundedvars['CO2'] = [100,1000]
-        self.boundedvars['ustar'] = [0.01,50]
-        self.boundedvars['wq'] = [0,0.1] #negative flux seems problematic because L going to very small values
     
     def dpsim(self, zeta, dzeta):
         if(zeta <= 0):
@@ -429,7 +473,7 @@ class adjoint_modelling:
         self.dzsl, self.dRib = 0,0
         #ags
         self.dalfa_sto,self.dthetasurf,self.dTs,self.devap,self.dCO2,self.dwg,self.dw2,self.dSwin,self.dra,self.dTsoil,self.dcveg,self.de,self.dwwilt,self.dwfc,self.dCOSsurf = 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-        self.dCO2surf,self.dgciCOS,self.dPARfract = 0,0,0
+        self.dCO2surf,self.dgciCOS,self.dR10,self.dPARfract = 0,0,0,0 #
         #run mixed layer
         self.ddeltatheta,self.ddeltathetav,self.ddeltaq,self.ddeltaCO2,self.ddeltaCOS,self.dM,self.dadvtheta,self.dwqM,self.dadvq = 0,0,0,0,0,0,0,0,0
         self.dwCO2,self.dwCO2M,self.dadvCO2,self.dwCOSM,self.dadvCOS,self.dlcl,self.dustar,self.dgammatheta,self.dgammatheta2,self.dgammaq,self.dgammau,self.dgammav = 0,0,0,0,0,0,0,0,0,0,0,0
@@ -442,7 +486,7 @@ class adjoint_modelling:
         #run land surface
         self.dwstar,self.dCs,self.dtheta,self.dq,self.dwfc,self.dwwilt,self.dwg,self.dLAI,self.dWmax,self.dWl,self.dcveg = 0,0,0,0,0,0,0,0,0,0,0
         self.dQ,self.dLambda,self.dTsoil,self.drsmin,self.dwsat,self.dw2,self.dT2 = 0,0,0,0,0,0,0
-        self.dCOSsurf, self.dTsurf = 0,0
+        self.dCOSsurf, self.dTsurf, self.drssoilmin,self.dCGsat,self.db,self.dC1sat,self.dC2ref,self.da,self.dp = 0,0,0,0,0,0,0,0,0
         #integrate land surface
         self.dTsoiltend,self.dwgtend,self.dWltend = 0,0,0
         #run_cumulus
@@ -458,10 +502,12 @@ class adjoint_modelling:
         self.dwthetae,self.dwthetave,self.dwqe,self.dwCO2A,self.dwCO2R,self.dwCO2e,self.dwCO2M,self.duw,self.dvw = 0,0,0,0,0,0,0,0,0
         self.dT2m,self.dthetamh,self.dthetamh2,self.dthetamh3,self.dthetamh4,self.dthetamh5,self.dthetamh6,self.dthetamh7 = 0,0,0,0,0,0,0,0
         self.dTmh,self.dTmh2,self.dTmh3,self.dTmh4,self.dTmh5,self.dTmh6,self.dTmh7,self.dq2m,self.dqmh,self.dqmh2,self.dqmh3,self.dqmh4,self.dqmh5,self.dqmh6,self.dqmh7,self.du2m,self.dv2m,self.de2m,self.desat2m = 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-        self.dCOSmh,self.dCOSmh2,self.dCOSmh3,self.dCO2mh,self.dCO2mh2,self.dCO2mh3,self.dCO2mh4,self.dCOS2m = 0,0,0,0,0,0,0,0
+        self.dCOSmh,self.dCOSmh2,self.dCOSmh3,self.dCO2mh,self.dCO2mh2,self.dCO2mh3,self.dCO2mh4,self.dCOS2m = 0,0,0,0,0,0,0,0#
         self.dthetavsurf,self.dqsurf,self.dSwout,self.dSwin,self.dLwin,self.dLwout,self.dH,self.dLE,self.dLEliq,self.dLEveg,self.dLEsoil = 0,0,0,0,0,0,0,0,0,0,0
         self.dLEpot,self.dLEref,self.dG,self.dRH_h,self.desatvar,self.dqsatvar,self.dwCOS,self.dwCOSP,self.dwCOSS = 0,0,0,0,0,0,0,0,0
-        self.dac,self.dCO22m = 0,0
+        self.dac,self.dCO22m,self.dCm,self.dL = 0,0,0,0#
+        #jarvis_stewart
+        self.dgD = 0
         #timestep (tl_full_model)
         self.dwtheta_input = np.zeros(self.model.tsteps)
         self.dwq_input = np.zeros(self.model.tsteps)
@@ -554,10 +600,11 @@ class adjoint_modelling:
             for key in self.Output_tl_isCm:
                 if key in self.__dict__: #otherwise you get a lot of unnecessary vars in memory. If you forget to inititalise a variable in the tl inititalisation it will  give an error anyway
                     self.__dict__[key] = self.Output_tl_isCm[key]
-        for key in self.Output_tl_isCm:
-            if key == returnvariable:
-                returnvar = self.Output_tl_isCm[returnvariable]
-                return returnvar
+        if returnvariable is not None:
+            for key in self.Output_tl_isCm:
+                if key == returnvariable:
+                    returnvar = self.Output_tl_isCm[returnvariable]
+                    return returnvar
                 
     def tl_statistics(self,model,checkpoint,returnvariable=None): #tangent linear of the statistics part of the model
         self.Output_tl_stat = {}
@@ -608,10 +655,11 @@ class adjoint_modelling:
             for key in self.Output_tl_stat:
                 if key in self.__dict__: #otherwise you get a lot of unnecessary vars in memory
                     self.__dict__[key] = self.Output_tl_stat[key]
-        for key in self.Output_tl_stat:
-            if key == returnvariable:
-                returnvar = self.Output_tl_stat[returnvariable]
-                return returnvar
+        if returnvariable is not None:
+            for key in self.Output_tl_stat:
+                if key == returnvariable:
+                    returnvar = self.Output_tl_stat[returnvariable]
+                    return returnvar
     
     def tl_run_radiation(self,model,checkpoint,returnvariable=None):
         self.Output_tl_rr = {}
@@ -652,10 +700,11 @@ class adjoint_modelling:
             for key in self.Output_tl_rr:
                 if key in self.__dict__: #otherwise you get a lot of unnecessary vars in memory
                     self.__dict__[key] = self.Output_tl_rr[key]
-        for key in self.Output_tl_rr:
-            if key == returnvariable:
-                returnvar = self.Output_tl_rr[returnvariable]
-                return returnvar
+        if returnvariable is not None:
+            for key in self.Output_tl_rr:
+                if key == returnvariable:
+                    returnvar = self.Output_tl_rr[returnvariable]
+                    return returnvar
 
     
     def tl_run_surface_layer(self,model,checkpoint,returnvariable=None):
@@ -692,7 +741,10 @@ class adjoint_modelling:
         thetavsurf = checkpoint['rsl_thetavsurf_end']
         if model.sw_use_ribtol:
             Rib = checkpoint['rsl_Rib_middle']
-        dueff = 0.5 * (u**2. + v**2. + wstar**2.)**(-0.5) * (2 * u * self.du + 2 * v * self.dv + 2 * wstar * self.dwstar)
+        if np.sqrt(u**2. + v**2. + wstar**2.) < 0.01:
+            dueff = 0
+        else:
+            dueff = 0.5 * (u**2. + v**2. + wstar**2.)**(-0.5) * (2 * u * self.du + 2 * v * self.dv + 2 * wstar * self.dwstar)
         dCOSsurf_dwCOS = self.dwCOS / (Cs_start * ueff)
         dCOSsurf_dCOS = self.dCOS
         dCOSsurf_dCs_start = wCOS / ueff * (-1) * Cs_start**(-2) * self.dCs_start
@@ -1066,10 +1118,11 @@ class adjoint_modelling:
             for key in self.Output_tl_rsl:
                 if key in self.__dict__:
                     self.__dict__[key] = self.Output_tl_rsl[key]
-        for key in self.Output_tl_rsl:
-            if key == returnvariable:
-                returnvar = self.Output_tl_rsl[returnvariable]
-                return returnvar
+        if returnvariable is not None:
+            for key in self.Output_tl_rsl:
+                if key == returnvariable:
+                    returnvar = self.Output_tl_rsl[returnvariable]
+                    return returnvar
     
     def tl_ribtol(self,model,checkpoint,returnvariable=None):
         self.Output_tl_rtl = {} #rtl means Rib to L
@@ -1222,13 +1275,22 @@ class adjoint_modelling:
         LEsoil = checkpoint['rls_LEsoil_end']
         wgeq = checkpoint['rls_wgeq_end']
         ustar = checkpoint['rls_ustar']
+        rs = checkpoint['rls_rs_end'] #rs calculated in e.g. ags
+        rssoilmin = checkpoint['rls_rssoilmin']
+        f2 = checkpoint['rls_f2_end']
+        CGsat = checkpoint['rls_CGsat']
+        b = checkpoint['rls_b']
+        C1sat = checkpoint['rls_C1sat']
+        C2ref = checkpoint['rls_C2ref']
+        a = checkpoint['rls_a']
+        p = checkpoint['rls_p']
         if self.manualadjointtesting:
             self.dwstar,self.dCs,self.dtheta,self.dq,self.dwfc,self.dwwilt,self.dwg,self.dLAI,self.dWmax,self.dWl,self.dcveg,self.dQ,self.dLambda,self.dTsoil,self.drsmin,self.dwsat,self.dw2,self.dT2 =self.x
         dueff = 0.5*(u ** 2. + v ** 2. + wstar**2.)**(-1/2) * (2 * u * self.du + 2 * v * self.dv + 2 * wstar * self.dwstar)
         if(model.sw_sl):
             dra = -1 * (Cs * ueff)**-2. *(self.dCs * ueff + Cs * dueff)
         else:
-            if ustar > 1.e-3:
+            if ustar >= 1.e-3:
                 dra = dueff / ustar**2. + ueff * -2 * ustar**(-3) * self.dustar 
             else:
                 dra = dueff / (1.e-3)**2.
@@ -1246,25 +1308,24 @@ class adjoint_modelling:
         for key in self.Output_tl_rls:
             self.__dict__[key] = self.Output_tl_rls[key]
         if(self.model.ls_type == 'js'): 
-            raise Exception('js not implemented') 
+            drs = self.tl_jarvis_stewart(model,checkpoint,returnvariable='drs') 
         elif(self.model.ls_type == 'ags'):
             drs = self.tl_ags(model,checkpoint,returnvariable='drs')
-            rs = checkpoint['ags_rs_end']
             #this calculates drs which is used later!!
         elif(self.model.ls_type == 'canopy_model'):
-            pass #to implement
+            raise Exception('Canopy model not yet implemented') #to implement
         elif(self.ls_type == 'sib4'):
-            pass #to implement
+            raise Exception('sib4 not yet implemented') #to implement
         else:
             raise Exception('problem with ls switch')
         if(wg > wwilt):
           df2          = (self.dwfc - self.dwwilt) / (wg - wwilt) + (wfc - wwilt) * -1 * (wg - wwilt)**(-2) * (self.dwg - self.dwwilt)
         else:
           df2        = 0
-        drssoil = model.rssoilmin * df2
+        drssoil = rssoilmin * df2 + f2 * self.drssoilmin
         if(self.model.ls_type != 'canopy_model'):
             dWlmx = self.dLAI * Wmax + LAI * self.dWmax
-            if Wl / Wlmx < 1: #cliq = min(1., self.Wl / Wlmx)
+            if Wl / Wlmx <= 1: #cliq = min(1., self.Wl / Wlmx)
                 dcliq = self.dWl / Wlmx + Wl * (-1) * Wlmx ** (-2) * dWlmx
             else:
                 dcliq = 0
@@ -1307,19 +1368,31 @@ class adjoint_modelling:
             dLEref  = dnumerator_LEref / denominator_LEref + numerator_LEref * (-1) * denominator_LEref**(-2) * ddenominator_LEref
         else:
             pass #to implement
-        dCG          = model.CGsat * (model.b / (2. * np.log(10.))) * (wsat / w2)**(model.b / (2. * np.log(10.)) - 1) * (self.dwsat / w2 + wsat * (-1) * w2**(-2) * self.dw2)
+        dCG_dCGsat = (wsat / w2)**(b / (2. * np.log(10.))) * self.dCGsat
+        dCG_dwsat = CGsat * (b / (2. * np.log(10.))) * (wsat / w2)**(b / (2. * np.log(10.)) - 1) * self.dwsat / w2
+        dCG_dw2 = CGsat * (b / (2. * np.log(10.))) * (wsat / w2)**(b / (2. * np.log(10.)) - 1) *  wsat * (-1) * w2**(-2) * self.dw2
+        dCG_db = CGsat * (wsat / w2)**(b / (2. * np.log(10.))) * np.log(wsat / w2) * 1 / (2. * np.log(10.)) * self.db #d(a^x)/dx = a^x * ln(a)
+        dCG = dCG_dCGsat + dCG_dwsat + dCG_dw2 + dCG_db
         dTsoiltend_dCG = G * dCG
         dTsoiltend_dG   = CG * dG
         dTsoiltend_dTsoil = - 2. * np.pi / 86400. * self.dTsoil
         dTsoiltend_dT2 = 2. * np.pi / 86400. * self.dT2
         dTsoiltend = dTsoiltend_dCG + dTsoiltend_dG + dTsoiltend_dTsoil + dTsoiltend_dT2
-        dC1        = model.C1sat * (model.b / 2 + 1.) * (wsat / wg) ** (model.b / 2.) * (self.dwsat / wg + wsat * (-1) * wg**(-2) * self.dwg)
-        dC2_dw2    = model.C2ref * (self.dw2 / (wsat - w2) + w2 * (-1) * (wsat - w2)**(-2) * -self.dw2)
-        dC2_dwsat  = model.C2ref * (w2 * (-1) * (wsat - w2)**(-2) * self.dwsat)
-        dC2        = dC2_dw2 + dC2_dwsat
-        dwgeq_dw2  = self.dw2 - wsat * model.a * (model.p * (w2 / wsat) ** (model.p - 1) * self.dw2 / wsat * (1. - (w2 / wsat) ** (8. * model.p)) + (w2 / wsat) ** (model.p) * -1 * (8. * model.p) * (w2 / wsat) ** (8. * model.p - 1) * self.dw2 / wsat)
-        dwgeq_dwsat = -self.dwsat * model.a * ((w2 / wsat) ** model.p * (1. - (w2 / wsat) ** (8. * model.p))) - wsat * model.a * (model.p * (w2 / wsat) ** (model.p - 1) * w2 * (-1) * wsat**(-2) * self.dwsat * (1. - (w2 / wsat) ** (8. * model.p)) + (w2 / wsat) ** (model.p) * -1 * (8. * model.p) * (w2 / wsat) ** (8. * model.p - 1) * w2 * (-1) * wsat**(-2) * self.dwsat)
-        dwgeq      = dwgeq_dw2 + dwgeq_dwsat
+        dC1_dC1sat = (wsat / wg) ** (b / 2. + 1.) * self.dC1sat
+        dC1_dwsat  = C1sat * (b / 2 + 1.) * (wsat / wg) ** (b / 2.) * self.dwsat / wg
+        dC1_dwg    = C1sat * (b / 2 + 1.) * (wsat / wg) ** (b / 2.) * wsat * (-1) * wg**(-2) * self.dwg
+        dC1_db     = C1sat * (wsat / wg) ** (b / 2. + 1.) * np.log(wsat / wg) * 1 / 2. * self.db
+        dC1 = dC1_dC1sat + dC1_dwsat + dC1_dwg + dC1_db             
+        dC2_dC2ref = w2 / (wsat - w2) * self.dC2ref
+        dC2_dw2    = C2ref * (self.dw2 / (wsat - w2) + w2 * (-1) * (wsat - w2)**(-2) * -self.dw2)
+        dC2_dwsat  = C2ref * (w2 * (-1) * (wsat - w2)**(-2) * self.dwsat)
+        dC2        = dC2_dC2ref + dC2_dw2 + dC2_dwsat        
+        #wgeq        = self.w2 - self.wsat * self.a * ( (self.w2 / self.wsat) ** self.p * (1. - (self.w2 / self.wsat) ** (8. * self.p)) )
+        dwgeq_dw2  = self.dw2 - wsat * a * (p * (w2 / wsat) ** (p - 1) * self.dw2 / wsat * (1. - (w2 / wsat) ** (8. * p)) + (w2 / wsat) ** (p) * -1 * (8. * p) * (w2 / wsat) ** (8. * p - 1) * self.dw2 / wsat)
+        dwgeq_dwsat = -self.dwsat * a * ((w2 / wsat) ** p * (1. - (w2 / wsat) ** (8. * p))) - wsat * a * (p * (w2 / wsat) ** (p - 1) * w2 * (-1) * wsat**(-2) * self.dwsat * (1. - (w2 / wsat) ** (8. * p)) + (w2 / wsat) ** (p) * -1 * (8. * p) * (w2 / wsat) ** (8. * p - 1) * w2 * (-1) * wsat**(-2) * self.dwsat)
+        dwgeq_da = - wsat * (w2 / wsat) ** p * (1. - (w2 / wsat) ** (8. * p)) * self.da
+        dwgeq_dp = - wsat * a * ( (1. - (w2 / wsat) ** (8. * p)) * (w2 / wsat) ** p * np.log(w2 / wsat) + (w2 / wsat) ** p * -1 * (w2 / wsat) ** (8. * p) * np.log(w2 / wsat) * 8) * self.dp
+        dwgeq      = dwgeq_dw2 + dwgeq_dwsat + dwgeq_da + dwgeq_dp
         dwgtend_dLEsoil = - C1 / (model.rhow * d1) / model.Lv * dLEsoil 
         dwgtend_dC1 = - dC1 / (model.rhow * d1) * LEsoil / model.Lv
         dwgtend_dC2 = - dC2 / 86400. * (wg - wgeq)
@@ -1337,24 +1410,73 @@ class adjoint_modelling:
             for key in self.Output_tl_rls:
                 if key in self.__dict__:
                     self.__dict__[key] = self.Output_tl_rls[key]
-        for key in self.Output_tl_rls:
+        if returnvariable is not None:
+            for key in self.Output_tl_rls:
+                if key == returnvariable:
+                    returnvar = self.Output_tl_rls[returnvariable]
+                    return returnvar
+            
+    def tl_jarvis_stewart(self,model,checkpoint,returnvariable=None):
+        self.Output_tl_js = {}
+        Swin = checkpoint['js_Swin']
+        w2 = checkpoint['js_w2']
+        wwilt = checkpoint['js_wwilt']
+        wfc = checkpoint['js_wfc']
+        gD = checkpoint['js_gD']
+        e = checkpoint['js_e']
+        esatvar = checkpoint['js_esatvar']
+        theta = checkpoint['js_theta']
+        f2js = checkpoint['js_f2js_middle']
+        LAI = checkpoint['js_LAI']
+        f1 = checkpoint['js_f1_end']
+        f3 = checkpoint['js_f3_end']
+        f4 = checkpoint['js_f4_end']
+        rsmin = checkpoint['js_rsmin']
+        if(model.sw_rad):
+            if (0.004 * Swin + 0.05) / (0.81 * (0.004 * Swin + 1.)) <= 1:
+                df1 = -1 * ((0.004 * Swin + 0.05) / (0.81 * (0.004 * Swin + 1.)))**(-2) * (0.004 * self.dSwin / (0.81 * (0.004 * Swin + 1.)) + (0.004 * Swin + 0.05) * -1 * (0.81 * (0.004 * Swin + 1.))**(-2) * 0.81 * 0.004 * self.dSwin)
+            else:
+                df1 = 0
+        else:
+            df1 = 0
+        if(w2 > wwilt):
+            #f2js = (self.wfc - self.wwilt) / (self.w2 - self.wwilt)
+            df2js_dwfc = 1 / (w2 - wwilt) * self.dwfc
+            df2js_dwwilt = 1 / (w2 - wwilt) * -1 * self.dwwilt + (wfc - wwilt) * -1 * (w2 - wwilt)**(-2) * -1 * self.dwwilt
+            df2js_dw2 = (wfc - wwilt) * -1 * (w2 - wwilt)**(-2) * self.dw2
+            df2js = df2js_dwfc + df2js_dwwilt + df2js_dw2
+        else:
+            df2js = 0
+        if f2js < 1:
+            df2js = 0
+        #f3 = 1. / np.exp(- self.gD * (self.esat - self.e) / 100.)
+        df3 = -1 * (np.exp(- gD * (esatvar - e) / 100.))**-2 * np.exp(- gD * (esatvar - e) / 100.) * (-self.dgD  * (esatvar - e) / 100 - 1 / 100 * gD * self.desatvar + 1 / 100 * gD * self.de)
+        df4 = -1 * (1. - 0.0016 * (298.0-theta)**2.)**(-2) * - 0.0016 * 2 * (298.0 - theta) * -1 * self.dtheta
+        f2js = checkpoint['js_f2js_end']
+        #self.rs = self.rsmin / self.LAI * f1 * f2js * f3 * f4
+        drs_drsmin = self.drsmin / LAI * f1 * f2js * f3 * f4 
+        drs_dLAI = rsmin * f1 * f2js * f3 * f4 * -1 * LAI**(-2) * self.dLAI
+        drs_df1 = rsmin / LAI * f2js * f3 * f4 * df1
+        drs_df2js = rsmin / LAI * f1 * f3 * f4 * df2js
+        drs_df3 = rsmin / LAI * f1 * f2js * f4 * df3
+        drs_df4 = rsmin / LAI * f1 * f2js * f3 * df4
+        drs = drs_drsmin + drs_dLAI + drs_df1 + drs_df2js + drs_df3 + drs_df4
+        
+        the_locals = cp.deepcopy(locals()) #to prevent error 'dictionary changed size during iteration'
+        for variablename in the_locals: #note that the self variables are not included
+            if variablename.startswith('d'): #still includes some unnecessary stuff
+                self.Output_tl_js.update({variablename: the_locals[variablename]})  
+        if (self.adjointtesting or self.gradienttesting):
+            for key in self.Output_tl_js:
+                if key in self.__dict__: #otherwise you get a lot of unnecessary vars in memory
+                    self.__dict__[key] = self.Output_tl_js[key]
+        for key in self.Output_tl_js:
             if key == returnvariable:
-                returnvar = self.Output_tl_rls[returnvariable]
+                returnvar = self.Output_tl_js[returnvariable]
                 return returnvar
     
     def tl_ags(self,model,checkpoint,returnvariable=None):
-        '''Ags model for buidling the adjoint. We now define specific input and output.
-        Input: 
-        thetasurf:  surface potential temperature [K]
-        Ts:         surface temperature [K]
-        evap:       mixed-layer vapor pressure [Pa]
-        CO2:        mixed-layer CO2 [ppm]
-        wg:         volumetric water content top soil layer [m3 m-3]
-        w2:         volumetric water content deeper soil layer [m3 m-3]
-        Swin:       short wave in [W m-2]
-        ra:         aerodynamic resistance [s m-1]
-        Tsoil:      Temperature soil [K]'''
-        COS,COSsurf  = checkpoint['ags_COS'],checkpoint['ags_COSsurf']
+        COS  = checkpoint['ags_COS']
         cveg = checkpoint['ags_cveg']
         LAI  = checkpoint['ags_LAI']
         alfa_sto  = checkpoint['ags_alfa_sto']
@@ -1368,6 +1490,10 @@ class adjoint_modelling:
         gciCOS = checkpoint['ags_gciCOS_end']
         gctCOS = checkpoint['ags_gctCOS_end']
         PARfract = checkpoint['ags_PARfract']
+        wwilt = checkpoint['ags_wwilt']
+        wfc = checkpoint['ags_wfc']
+        w2 = checkpoint['ags_w2']
+        R10 = checkpoint['ags_R10']
         self.Output_tl_ags = {}
         # output:  wCO2A   wCO2R  wCO2 rs 
         # Select index for plap.nt type
@@ -1428,18 +1554,25 @@ class adjoint_modelling:
         dAmmax3_dthetasurf        = +0.3*self.dthetasurf*np.exp(0.3 * (thetasurf - model.T2Am[c]))
         #Ammax         = Ammax1/(Ammax2*Ammax3) 
         dAmmax_dthetasurf  = dAmmax1_dthetasurf/(Ammax2*Ammax3) - Ammax1*dAmmax2_dthetasurf/(Ammax3*Ammax2**2) - Ammax1*dAmmax3_dthetasurf/(Ammax2*Ammax3**2)
-        betaw         = (model.w2 - model.wwilt)/(model.wfc - model.wwilt)
-        assert(betaw > 1e-3 and betaw < 1.)  
-        dbetaw_dw2 = self.dw2/(model.wfc - model.wwilt)
-        dbetaw_dwfc = (model.w2 - model.wwilt) * -1 * (model.wfc - model.wwilt)**(-2) * self.dwfc
-        dbetaw_dwwilt = -self.dwwilt / (model.wfc - model.wwilt) + (model.w2 - model.wwilt) * -1 * (model.wfc - model.wwilt)**(-2) * -self.dwwilt
+        if (w2 - wwilt)/(wfc - wwilt) > 1 or (w2 - wwilt)/(wfc - wwilt) < 1e-3:
+            dbetaw_dw2 = 0
+            dbetaw_dwfc = 0
+            dbetaw_dwwilt = 0
+        else: 
+            dbetaw_dw2 = self.dw2/(wfc - wwilt)
+            dbetaw_dwfc = (w2 - wwilt) * -1 * (wfc - wwilt)**(-2) * self.dwfc
+            dbetaw_dwwilt = -self.dwwilt / (wfc - wwilt) + (w2 - wwilt) * -1 * (wfc - wwilt)**(-2) * -self.dwwilt
         if (model.c_beta == 0):
-            fstr = betaw
             dfstr_dw2  = dbetaw_dw2
             dfstr_dwfc = dbetaw_dwfc
             dfstr_dwwilt = dbetaw_dwwilt
         else:
-            raise Exception('c_beta value not 0, part not implemented')
+            P = checkpoint['ags_P_end']
+            betaw = checkpoint['ags_betaw_end']
+            #fstr = (1. - np.exp(-P * betaw)) / (1 - np.exp(-P))
+            dfstr_dw2  = 1 / (1 - np.exp(-P)) * -1 * np.exp(-P * betaw) * -P * dbetaw_dw2
+            dfstr_dwfc  = 1 / (1 - np.exp(-P)) * -1 * np.exp(-P * betaw) * -P * dbetaw_dwfc
+            dfstr_dwwilt  = 1 / (1 - np.exp(-P)) * -1 * np.exp(-P * betaw) * -P * dbetaw_dwwilt
         #aexp          = -gm*ci/Ammax + gm*CO2comp/Ammax
         daexp_dthetasurf        = -dgm_dthetasurf*ci/Ammax - dci_dthetasurf*gm/Ammax + dAmmax_dthetasurf*gm*ci/(Ammax**2) + \
                          dgm_dthetasurf*CO2comp/Ammax + dCO2comp_dthetasurf*gm/Ammax - dAmmax_dthetasurf*gm*CO2comp/(Ammax**2)
@@ -1458,26 +1591,28 @@ class adjoint_modelling:
         dRdark_dTs   = (1. / 9.) * dAm_dTs
         dRdark_de    = (1. / 9.) * dAm_de
         dRdark_dCO2  = (1. / 9.) * dAm_dCO2
+        AmRdark       = Am + Rdark
+        dAmRdark_dthetasurf      = dAm_dthetasurf + dRdark_dthetasurf
+        dAmRdark_dTs  = dAm_dTs + dRdark_dTs
+        dAmRdark_de   = dAm_de + dRdark_de
+        dAmRdark_dCO2 = dAm_dCO2 + dRdark_dCO2  
         Swina        = Swin  * cveg
         dSwina_dSwin = self.dSwin * cveg
         dSwina_dcveg = Swin  * self.dcveg
-        assert(Swina > 0.1)
-        PAR            = PARfract * Swina
-        dPAR_dPARfract = Swin * cveg * self.dPARfract
-        dPAR_dSwin     = PARfract * dSwina_dSwin
-        dPAR_dcveg     = PARfract * dSwina_dcveg
+        if Swin  * cveg < 1e-1:
+            dPAR_dPARfract = 1e-1 * self.dPARfract
+            dPAR_dSwin = 0
+            dPAR_dcveg = 0
+        else:
+            dPAR_dPARfract = Swin * cveg * self.dPARfract
+            dPAR_dSwin     = PARfract * dSwina_dSwin
+            dPAR_dcveg     = PARfract * dSwina_dcveg
         #xdiv = co2abs + 2.*CO2comp
         dxdiv_dthetasurf      = 2.*dCO2comp_dthetasurf  # dco2abs/dthetav = 0  
         dxdiv_dCO2 = dco2abs 
         alphac       = model.alpha0[c] * (co2abs - CO2comp) / xdiv   # dco2abs/dthetav = 0       
         dalphac_dthetasurf      = model.alpha0[c] * ( (CO2comp-co2abs) * dxdiv_dthetasurf / (xdiv**2) - dCO2comp_dthetasurf/xdiv)
         dalphac_dCO2 = model.alpha0[c] * ( (CO2comp-co2abs) * dxdiv_dCO2 / (xdiv**2) + dco2abs/xdiv)
-
-        AmRdark       = Am + Rdark
-        dAmRdark_dthetasurf      = dAm_dthetasurf + dRdark_dthetasurf
-        dAmRdark_dTs  = dAm_dTs + dRdark_dTs
-        dAmRdark_de   = dAm_de + dRdark_de
-        dAmRdark_dCO2 = dAm_dCO2 + dRdark_dCO2     
         #pexp         = -1 * alphac * PAR / (AmRdark)
         dpexp_dthetasurf        = -1 * dalphac_dthetasurf * PAR / (AmRdark) + dAmRdark_dthetasurf * alphac * PAR/(AmRdark**2)
         dpexp_dTs    = dAmRdark_dTs*alphac*PAR/(AmRdark**2)
@@ -1619,16 +1754,18 @@ class adjoint_modelling:
         #texp = model.E0 / (283.15 * 8.314) * (1. - 283.15 / Tsoil) = model.E0 / (283.15 * 8.314) \
         #  - model.E0 / (283.15 * 8.314)*283.15/Tsoil = .. - model.E0/(8.314*Tsoil)
         dtexp_dTsoil = self.dTsoil*model.E0/(8.314*Tsoil**2)
-        #Resp         = model.R10 * (1. - fw) * np.exp(texp)
-        dResp_dTsoil = dtexp_dTsoil*model.R10 * (1. - fw) * np.exp(texp)
-        dResp_dwg    = -dfw_dwg*model.R10* np.exp(texp)
+        #Resp         = R10 * (1. - fw) * np.exp(texp)
+        dResp_dTsoil = dtexp_dTsoil*R10 * (1. - fw) * np.exp(texp)
+        dResp_dwg    = -dfw_dwg*R10* np.exp(texp)
+        dResp_dR10    = (1. - fw) * np.exp(texp) * self.dR10
         dwCO2A  = (dAn_dthetasurf + dAn_dTs + dAn_de + dAn_dCO2 + dAn_dra + dAn_dPARfract + dAn_dSwin + dAn_dcveg + dAn_dw2 + dAn_dwfc + dAn_dwwilt + dAn_dalfa_sto + dAn_dLAI)  * (model.mair / (model.rho * model.mco2))
-        dwCO2R  = (dResp_dwg + dResp_dTsoil)  * (model.mair / (model.rho * model.mco2))
+        dwCO2R  = (dResp_dTsoil + dResp_dwg + dResp_dR10)  * (model.mair / (model.rho * model.mco2))
         dwCO2   = dwCO2A + dwCO2R
         #self.hx = drs
         if model.ags_C_mode == 'MXL': 
             dwCOSP  = COS * (1 / gctCOS + ra)**(-2) * (-1 * gctCOS**(-2) * dgctCOS + self.dra) + -1 / (1 / gctCOS + ra) * self.dCOS
         elif model.ags_C_mode == 'surf':
+            COSsurf = checkpoint['ags_COSsurf']
             dwCOSP  = COSsurf * (1 / gctCOS + ra)**(-2) * (-1 * gctCOS**(-2) * dgctCOS + self.dra) + -1 / (1 / gctCOS + ra) * self.dCOSsurf
         else:
             raise Exception('wrong ags_C_mode switch')
@@ -1638,7 +1775,7 @@ class adjoint_modelling:
             #self.dwsat = self.dwsat #not needed, but to show it goes for all the arguments, but e.g. this has an identical name
             dwCOSS_molm2s = self.tl_run_soil_COS_mod(model,checkpoint,returnvariable='dCOS_netuptake_soilsun')
             dwCOSS = dwCOSS_molm2s / model.rho * model.mair * 1.e-3 * 1.e9
-        else:
+        elif model.soilCOSmodeltype == None:
             dwCOSS = 0
         dwCOS   = dwCOSP + dwCOSS
         
@@ -1879,7 +2016,7 @@ class adjoint_modelling:
         CO22_h = checkpoint['rc_CO22_h_end']
         COS2_h = checkpoint['rc_COS2_h_end']
         #ac     = max(0., 0.5 + (0.36 * np.arctan(1.55 * ((q - qsat(T_h, P_h)) / q2_h**0.5))))
-        if 0.5 + (0.36 * np.arctan(1.55 * ((q - qsat_variable_rc) / q2_h**0.5))) <= 0:
+        if 0.5 + (0.36 * np.arctan(1.55 * ((q - qsat_variable_rc) / q2_h**0.5))) < 0:
             dac = 0
         else: #darctan(x)/dx = 1 / (1+x**2)
             dqsat_variable_rc_dT_h = dqsat_dT(T_h,P_h,self.dT_h) #rc stands for run cumulus, added since in statistics module the name qsat_variable already exists
@@ -1908,10 +2045,11 @@ class adjoint_modelling:
             for key in self.Output_tl_rc:
                 if key in self.__dict__:
                     self.__dict__[key] = self.Output_tl_rc[key]
-        for key in self.Output_tl_rc:
-            if key == returnvariable:
-                returnvar = self.Output_tl_rc[returnvariable]
-                return returnvar
+        if returnvariable is not None:
+            for key in self.Output_tl_rc:
+                if key == returnvariable:
+                    returnvar = self.Output_tl_rc[returnvariable]
+                    return returnvar
     
     def tl_run_mixed_layer(self,model,checkpoint,returnvariable=None):
         h = checkpoint['rml_h']
@@ -2004,7 +2142,7 @@ class adjoint_modelling:
             dwe_dustar = 5. * thetav / (model.g * h * deltathetav) * 3 * ustar**2 * self.dustar
             dwe_dthetav = 5. * ustar ** 3. / (model.g * h * deltathetav) * self.dthetav
             dwe_dh    = 5* ustar ** 3. * thetav / model.g / deltathetav * (-1) * h**(-2) * self.dh
-            dwe_ddeltathetav = (wthetave + 5. * ustar ** 3. * thetav / (model.g * h)) * (-1) * deltathetav**(-2) * self.ddeltathetav
+            dwe_ddeltathetav = (-wthetave + 5. * ustar ** 3. * thetav / (model.g * h)) * (-1) * deltathetav**(-2) * self.ddeltathetav
         else:
             dwe_dwthetav = -1/ deltathetav * dwthetave
             dwe_dustar = 0
@@ -2062,10 +2200,11 @@ class adjoint_modelling:
             for key in self.Output_tl_rml:
                 if key in self.__dict__:
                     self.__dict__[key] = self.Output_tl_rml[key]
-        for key in self.Output_tl_rml:
-            if key == returnvariable:
-                returnvar = self.Output_tl_rml[returnvariable]
-                return returnvar
+        if returnvariable is not None:
+            for key in self.Output_tl_rml:
+                if key == returnvariable:
+                    returnvar = self.Output_tl_rml[returnvariable]
+                    return returnvar
     
     def tl_store(self,model,checkpoint,returnvariable=None):
         #not all variables of the forward model necessarily have to be included here, if you don't use observations of the output variables you dont really need them for the optimisation framework
@@ -2096,8 +2235,10 @@ class adjoint_modelling:
         dout_wCO2e         = self.dwCO2e * fac
         dout_wCO2M         = self.dwCO2M * fac
         dout_wCOS          = self.dwCOS
-        dout_wCOSP         = self.dwCOSP
-        dout_wCOSS         = self.dwCOSS
+        if model.sw_ls:
+            if model.ls_type=='ags':
+                dout_wCOSP         = self.dwCOSP
+                dout_wCOSS         = self.dwCOSS
         if model.ls_type=='canopy_model':
             pass #to be implemented later
         dout_COS           = self.dCOS
@@ -2108,8 +2249,15 @@ class adjoint_modelling:
         dout_v             = self.dv
         dout_deltav        = self.ddeltav
         dout_vw            = self.dvw
+        
+        dout_T2m           = self.dT2m
+        dout_q2m           = self.dq2m
+        dout_u2m           = self.du2m
+        dout_v2m           = self.dv2m
+        dout_e2m           = self.de2m
+        dout_esat2m        = self.desat2m
         if model.sw_sl:
-            dout_T2m           = self.dT2m
+            
             dout_thetamh       = self.dthetamh
             dout_thetamh2      = self.dthetamh2
             dout_thetamh3      = self.dthetamh3
@@ -2124,7 +2272,7 @@ class adjoint_modelling:
             dout_Tmh5          = self.dTmh5
             dout_Tmh6          = self.dTmh6
             dout_Tmh7          = self.dTmh7
-            dout_q2m           = self.dq2m
+            
             dout_qmh           = self.dqmh
             dout_qmh2          = self.dqmh2
             dout_qmh3          = self.dqmh3
@@ -2132,10 +2280,6 @@ class adjoint_modelling:
             dout_qmh5          = self.dqmh5
             dout_qmh6          = self.dqmh6
             dout_qmh7          = self.dqmh7
-            dout_u2m           = self.du2m
-            dout_v2m           = self.dv2m
-            dout_e2m           = self.de2m
-            dout_esat2m        = self.desat2m
             dout_COSmh         = self.dCOSmh
             dout_COSmh2        = self.dCOSmh2
             dout_COSmh3        = self.dCOSmh3
@@ -2148,11 +2292,14 @@ class adjoint_modelling:
             dout_COSsurf       = self.dCOSsurf
             dout_CO2surf       = self.dCO2surf
             dout_Tsurf         = self.dTsurf
-            dout_thetasurf     = self.dthetasurf
-            dout_thetavsurf    = self.dthetavsurf
-            dout_qsurf         = self.dqsurf
+            dout_Cm            = self.dCm
+        dout_thetasurf     = self.dthetasurf
+        dout_thetavsurf    = self.dthetavsurf
+        dout_qsurf         = self.dqsurf
         dout_ustar         = self.dustar
         dout_Cs            = self.dCs
+        dout_L             = self.dL
+        dout_Rib           = self.dRib
         dout_Swin          = self.dSwin
         dout_Swout         = self.dSwout
         dout_Lwin          = self.dLwin
@@ -2171,8 +2318,7 @@ class adjoint_modelling:
         dout_Ts            = self.dTs
         dout_zlcl          = self.dlcl
         dout_RH_h          = self.dRH_h
-        if model.sw_cu:
-            dout_ac            = self.dac
+        dout_ac            = self.dac
         dout_M             = self.dM
         dout_dz            = self.ddz_h   
         
@@ -2184,10 +2330,11 @@ class adjoint_modelling:
             for key in self.Output_tl_sto:
                 if key in self.__dict__:
                     self.__dict__[key] = self.Output_tl_sto[key]
-        for key in self.Output_tl_sto:
-            if key == returnvariable:
-                returnvar = self.Output_tl_sto[returnvariable]
-                return returnvar
+        if returnvariable is not None:
+            for key in self.Output_tl_sto:
+                if key == returnvariable:
+                    returnvar = self.Output_tl_sto[returnvariable]
+                    return returnvar
         
     def tl_integrate_land_surface(self,model,checkpoint,returnvariable=None):
         self.Output_tl_ils = {}
@@ -2205,10 +2352,11 @@ class adjoint_modelling:
             for key in self.Output_tl_ils:
                 if key in self.__dict__:
                     self.__dict__[key] = self.Output_tl_ils[key]
-        for key in self.Output_tl_ils:
-            if key == returnvariable:
-                returnvar = self.Output_tl_ils[returnvariable]
-                return returnvar
+        if returnvariable is not None:
+            for key in self.Output_tl_ils:
+                if key == returnvariable:
+                    returnvar = self.Output_tl_ils[returnvariable]
+                    return returnvar
             
     def tl_integrate_mixed_layer(self,model,checkpoint,returnvariable=None):
         dz_h = checkpoint['iml_dz_h_middle']
@@ -2242,7 +2390,7 @@ class adjoint_modelling:
         if(dz_h < dz0):
             ddz_h = 0
         if(model.sw_wind):
-            #before here wasthe statement: raise Exception ('wind not implemented')
+            #before here was the statement: raise Exception ('wind not implemented')
             du        = du0      + model.dt * self.dutend
             ddeltau   = ddeltau0     + model.dt * self.ddeltautend
             dv        = dv0      + model.dt * self.dvtend
@@ -2255,10 +2403,11 @@ class adjoint_modelling:
             for key in self.Output_tl_iml:
                 if key in self.__dict__:
                     self.__dict__[key] = self.Output_tl_iml[key]
-        for key in self.Output_tl_iml:
-            if key == returnvariable:
-                returnvar = self.Output_tl_iml[returnvariable]
-                return returnvar
+        if returnvariable is not None:
+            for key in self.Output_tl_iml:
+                if key == returnvariable:
+                    returnvar = self.Output_tl_iml[returnvariable]
+                    return returnvar
     
     def initialise_adjoint(self):
         #All variables that could be used in multiple modules, without being set to zero after use in every module should appear here
@@ -2606,8 +2755,8 @@ class adjoint_modelling:
             self.adpsimterm2_for_dfx_dL = 0
             self.adpsihterm_for_dfx_dzsl = 0
             self.adpsimterm_for_dfx_dzsl = 0
-            self.adRib = 0
             self.adL0 = 0
+        self.adRib = 0
         
         #ags
         self.adwCO2, self.adwCO2A,  self.adwCO2R, self.adrs = 0,0,0,0
@@ -2625,6 +2774,7 @@ class adjoint_modelling:
         self.adTs = 0
         self.adgcco2 = 0
         self.adPARfract = 0
+        self.adR10 = 0
         
         self.adgctCOS_dthetasurf = 0
         self.adgctCOS_dTs = 0
@@ -2802,6 +2952,7 @@ class adjoint_modelling:
         self.ady_dPARfract = 0
         self.adPAR_dPARfract = 0
         self.adpexp_dPARfract = 0
+        self.adResp_dR10 = 0
         
         #run mixed layer
         self.addeltatheta = 0
@@ -2870,6 +3021,12 @@ class adjoint_modelling:
         self.addivU = 0
         self.addFz = 0
         self.adbeta = 0
+        self.advw_dustar = 0
+        self.advw_du = 0
+        self.advw_dv = 0
+        self.aduw_dustar = 0
+        self.aduw_du = 0
+        self.aduw_dv = 0
         
         #integrate mixed layer
         self.addz_h = 0
@@ -2975,6 +3132,24 @@ class adjoint_modelling:
         self.adwstar = 0
         self.adueff = 0
         self.adqsatsurf = 0
+        self.adrssoilmin = 0
+        self.adwgeq_da = 0
+        self.adwgeq_dp = 0
+        self.adp = 0
+        self.ada = 0
+        self.adC2_dC2ref = 0
+        self.adC2ref = 0
+        self.adC1_dC1sat = 0
+        self.adC1_dwsat = 0
+        self.adC1_dwg = 0
+        self.adC1_db = 0
+        self.adb = 0
+        self.adC1sat = 0
+        self.adCG_dCGsat = 0
+        self.adCG_dwsat = 0
+        self.adCG_dw2 = 0
+        self.adCG_db = 0
+        self.adCGsat = 0
         
         #integrate land surface
         #some vars needed by this have already been set in another module
@@ -3172,6 +3347,25 @@ class adjoint_modelling:
         self.adout_wCOS = 0
         self.adout_wCOSP = 0
         self.adout_wCOSS = 0
+        self.adout_Cm = 0
+        self.adout_Rib = 0
+        self.adout_L = 0
+        
+        #jarvis_stewart
+        self.adrs_drsmin = 0
+        self.adrs_dLAI = 0
+        self.adrs_df1 = 0
+        self.adrs_df3 = 0
+        self.adrs_df4 = 0
+        self.adf4 = 0
+        self.adf3 = 0
+        self.adgD = 0
+        self.adf1 = 0
+        self.adrs_df2js = 0
+        self.adf2js_dwfc = 0
+        self.adf2js_dwwilt = 0
+        self.adf2js_dw2 = 0
+        self.adf2js = 0
         
         #timestep (in tangent linear it is part of tl_full_model)
         self.adwtheta_input = np.zeros(self.model.tsteps) #this would crash if the model has not yet been ran
@@ -3443,10 +3637,9 @@ class adjoint_modelling:
         #statement dout_M             = self.dM
         self.adM += self.adout_M
         self.adout_M = 0
-        if model.sw_cu:
-            #statement dout_ac            = self.dac
-            self.adac += self.adout_ac
-            self.adout_ac = 0
+        #statement dout_ac            = self.dac
+        self.adac += self.adout_ac
+        self.adout_ac = 0
         #statement dout_RH_h          = self.dRH_h
         self.adRH_h += self.adout_RH_h
         self.adout_RH_h  = 0
@@ -3501,22 +3694,31 @@ class adjoint_modelling:
         #statement dout_Swin          = self.dSwin
         self.adSwin += self.adout_Swin
         self.adout_Swin = 0
+        #statement dout_Rib           = self.dRib
+        self.adRib += self.adout_Rib
+        self.adout_Rib = 0
+        #statement dout_L             = self.dL
+        self.adL += self.adout_L
+        self.adout_L = 0
         #statement dout_Cs            = self.dCs
         self.adCs += self.adout_Cs 
         self.adout_Cs = 0
         #statement dout_ustar         = self.dustar
         self.adustar += self.adout_ustar
         self.adout_ustar = 0
+        #statement dout_qsurf         = self.dqsurf
+        self.adqsurf += self.adout_qsurf 
+        self.adout_qsurf = 0
+        #statement dout_thetavsurf    = self.dthetavsurf
+        self.adthetavsurf += self.adout_thetavsurf 
+        self.adout_thetavsurf = 0
+        #statement dout_thetasurf     = self.dthetasurf
+        self.adthetasurf += self.adout_thetasurf
+        self.adout_thetasurf = 0
         if model.sw_sl:
-            #statement dout_qsurf         = self.dqsurf
-            self.adqsurf += self.adout_qsurf 
-            self.adout_qsurf = 0
-            #statement dout_thetavsurf    = self.dthetavsurf
-            self.adthetavsurf += self.adout_thetavsurf 
-            self.adout_thetavsurf = 0
-            #statement dout_thetasurf     = self.dthetasurf
-            self.adthetasurf += self.adout_thetasurf
-            self.adout_thetasurf = 0
+            #statement dout_Cm         = self.dCm
+            self.adCm += self.adout_Cm
+            self.adout_Cm = 0
             #statement dout_Tsurf         = self.dTsurf
             self.adTsurf += self.adout_Tsurf
             self.adout_Tsurf = 0
@@ -3553,18 +3755,6 @@ class adjoint_modelling:
             #statement dout_COSmh         = self.dCOSmh
             self.adCOSmh += self.adout_COSmh
             self.adout_COSmh = 0
-            #statement dout_esat2m        = self.desat2m
-            self.adesat2m += self.adout_esat2m
-            self.adout_esat2m = 0
-            #statement dout_e2m           = self.de2m
-            self.ade2m += self.adout_e2m
-            self.adout_e2m = 0
-            #statement dout_v2m           = self.dv2m
-            self.adv2m += self.adout_v2m  
-            self.adout_v2m = 0
-            #statement dout_u2m           = self.du2m
-            self.adu2m += self.adout_u2m   
-            self.adout_u2m = 0
             #statement dout_qmh7           = self.dqmh7
             self.adqmh7 += self.adout_qmh7 
             self.adout_qmh7 = 0
@@ -3586,9 +3776,6 @@ class adjoint_modelling:
             #statement dout_qmh           = self.dqmh
             self.adqmh += self.adout_qmh 
             self.adout_qmh = 0
-            #statement dout_q2m           = self.dq2m
-            self.adq2m += self.adout_q2m   
-            self.adout_q2m = 0
             #statement dout_Tmh7           = self.dTmh7
             self.adTmh7 += self.adout_Tmh7  
             self.adout_Tmh7 = 0
@@ -3631,9 +3818,25 @@ class adjoint_modelling:
             #statement dout_thetamh       = self.dthetamh
             self.adthetamh += self.adout_thetamh  
             self.adout_thetamh = 0
-            #statement dout_T2m           = self.dT2m
-            self.adT2m += self.adout_T2m 
-            self.adout_T2m = 0
+            
+        #statement dout_esat2m        = self.desat2m
+        self.adesat2m += self.adout_esat2m
+        self.adout_esat2m = 0
+        #statement dout_e2m           = self.de2m
+        self.ade2m += self.adout_e2m
+        self.adout_e2m = 0
+        #statement dout_v2m           = self.dv2m
+        self.adv2m += self.adout_v2m  
+        self.adout_v2m = 0
+        #statement dout_u2m           = self.du2m
+        self.adu2m += self.adout_u2m   
+        self.adout_u2m = 0
+        #statement dout_q2m           = self.dq2m
+        self.adq2m += self.adout_q2m   
+        self.adout_q2m = 0
+        #statement dout_T2m           = self.dT2m
+        self.adT2m += self.adout_T2m 
+        self.adout_T2m = 0
         #statement dout_vw            = self.dvw
         self.advw += self.adout_vw   
         self.adout_vw = 0
@@ -3658,12 +3861,14 @@ class adjoint_modelling:
         #statement dout_COS           = self.dCOS
         self.adCOS += self.adout_COS
         self.adout_COS = 0
-        #statement dout_wCOSS         = self.dwCOSS
-        self.adwCOSS += self.adout_wCOSS
-        self.adout_wCOSS = 0
-        #statement dout_wCOSP         = self.dwCOSP
-        self.adwCOSP += self.adout_wCOSP
-        self.adout_wCOSP = 0
+        if model.sw_ls:
+            if model.ls_type=='ags':
+                #statement dout_wCOSS         = self.dwCOSS
+                self.adwCOSS += self.adout_wCOSS
+                self.adout_wCOSS = 0
+                #statement dout_wCOSP         = self.dwCOSP
+                self.adwCOSP += self.adout_wCOSP
+                self.adout_wCOSP = 0
         #statement dout_wCOS          = self.dwCOS
         self.adwCOS += self.adout_wCOS
         self.adout_wCOS = 0
@@ -3975,8 +4180,8 @@ class adjoint_modelling:
             #statement dwe_dh    = 5* ustar ** 3. * thetav / model.g / deltathetav * (-1) * h**(-2) * self.dh
             self.adh += 5* ustar ** 3. * thetav / model.g / deltathetav * (-1) * h**(-2) * self.adwe_dh
             self.adwe_dh = 0
-            #statement dwe_ddeltathetav = (wthetave + 5. * ustar ** 3. * thetav / (model.g * h)) * (-1) * deltathetav**(-2) * self.ddeltathetav
-            self.addeltathetav += (wthetave + 5. * ustar ** 3. * thetav / (model.g * h)) * (-1) * deltathetav**(-2) * self.adwe_ddeltathetav
+            #statement dwe_ddeltathetav = (-wthetave + 5. * ustar ** 3. * thetav / (model.g * h)) * (-1) * deltathetav**(-2) * self.ddeltathetav
+            self.addeltathetav += (-wthetave + 5. * ustar ** 3. * thetav / (model.g * h)) * (-1) * deltathetav**(-2) * self.adwe_ddeltathetav
             self.adwe_ddeltathetav = 0
         else:
             #statement dwe_dwthetav = -1/ deltathetav * dwthetave
@@ -4146,7 +4351,7 @@ class adjoint_modelling:
         self.adac += wstar * self.adM
         self.adwstar += ac * self.adM
         self.adM = 0
-        if 0.5 + (0.36 * np.arctan(1.55 * ((q - qsat_variable_rc) / q2_h**0.5))) <= 0:
+        if 0.5 + (0.36 * np.arctan(1.55 * ((q - qsat_variable_rc) / q2_h**0.5))) < 0:
             #statement dac = 0
             self.adac = 0
         else:
@@ -4333,8 +4538,16 @@ class adjoint_modelling:
         d1 = checkpoint['rls_d1_end']
         LEsoil = checkpoint['rls_LEsoil_end']
         wgeq = checkpoint['rls_wgeq_end']
-        rs = checkpoint['ags_rs_end']
+        rs = checkpoint['rls_rs_end'] #rs calculated in e.g. ags
         ustar = checkpoint['rls_ustar']
+        rssoilmin = checkpoint['rls_rssoilmin']
+        f2 = checkpoint['rls_f2_end']
+        CGsat = checkpoint['rls_CGsat']
+        b = checkpoint['rls_b']
+        C1sat = checkpoint['rls_C1sat']
+        C2ref = checkpoint['rls_C2ref']
+        a = checkpoint['rls_a']
+        p = checkpoint['rls_p']
         
         #statement dwq       = dLE / (model.rho * model.Lv)
         self.adLE += 1 / (model.rho * model.Lv) * self.adwq
@@ -4365,35 +4578,61 @@ class adjoint_modelling:
         #statement dwgtend_dLEsoil = - C1 / (model.rhow * d1) / model.Lv * dLEsoil 
         self.adLEsoil += - C1 / (model.rhow * d1) / model.Lv * self.adwgtend_dLEsoil 
         self.adwgtend_dLEsoil = 0
-        #statement dwgeq      = dwgeq_dw2 + dwgeq_dwsat
+        #statement dwgeq      = dwgeq_dw2 + dwgeq_dwsat + dwgeq_da + dwgeq_dp
         self.adwgeq_dw2 += self.adwgeq
         self.adwgeq_dwsat += self.adwgeq
+        self.adwgeq_da += self.adwgeq
+        self.adwgeq_dp += self.adwgeq
         self.adwgeq = 0
-        #statement dwgeq_dwsat = -self.dwsat * model.a * ((w2 / wsat) ** model.p * (1. - (w2 / wsat) ** (8. * model.p))) - wsat * model.a * (model.p * (w2 / wsat) ** (model.p - 1) * w2 * (-1) * wsat**(-2) * self.dwsat * (1. - (w2 / wsat) ** (8. * model.p)) + (w2 / wsat) ** (model.p) * -1 * (8. * model.p) * (w2 / wsat) ** (8. * model.p - 1) * w2 * (-1) * wsat**(-2) * self.dwsat)
-        self.adwsat += -1 * model.a * ((w2 / wsat) ** model.p * (1. - (w2 / wsat) ** (8. * model.p))) * self.adwgeq_dwsat
-        self.adwsat += - wsat * model.a * model.p * (w2 / wsat) ** (model.p - 1) * w2 * (-1) * wsat**(-2) * (1. - (w2 / wsat) ** (8. * model.p)) * self.adwgeq_dwsat
-        self.adwsat += - wsat * model.a * (w2 / wsat) ** (model.p) * -1 * (8. * model.p) * (w2 / wsat) ** (8. * model.p - 1) * w2 * (-1) * wsat**(-2) * self.adwgeq_dwsat
+        #statement dwgeq_dp = - wsat * a * ( (1. - (w2 / wsat) ** (8. * p)) * (w2 / wsat) ** p * np.log(w2 / wsat) + (w2 / wsat) ** p * -1 * (w2 / wsat) ** (8. * p) * np.log(w2 / wsat) * 8) * self.dp
+        self.adp += - wsat * a * ( (1. - (w2 / wsat) ** (8. * p)) * (w2 / wsat) ** p * np.log(w2 / wsat) + (w2 / wsat) ** p * -1 * (w2 / wsat) ** (8. * p) * np.log(w2 / wsat) * 8) * self.adwgeq_dp
+        self.adwgeq_dp = 0
+        #statement dwgeq_da = - wsat * (w2 / wsat) ** p * (1. - (w2 / wsat) ** (8. * p)) * self.da
+        self.ada += - wsat * (w2 / wsat) ** p * (1. - (w2 / wsat) ** (8. * p)) * self.adwgeq_da
+        self.adwgeq_da = 0
+        #statement dwgeq_dwsat = -self.dwsat * a * ((w2 / wsat) ** p * (1. - (w2 / wsat) ** (8. * p))) - wsat * a * (p * (w2 / wsat) ** (p - 1) * w2 * (-1) * wsat**(-2) * self.dwsat * (1. - (w2 / wsat) ** (8. * p)) + (w2 / wsat) ** (p) * -1 * (8. * p) * (w2 / wsat) ** (8. * p - 1) * w2 * (-1) * wsat**(-2) * self.dwsat)
+        self.adwsat += -1 * a * ((w2 / wsat) ** p * (1. - (w2 / wsat) ** (8. * p))) * self.adwgeq_dwsat
+        self.adwsat += - wsat * a * p * (w2 / wsat) ** (p - 1) * w2 * (-1) * wsat**(-2) * (1. - (w2 / wsat) ** (8. * p)) * self.adwgeq_dwsat
+        self.adwsat += - wsat * a * (w2 / wsat) ** (p) * -1 * (8. * p) * (w2 / wsat) ** (8. * p - 1) * w2 * (-1) * wsat**(-2) * self.adwgeq_dwsat
         self.adwgeq_dwsat = 0
-        #statement dwgeq_dw2  = self.dw2 - wsat * model.a * (model.p * (w2 / wsat) ** (model.p - 1) * self.dw2 / wsat * (1. - (w2 / wsat) ** (8. * model.p)) + (w2 / wsat) ** (model.p) * -1 * (8. * model.p) * (w2 / wsat) ** (8. * model.p - 1) * self.dw2 / wsat)
+        #statement dwgeq_dw2  = self.dw2 - wsat * a * (p * (w2 / wsat) ** (p - 1) * self.dw2 / wsat * (1. - (w2 / wsat) ** (8. * p)) + (w2 / wsat) ** (p) * -1 * (8. * p) * (w2 / wsat) ** (8. * p - 1) * self.dw2 / wsat)
         self.adw2 += self.adwgeq_dw2
-        self.adw2 += - wsat * model.a * model.p * (w2 / wsat) ** (model.p - 1) * self.adwgeq_dw2 / wsat * (1. - (w2 / wsat) ** (8. * model.p))
-        self.adw2 += - wsat * model.a * (w2 / wsat) ** (model.p) * -1 * (8. * model.p) * (w2 / wsat) ** (8. * model.p - 1) * self.adwgeq_dw2 / wsat
+        self.adw2 += - wsat * a * p * (w2 / wsat) ** (p - 1) * self.adwgeq_dw2 / wsat * (1. - (w2 / wsat) ** (8. * p))
+        self.adw2 += - wsat * a * (w2 / wsat) ** (p) * -1 * (8. * p) * (w2 / wsat) ** (8. * p - 1) * self.adwgeq_dw2 / wsat
         self.adwgeq_dw2 = 0
-        #statement dC2        = dC2_dw2 + dC2_dwsat
+        #statement dC2        = dC2_dC2ref + dC2_dw2 + dC2_dwsat
+        self.adC2_dC2ref += self.adC2
         self.adC2_dw2 += self.adC2
         self.adC2_dwsat += self.adC2
         self.adC2 = 0
-        #statement dC2_dwsat  = model.C2ref * (w2 * (-1) * (wsat - w2)**(-2) * self.dwsat)
-        self.adwsat += model.C2ref * w2 * (-1) * (wsat - w2)**(-2) * self.adC2_dwsat
+        #statement dC2_dwsat  = C2ref * (w2 * (-1) * (wsat - w2)**(-2) * self.dwsat)
+        self.adwsat += C2ref * w2 * (-1) * (wsat - w2)**(-2) * self.adC2_dwsat
         self.adC2_dwsat = 0
-        #statement dC2_dw2    = model.C2ref * (self.dw2 / (wsat - w2) + w2 * (-1) * (wsat - w2)**(-2) * -self.dw2)
-        self.adw2 += model.C2ref * 1 / (wsat - w2) * self.adC2_dw2
-        self.adw2 += model.C2ref * w2 * (-1) * (wsat - w2)**(-2) * -self.adC2_dw2
+        #statement dC2_dw2    = C2ref * (self.dw2 / (wsat - w2) + w2 * (-1) * (wsat - w2)**(-2) * -self.dw2)
+        self.adw2 += C2ref * 1 / (wsat - w2) * self.adC2_dw2
+        self.adw2 += C2ref * w2 * (-1) * (wsat - w2)**(-2) * -self.adC2_dw2
         self.adC2_dw2 = 0
-        #statement dC1 = model.C1sat * (model.b / 2 + 1.) * (wsat / wg) ** (model.b / 2.) * (self.dwsat / wg + wsat * (-1) * wg**(-2) * self.dwg)
-        self.adwsat += model.C1sat * (model.b / 2 + 1.) * (wsat / wg) ** (model.b / 2.) * 1 / wg * self.adC1
-        self.adwg += model.C1sat * (model.b / 2 + 1.) * (wsat / wg) ** (model.b / 2.) * wsat * (-1) * wg**(-2) * self.adC1
+        #statement dC2_dC2ref = w2 / (wsat - w2) * self.dC2ref
+        self.adC2ref += w2 / (wsat - w2) * self.adC2_dC2ref
+        self.adC2_dC2ref = 0
+        #statement dC1 = dC1_dC1sat + dC1_dwsat + dC1_dwg + dC1_db
+        self.adC1_dC1sat += self.adC1
+        self.adC1_dwsat += self.adC1
+        self.adC1_dwg += self.adC1
+        self.adC1_db += self.adC1
         self.adC1 = 0
+        #statement dC1_db     = C1sat * (wsat / wg) ** (b / 2. + 1.) * np.log(wsat / wg) * 1 / 2. * self.db
+        self.adb += C1sat * (wsat / wg) ** (b / 2. + 1.) * np.log(wsat / wg) * 1 / 2. * self.adC1_db
+        self.adC1_db = 0
+        #statement dC1_dwg    = C1sat * (b / 2 + 1.) * (wsat / wg) ** (b / 2.) * wsat * (-1) * wg**(-2) * self.dwg
+        self.adwg += C1sat * (b / 2 + 1.) * (wsat / wg) ** (b / 2.) * wsat * (-1) * wg**(-2) * self.adC1_dwg
+        self.adC1_dwg = 0
+        #statement dC1_dwsat  = C1sat * (b / 2 + 1.) * (wsat / wg) ** (b / 2.) * self.dwsat / wg
+        self.adwsat += C1sat * (b / 2 + 1.) * (wsat / wg) ** (b / 2.) / wg * self.adC1_dwsat 
+        self.adC1_dwsat = 0
+        #statement dC1_dC1sat = (wsat / wg) ** (b / 2. + 1.) * self.dC1sat
+        self.adC1sat += (wsat / wg) ** (b / 2. + 1.) * self.adC1_dC1sat
+        self.adC1_dC1sat = 0
         #statement dTsoiltend = dTsoiltend_dCG + dTsoiltend_dG + dTsoiltend_dTsoil + dTsoiltend_dT2
         self.adTsoiltend_dCG += self.adTsoiltend
         self.adTsoiltend_dG += self.adTsoiltend
@@ -4412,10 +4651,24 @@ class adjoint_modelling:
         #statement dTsoiltend_dCG = G * dCG
         self.adCG += G * self.adTsoiltend_dCG
         self.adTsoiltend_dCG = 0
-        #statement dCG = model.CGsat * (model.b / (2. * np.log(10.))) * (wsat / w2)**(model.b / (2. * np.log(10.)) - 1) * (self.dwsat / w2 + wsat * (-1) * w2**(-2) * self.dw2)
-        self.adwsat += model.CGsat * (model.b / (2. * np.log(10.))) * (wsat / w2)**(model.b / (2. * np.log(10.)) - 1) * 1 / w2 * self.adCG
-        self.adw2 += model.CGsat * (model.b / (2. * np.log(10.))) * (wsat / w2)**(model.b / (2. * np.log(10.)) - 1) * wsat * (-1) * w2**(-2) * self.adCG
-        self.adCG  = 0
+        #statement dCG = dCG_dCGsat + dCG_dwsat + dCG_dw2 + dCG_db
+        self.adCG_dCGsat += self.adCG
+        self.adCG_dwsat += self.adCG
+        self.adCG_dw2 += self.adCG
+        self.adCG_db += self.adCG
+        self.adCG = 0
+        #statement dCG_db = CGsat * (wsat / w2)**(b / (2. * np.log(10.))) * np.log(wsat / w2) * 1 / (2. * np.log(10.)) * self.db 
+        self.adb += CGsat * (wsat / w2)**(b / (2. * np.log(10.))) * np.log(wsat / w2) * 1 / (2. * np.log(10.)) * self.adCG_db
+        self.adCG_db = 0
+        #statement dCG_dw2 = CGsat * (b / (2. * np.log(10.))) * (wsat / w2)**(b / (2. * np.log(10.)) - 1) *  wsat * (-1) * w2**(-2) * self.dw2
+        self.adw2 += CGsat * (b / (2. * np.log(10.))) * (wsat / w2)**(b / (2. * np.log(10.)) - 1) *  wsat * (-1) * w2**(-2) * self.adCG_dw2
+        self.adCG_dw2 = 0
+        #statement dCG_dwsat = CGsat * (b / (2. * np.log(10.))) * (wsat / w2)**(b / (2. * np.log(10.)) - 1) * self.dwsat / w2
+        self.adwsat += CGsat * (b / (2. * np.log(10.))) * (wsat / w2)**(b / (2. * np.log(10.)) - 1) * self.adCG_dwsat / w2
+        self.adCG_dwsat = 0
+        #statement dCG_dCGsat = (wsat / w2)**(b / (2. * np.log(10.))) * self.dCGsat
+        self.adCGsat += (wsat / w2)**(b / (2. * np.log(10.))) * self.adCG_dCGsat
+        self.adCG_dCGsat = 0
         if(self.model.ls_type != 'canopy_model'):
             #statement dLEref  = dnumerator_LEref / denominator_LEref + numerator_LEref * (-1) * denominator_LEref**(-2) * ddenominator_LEref
             self.adnumerator_LEref += 1 / denominator_LEref * self.adLEref
@@ -4604,7 +4857,7 @@ class adjoint_modelling:
             self.adtheta += model.rho * model.cp / ra * self.adp1_numerator_Ts
             self.adra += model.rho * model.cp * theta * (-1) * ra**(-2) * self.adp1_numerator_Ts
             self.adp1_numerator_Ts = 0
-            if Wl / Wlmx < 1: #cliq = min(1., self.Wl / Wlmx)
+            if Wl / Wlmx <= 1: #cliq = min(1., self.Wl / Wlmx)
                 #statement dcliq = self.dWl / Wlmx + Wl * (-1) * Wlmx ** (-2) * dWlmx
                 self.adWl += 1 / Wlmx * self.adcliq
                 self.adWlmx += Wl * (-1) * Wlmx ** (-2) * self.adcliq
@@ -4618,8 +4871,9 @@ class adjoint_modelling:
             self.adWlmx = 0
         else:
             raise Exception('part not yet implemented')
-        #statement drssoil = model.rssoilmin * df2
-        self.adf2 += model.rssoilmin * self.adrssoil
+        #statement drssoil = rssoilmin * df2 + f2 * self.drssoilmin
+        self.adf2 += rssoilmin * self.adrssoil
+        self.adrssoilmin += f2 * self.adrssoil
         self.adrssoil = 0
         if(wg > wwilt):
             #statement df2 = (self.dwfc - self.dwwilt) / (wg - wwilt) + (wfc - wwilt) * -1 * (wg - wwilt)**(-2) * (self.dwg - self.dwwilt)
@@ -4632,7 +4886,8 @@ class adjoint_modelling:
             #statement df2        = 0
             self.adf2        = 0 
         if(self.model.ls_type == 'js'): 
-            raise Exception('js not implemented') 
+            #statement drs = self.tl_jarvis_stewart(model,checkpoint,returnvariable='drs')
+            self.adj_jarvis_stewart(forcing,checkpoint,model)
         elif(self.model.ls_type == 'ags'):
             #statement drs = self.tl_ags(model,checkpoint,returnvariable='drs')
             self.adj_ags(forcing,checkpoint,model)
@@ -4667,7 +4922,7 @@ class adjoint_modelling:
             self.adueff += -1 * (Cs * ueff)**-2. * Cs * self.adra
             self.adra = 0
         else:
-            if ustar > 1.e-3:
+            if ustar >= 1.e-3:
                 #statement dra = dueff / ustar**2. + ueff * -2 * ustar**(-3) * self.dustar
                 self.adueff +=  self.adra / ustar**2.
                 self.adustar += ueff * -2 * ustar**(-3) * self.adra
@@ -4956,6 +5211,100 @@ class adjoint_modelling:
             for item in HTy_variables:
                 self.HTy_dict[item] = self.__dict__[item]
     
+    def adj_jarvis_stewart(self,forcing,checkpoint,model,HTy_variables=None):
+        Swin = checkpoint['js_Swin']
+        w2 = checkpoint['js_w2']
+        wwilt = checkpoint['js_wwilt']
+        wfc = checkpoint['js_wfc']
+        gD = checkpoint['js_gD']
+        e = checkpoint['js_e']
+        esatvar = checkpoint['js_esatvar']
+        theta = checkpoint['js_theta']
+        LAI = checkpoint['js_LAI']
+        f1 = checkpoint['js_f1_end']
+        f3 = checkpoint['js_f3_end']
+        f4 = checkpoint['js_f4_end']
+        rsmin = checkpoint['js_rsmin']
+        f2js = checkpoint['js_f2js_end']
+        
+        #statement drs = drs_drsmin + drs_dLAI + drs_df1 + drs_df2js + drs_df3 + drs_df4
+        self.adrs_drsmin += self.adrs
+        self.adrs_dLAI += self.adrs
+        self.adrs_df1 += self.adrs
+        self.adrs_df2js += self.adrs
+        self.adrs_df3 += self.adrs
+        self.adrs_df4 += self.adrs
+        self.adrs = 0
+        #statement drs_df4 = rsmin / LAI * f1 * f2js * f3 * df4
+        self.adf4 += rsmin / LAI * f1 * f2js * f3 * self.adrs_df4
+        self.adrs_df4 = 0
+        #statement drs_df3 = rsmin / LAI * f1 * f2js * f4 * df3
+        self.adf3 += rsmin / LAI * f1 * f2js * f4 * self.adrs_df3
+        self.adrs_df3 = 0
+        #statement drs_df2js = rsmin / LAI * f1 * f3 * f4 * df2js
+        self.adf2js += rsmin / LAI * f1 * f3 * f4 * self.adrs_df2js
+        self.adrs_df2js = 0
+        #statement drs_df1 = rsmin / LAI * f2js * f3 * f4 * df1
+        self.adf1 += rsmin / LAI * f2js * f3 * f4 * self.adrs_df1 
+        self.adrs_df1 = 0
+        #statement drs_dLAI = rsmin * f1 * f2js * f3 * f4 * -1 * LAI**(-2) * self.dLAI
+        self.adLAI += rsmin * f1 * f2js * f3 * f4 * -1 * LAI**(-2) * self.adrs_dLAI
+        self.adrs_dLAI = 0
+        #statement drs_drsmin = self.drsmin / LAI * f1 * f2js * f3 * f4 
+        self.adrsmin += 1 / LAI * f1 * f2js * f3 * f4 * self.adrs_drsmin
+        self.adrs_drsmin = 0
+        #statement df4 = -1 * (1. - 0.0016 * (298.0-theta)**2.)**(-2) * - 0.0016 * 2 * (298.0 - theta) * -1 * self.dtheta
+        self.adtheta += -1 * (1. - 0.0016 * (298.0-theta)**2.)**(-2) * - 0.0016 * 2 * (298.0 - theta) * -1 * self.adf4
+        self.adf4 = 0
+        #statement df3 = -1 * (np.exp(- gD * (esatvar - e) / 100.))**-2 * np.exp(- gD * (esatvar - e) / 100.) * (-self.dgD  * (esatvar - e) / 100 - 1 / 100 * gD * self.desatvar + 1 / 100 * gD * self.de)
+        self.adgD += -1 * (np.exp(- gD * (esatvar - e) / 100.))**-2 * np.exp(- gD * (esatvar - e) / 100.) * (esatvar - e) / 100 * -1 * self.adf3
+        self.adesatvar += -1 * (np.exp(- gD * (esatvar - e) / 100.))**-2 * np.exp(- gD * (esatvar - e) / 100.) * -1 / 100 * gD * self.adf3
+        self.ade += -1 * (np.exp(- gD * (esatvar - e) / 100.))**-2 * np.exp(- gD * (esatvar - e) / 100.) * 1 / 100 * gD * self.adf3
+        self.adf3 = 0
+        f2js = checkpoint['js_f2js_middle']
+        if f2js < 1:
+            #statement df2js = 0
+            self.adf2js = 0
+        if(w2 > wwilt):
+            #statement df2js = df2js_dwfc + df2js_dwwilt + df2js_dw2
+            self.adf2js_dwfc += self.adf2js
+            self.adf2js_dwwilt += self.adf2js
+            self.adf2js_dw2 += self.adf2js
+            self.adf2js = 0
+            #statement df2js_dw2 = (wfc - wwilt) * -1 * (w2 - wwilt)**(-2) * self.dw2
+            self.adw2 += (wfc - wwilt) * -1 * (w2 - wwilt)**(-2) * self.adf2js_dw2
+            self.adf2js_dw2 = 0
+            #statement df2js_dwwilt = 1 / (w2 - wwilt) * -1 * self.dwwilt + (wfc - wwilt) * -1 * (w2 - wwilt)**(-2) * -1 * self.dwwilt
+            self.adwwilt += 1 / (w2 - wwilt) * -1 * self.adf2js_dwwilt
+            self.adwwilt += (wfc - wwilt) * -1 * (w2 - wwilt)**(-2) * -1 * self.adf2js_dwwilt
+            self.adf2js_dwwilt = 0
+            #statement df2js_dwfc = 1 / (w2 - wwilt) * self.dwfc
+            self.adwfc += 1 / (w2 - wwilt) * self.adf2js_dwfc
+            self.adf2js_dwfc = 0
+        else:
+            #statement df2js = 0
+            self.adf2js = 0
+        if(model.sw_rad):
+            if (0.004 * Swin + 0.05) / (0.81 * (0.004 * Swin + 1.)) <= 1:
+                #statement df1 = -1 * ((0.004 * Swin + 0.05) / (0.81 * (0.004 * Swin + 1.)))**(-2) * (0.004 * self.dSwin / (0.81 * (0.004 * Swin + 1.)) + (0.004 * Swin + 0.05) * -1 * (0.81 * (0.004 * Swin + 1.))**(-2) * 0.81 * 0.004 * self.dSwin)
+                self.adSwin += -1 * ((0.004 * Swin + 0.05) / (0.81 * (0.004 * Swin + 1.)))**(-2) * 0.004 / (0.81 * (0.004 * Swin + 1.)) * self.adf1
+                self.adSwin += -1 * ((0.004 * Swin + 0.05) / (0.81 * (0.004 * Swin + 1.)))**(-2) * (0.004 * Swin + 0.05) * -1 * (0.81 * (0.004 * Swin + 1.))**(-2) * 0.81 * 0.004 * self.adf1
+                self.adf1 = 0
+            else:
+                # statement df1 = 0
+                self.adf1 = 0
+        else:
+            # statement df1 = 0
+            self.adf1 = 0
+               
+        if self.adjointtestingjarvis_stewart:
+            self.HTy = np.zeros(len(HTy_variables))
+            for i in range(len(HTy_variables)):
+                try: 
+                    self.HTy[i] = self.__dict__[HTy_variables[i]]
+                except KeyError:
+                    self.HTy[i] = locals()[HTy_variables[i]] #in case it is not a self variable
+    
     def adj_ags(self,forcing,checkpoint,model,HTy_variables=None):
         if(model.c3c4 == 'c3'):
             c = 0
@@ -4966,7 +5315,7 @@ class adjoint_modelling:
 
         #adwCO2, adwCO2A,  adwCO2R, adrs, adAg = self.y
         thetasurf, Ts, CO2, wg, Swin, ra, Tsoil = checkpoint['ags_thetasurf'],checkpoint['ags_Ts'],checkpoint['ags_CO2'],checkpoint['ags_wg'],checkpoint['ags_Swin'],checkpoint['ags_ra'],checkpoint['ags_Tsoil']      
-        COS,COSsurf,LAI,alfa_sto = checkpoint['ags_COS'],checkpoint['ags_COSsurf'],checkpoint['ags_LAI'],checkpoint['ags_alfa_sto']
+        COS,LAI,alfa_sto = checkpoint['ags_COS'],checkpoint['ags_LAI'],checkpoint['ags_alfa_sto']
         
         texp, fw, Ds, D0, Dstar, co2abs, CO2comp, rsCO2, ci, PAR, alphac, cfrac = checkpoint['ags_texp_end'],checkpoint['ags_fw_end'],checkpoint['ags_Ds_end'],checkpoint['ags_D0_end'],checkpoint['ags_Dstar_end'],checkpoint['ags_co2abs_end'],checkpoint['ags_CO2comp_end'],checkpoint['ags_rsCO2_end'],checkpoint['ags_ci_end'],checkpoint['ags_PAR_end'],checkpoint['ags_alphac_end'],checkpoint['ags_cfrac_end']
         gm, gm1,gm2,gm3,sqrtf,sqterm,fmin0 = checkpoint['ags_gm_end'],checkpoint['ags_gm1_end'],checkpoint['ags_gm2_end'],checkpoint['ags_gm3_end'],checkpoint['ags_sqrtf_end'],checkpoint['ags_sqterm_end'],checkpoint['ags_fmin0_end']
@@ -4978,6 +5327,10 @@ class adjoint_modelling:
         gctCOS = checkpoint['ags_gctCOS_end']
         PARfract = checkpoint['ags_PARfract']
         cveg = checkpoint['ags_cveg']
+        wwilt = checkpoint['ags_wwilt']
+        wfc = checkpoint['ags_wfc']
+        w2 = checkpoint['ags_w2']
+        R10 = checkpoint['ags_R10']
         #statement dwCOS   = dwCOSP + dwCOSS
         self.adwCOSP += self.adwCOS
         self.adwCOSS += self.adwCOS
@@ -4996,7 +5349,7 @@ class adjoint_modelling:
             #statement self.dmol_rat_ocs_atm = self.dCOSsurf
             self.adCOSsurf += self.admol_rat_ocs_atm
             self.admol_rat_ocs_atm = 0
-        else:
+        elif model.soilCOSmodeltype == None:
             #statement dwCOSS = 0
             self.adwCOSS = 0
         if model.ags_C_mode == 'MXL': 
@@ -5006,6 +5359,7 @@ class adjoint_modelling:
             self.adCOS += -1 / (1 / gctCOS + ra) * self.adwCOSP
             self.adwCOSP = 0
         elif model.ags_C_mode == 'surf':
+            COSsurf = checkpoint['ags_COSsurf']
             #statement dwCOSP  = COSsurf * (1 / gctCOS + ra)**(-2) * (-1 * gctCOS**(-2) * dgctCOS + self.dra) + -1 / (1 / gctCOS + ra) * self.dCOSsurf
             self.adgctCOS += COSsurf * (1 / gctCOS + ra)**(-2) * -1 * gctCOS**(-2) * self.adwCOSP
             self.adra += COSsurf * (1 / gctCOS + ra)**(-2) * self.adwCOSP
@@ -5017,9 +5371,10 @@ class adjoint_modelling:
         self.adwCO2A  += self.adwCO2
         self.adwCO2R  += self.adwCO2
         self.adwCO2   = 0.0
-        # statement dwCO2R  = (dResp_dwg + dResp_dTsoil)  * (model.mair / (model.rho * model.mco2))
-        self.adResp_dwg     += self.adwCO2R * (model.mair / (model.rho * model.mco2))
+        # statement dwCO2R  = (dResp_dTsoil + dResp_dwg + dResp_dR10)  * (model.mair / (model.rho * model.mco2))
         self.adResp_dTsoil  += self.adwCO2R * (model.mair / (model.rho * model.mco2))
+        self.adResp_dwg     += self.adwCO2R * (model.mair / (model.rho * model.mco2))
+        self.adResp_dR10    += self.adwCO2R * (model.mair / (model.rho * model.mco2))
         self.adwCO2R    = 0.0
         #statement dwCO2A  = (dAn_dthetasurf + dAn_dTs + dAn_de + dAn_dCO2 + dAn_dra + dAn_dPARfract + dAn_dSwin + dAn_dcveg + dAn_dw2 + dAn_dwfc + dAn_dwwilt + dAn_dalfa_sto + dAn_dLAI)  * (model.mair / (model.rho * model.mco2))
         self.adAn_dthetasurf += (model.mair / (model.rho * model.mco2)) * self.adwCO2A 
@@ -5036,11 +5391,14 @@ class adjoint_modelling:
         self.adAn_dalfa_sto += (model.mair / (model.rho * model.mco2)) * self.adwCO2A 
         self.adAn_dLAI += (model.mair / (model.rho * model.mco2)) * self.adwCO2A
         self.adwCO2A    = 0.0
-        #statement dResp_dwg    = -dfw_dwg*model.R10* np.exp(texp)
-        self.adfw_dwg      += -self.adResp_dwg    *model.R10* np.exp(texp)
+        #statement dResp_dR10    = (1. - fw) * np.exp(texp) * self.dR10
+        self.adR10 += (1. - fw) * np.exp(texp) * self.adResp_dR10
+        self.adResp_dR10 = 0
+        #statement dResp_dwg    = -dfw_dwg*R10* np.exp(texp)
+        self.adfw_dwg      += -self.adResp_dwg    *R10* np.exp(texp)
         self.adResp_dwg     = 0.0
-        #statement dResp_dTsoil = dtexp_dTsoil*model.R10 * (1. - fw) * np.exp(texp)
-        self.adtexp_dTsoil +=  self.adResp_dTsoil *model.R10 * (1. - fw) * np.exp(texp)       
+        #statement dResp_dTsoil = dtexp_dTsoil*R10 * (1. - fw) * np.exp(texp)
+        self.adtexp_dTsoil +=  self.adResp_dTsoil *R10 * (1. - fw) * np.exp(texp)       
         self.adResp_dTsoil  = 0.0
         #       dtexp_dTsoil = dTsoil*model.E0/(8.314*Tsoil**2)
         self.adTsoil   += self.adtexp_dTsoil*model.E0/(8.314*Tsoil**2)
@@ -5454,6 +5812,44 @@ class adjoint_modelling:
         self.adalphac_dthetasurf += -1 * PAR / (AmRdark) * self.adpexp_dthetasurf
         self.adAmRdark_dthetasurf += alphac * PAR/(AmRdark**2) * self.adpexp_dthetasurf
         self.adpexp_dthetasurf = 0
+        #statement dalphac_dCO2 = model.alpha0[c] * ( (CO2comp-co2abs) * dxdiv_dCO2 / (xdiv**2) + dco2abs/xdiv)
+        self.adxdiv_dCO2 += model.alpha0[c] *  (CO2comp-co2abs) / (xdiv**2) * self.adalphac_dCO2
+        self.adco2abs += model.alpha0[c] * 1 / xdiv * self.adalphac_dCO2
+        self.adalphac_dCO2 = 0
+        #statement dalphac_dthetasurf = model.alpha0[c] * ( (CO2comp-co2abs) * dxdiv_dthetasurf / (xdiv**2) - dCO2comp_dthetasurf/xdiv)
+        self.adxdiv_dthetasurf += model.alpha0[c] * (CO2comp-co2abs) / (xdiv**2) * self.adalphac_dthetasurf
+        self.adCO2comp_dthetasurf += model.alpha0[c] * -1 / xdiv * self.adalphac_dthetasurf
+        self.adalphac_dthetasurf = 0
+        #statement dxdiv_dCO2 = dco2abs
+        self.adco2abs += self.adxdiv_dCO2
+        self.adxdiv_dCO2 = 0
+        #statement dxdiv_dthetasurf      = 2.*dCO2comp_dthetasurf
+        self.adCO2comp_dthetasurf += 2.* self.adxdiv_dthetasurf
+        self.adxdiv_dthetasurf = 0
+        if Swin  * cveg < 1e-1:
+            #statement dPAR_dcveg = 0
+            self.adPAR_dcveg = 0
+            #statement dPAR_dSwin = 0
+            self.adPAR_dSwin = 0
+            #statement dPAR_dPARfract = 1e-1 * self.dPARfract
+            self.aself.dPARfract += 1e-1 * self.adPAR_dPARfract
+            self.adPAR_dPARfract = 0
+        else:
+            #statement dPAR_dcveg   = PARfract * dSwina_dcveg
+            self.adSwina_dcveg += PARfract * self.adPAR_dcveg
+            self.adPAR_dcveg = 0
+            #statement dPAR_dSwin   = PARfract * dSwina_dSwin
+            self.adSwina_dSwin += PARfract * self.adPAR_dSwin
+            self.adPAR_dSwin = 0
+            #statement dPAR_dPARfract = Swin * cveg * self.dPARfract
+            self.adPARfract += Swin * cveg * self.adPAR_dPARfract
+            self.adPAR_dPARfract = 0
+        #statement dSwina_dcveg = Swin  * self.dcveg
+        self.adcveg += Swin  * self.adSwina_dcveg
+        self.adSwina_dcveg = 0
+        #statement dSwina_dSwin = dSwin * cveg
+        self.adSwin += cveg * self.adSwina_dSwin
+        self.adSwina_dSwin = 0
         #statement dAmRdark_dCO2 = dAm_dCO2 + dRdark_dCO2
         self.adAm_dCO2 += self.adAmRdark_dCO2
         self.adRdark_dCO2 += self.adAmRdark_dCO2
@@ -5470,35 +5866,6 @@ class adjoint_modelling:
         self.adAm_dthetasurf += self.adAmRdark_dthetasurf
         self.adRdark_dthetasurf += self.adAmRdark_dthetasurf
         self.adAmRdark_dthetasurf = 0
-        #statement dalphac_dCO2 = model.alpha0[c] * ( (CO2comp-co2abs) * dxdiv_dCO2 / (xdiv**2) + dco2abs/xdiv)
-        self.adxdiv_dCO2 += model.alpha0[c] *  (CO2comp-co2abs) / (xdiv**2) * self.adalphac_dCO2
-        self.adco2abs += model.alpha0[c] * 1 / xdiv * self.adalphac_dCO2
-        self.adalphac_dCO2 = 0
-        #statement dalphac_dthetasurf = model.alpha0[c] * ( (CO2comp-co2abs) * dxdiv_dthetasurf / (xdiv**2) - dCO2comp_dthetasurf/xdiv)
-        self.adxdiv_dthetasurf += model.alpha0[c] * (CO2comp-co2abs) / (xdiv**2) * self.adalphac_dthetasurf
-        self.adCO2comp_dthetasurf += model.alpha0[c] * -1 / xdiv * self.adalphac_dthetasurf
-        self.adalphac_dthetasurf = 0
-        #statement dxdiv_dCO2 = dco2abs
-        self.adco2abs += self.adxdiv_dCO2
-        self.adxdiv_dCO2 = 0
-        #statement dxdiv_dthetasurf      = 2.*dCO2comp_dthetasurf
-        self.adCO2comp_dthetasurf += 2.* self.adxdiv_dthetasurf
-        self.adxdiv_dthetasurf = 0
-        #statement dPAR_dcveg   = PARfract * dSwina_dcveg
-        self.adSwina_dcveg += PARfract * self.adPAR_dcveg
-        self.adPAR_dcveg = 0
-        #statement dPAR_dSwin   = PARfract * dSwina_dSwin
-        self.adSwina_dSwin += PARfract * self.adPAR_dSwin
-        self.adPAR_dSwin = 0
-        #statement dPAR_dPARfract = Swin * cveg * self.dPARfract
-        self.adPARfract += Swin * cveg * self.adPAR_dPARfract
-        self.adPAR_dPARfract = 0
-        #statement dSwina_dcveg = Swin  * self.dcveg
-        self.adcveg += Swin  * self.adSwina_dcveg
-        self.adSwina_dcveg = 0
-        #statement dSwina_dSwin = dSwin * cveg
-        self.adSwin += cveg * self.adSwina_dSwin
-        self.adSwina_dSwin = 0
         #statement dRdark_dCO2  = (1. / 9.) * dAm_dCO2
         self.adAm_dCO2 += (1. / 9.) * self.adRdark_dCO2
         self.adRdark_dCO2 = 0
@@ -5542,25 +5909,46 @@ class adjoint_modelling:
         self.adCO2comp_dthetasurf += gm/Ammax * self.adaexp_dthetasurf
         self.adAmmax_dthetasurf += -1 *gm*CO2comp/(Ammax**2) * self.adaexp_dthetasurf
         self.adaexp_dthetasurf = 0
-        #statement dfstr_dwwilt = dbetaw_dwwilt
-        self.adbetaw_dwwilt += self.adfstr_dwwilt
-        self.adfstr_dwwilt = 0
-        #statement dfstr_dwfc = dbetaw_dwfc
-        self.adbetaw_dwfc += self.adfstr_dwfc
-        self.adfstr_dwfc = 0
-        #statement dfstr_dw2 = dbetaw_dw2
-        self.adbetaw_dw2 += self.adfstr_dw2
-        self.adfstr_dw2 = 0
-        #statement dbetaw_dwwilt = -self.dwwilt / (model.wfc - model.wwilt) + (model.w2 - model.wwilt) * -1 * (model.wfc - model.wwilt)**(-2) * -self.dwwilt
-        self.adwwilt += -1 / (model.wfc - model.wwilt) * self.adbetaw_dwwilt
-        self.adwwilt += (model.w2 - model.wwilt) * -1 * (model.wfc - model.wwilt)**(-2) * -self.adbetaw_dwwilt
-        self.adbetaw_dwwilt = 0
-        #statement dbetaw_dwfc = (model.w2 - model.wwilt) * -1 * (model.wfc - model.wwilt)**(-2) * self.dwfc
-        self.adwfc += (model.w2 - model.wwilt) * -1 * (model.wfc - model.wwilt)**(-2) * self.adbetaw_dwfc
-        self.adbetaw_dwfc = 0
-        #statement dbetaw_dw2 = dw2/(model.wfc - model.wwilt)
-        self.adw2 += 1/(model.wfc - model.wwilt) * self.adbetaw_dw2
-        self.adbetaw_dw2 = 0
+        if (model.c_beta == 0):
+            #statement dfstr_dwwilt = dbetaw_dwwilt
+            self.adbetaw_dwwilt += self.adfstr_dwwilt
+            self.adfstr_dwwilt = 0
+            #statement dfstr_dwfc = dbetaw_dwfc
+            self.adbetaw_dwfc += self.adfstr_dwfc
+            self.adfstr_dwfc = 0
+            #statement dfstr_dw2  = dbetaw_dw2
+            self.adbetaw_dw2 += self.adfstr_dw2
+            self.adfstr_dw2  = 0
+        else:
+            P = checkpoint['ags_P_end']
+            betaw = checkpoint['ags_betaw_end']
+            #statement dfstr_dwwilt  = 1 / (1 - np.exp(-P)) * -1 * np.exp(-P * betaw) * -P * dbetaw_dwwilt
+            self.adbetaw_dwwilt += 1 / (1 - np.exp(-P)) * -1 * np.exp(-P * betaw) * -P * self.adfstr_dwwilt
+            self.adfstr_dwwilt = 0
+            #statement dfstr_dwfc  = 1 / (1 - np.exp(-P)) * -1 * np.exp(-P * betaw) * -P * dbetaw_dwfc
+            self.adbetaw_dwfc += 1 / (1 - np.exp(-P)) * -1 * np.exp(-P * betaw) * -P * self.adfstr_dwfc
+            self.adfstr_dwfc = 0
+            #statement dfstr_dw2  = 1 / (1 - np.exp(-P)) * -1 * np.exp(-P * betaw) * -P * dbetaw_dw2
+            self.adbetaw_dw2 += 1 / (1 - np.exp(-P)) * -1 * np.exp(-P * betaw) * -P * self.adfstr_dw2
+            self.adfstr_dw2 = 0
+        if (w2 - wwilt)/(wfc - wwilt) > 1 or (w2 - wwilt)/(wfc - wwilt) < 1e-3:
+            #statement dbetaw_dwwilt = 0
+            self.adbetaw_dwwilt = 0
+            #statement dbetaw_dwfc = 0
+            self.adbetaw_dwfc = 0
+            #statement dbetaw_dw2 = 0
+            self.adbetaw_dw2 = 0
+        else:
+            #statement dbetaw_dwwilt = -self.dwwilt / (wfc - wwilt) + (w2 - wwilt) * -1 * (wfc - wwilt)**(-2) * -self.dwwilt
+            self.adwwilt += -1 / (wfc - wwilt) * self.adbetaw_dwwilt
+            self.adwwilt += (w2 - wwilt) * -1 * (wfc - wwilt)**(-2) * -self.adbetaw_dwwilt
+            self.adbetaw_dwwilt = 0
+            #statement dbetaw_dwfc = (w2 - wwilt) * -1 * (wfc - wwilt)**(-2) * self.dwfc
+            self.adwfc += (w2 - wwilt) * -1 * (wfc - wwilt)**(-2) * self.adbetaw_dwfc
+            self.adbetaw_dwfc = 0
+            #statement dbetaw_dw2 = dw2/(wfc - wwilt)
+            self.adw2 += 1/(wfc - wwilt) * self.adbetaw_dw2
+            self.adbetaw_dw2 = 0        
         #statement dAmmax_dthetasurf = dAmmax1_dthetasurf/(Ammax2*Ammax3) - Ammax1*dAmmax2_dthetasurf/(Ammax3*Ammax2**2) - Ammax1*dAmmax3_dthetasurf/(Ammax2*Ammax3**2)
         self.adAmmax1_dthetasurf += 1/(Ammax2*Ammax3) * self.adAmmax_dthetasurf
         self.adAmmax2_dthetasurf += -1*Ammax1/(Ammax3*Ammax2**2) * self.adAmmax_dthetasurf
@@ -6906,11 +7294,15 @@ class adjoint_modelling:
         #statement dCOSsurf_dwCOS = dwCOS / (Cs_start * ueff)
         self.adwCOS = 1 / (Cs_start * ueff) * self.adCOSsurf_dwCOS + self.adwCOS
         self.adCOSsurf_dwCOS = 0
-        #statement dueff = 0.5 * (u**2. + v**2. + wstar**2.)**(-0.5) * (2 * u * self.du + 2 * v * self.dv + 2 * wstar * self.dwstar)
-        self.adu += 0.5 * (u**2. + v**2. + wstar**2.) **(-0.5) * 2 * u * self.adueff
-        self.adv += 0.5 * (u**2. + v**2. + wstar**2.) **(-0.5) * 2 * v * self.adueff
-        self.adwstar += 0.5 * (u**2. + v**2. + wstar**2.) **(-0.5) * 2 * wstar * self.adueff
-        self.adueff = 0
+        if np.sqrt(u**2. + v**2. + wstar**2.) < 0.01:
+            #statement dueff = 0
+            self.adueff = 0
+        else:
+            #statement dueff = 0.5 * (u**2. + v**2. + wstar**2.)**(-0.5) * (2 * u * self.du + 2 * v * self.dv + 2 * wstar * self.dwstar)
+            self.adu += 0.5 * (u**2. + v**2. + wstar**2.) **(-0.5) * 2 * u * self.adueff
+            self.adv += 0.5 * (u**2. + v**2. + wstar**2.) **(-0.5) * 2 * v * self.adueff
+            self.adwstar += 0.5 * (u**2. + v**2. + wstar**2.) **(-0.5) * 2 * wstar * self.adueff
+            self.adueff = 0
         if self.adjointtestingrun_surf_lay:
             self.HTy = np.zeros(len(HTy_variables))
             for i in range(len(HTy_variables)):
@@ -7350,10 +7742,7 @@ class adjoint_modelling:
         default_model.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False,save_vars_indict=True)
         cpx =  default_model.cpx
         cpx_init =  default_model.cpx_init
-        self.initialise_tl(dstate)
-        tl_output = self.tl_full_model(default_model,cpx,cpx_init,returnvariable=returnvariable,tl_dict='Output_tl_'+output_dict)
         output_dict_model = 'vars_'+output_dict
-        print(returnvariable+' :')
         if outputvar in default_model.__dict__[output_dict_model]:
             default_out = default_model.__dict__[output_dict_model][outputvar] #not all output of the model is a self variable
             if ((hasattr(default_model,outputvar) or hasattr(default_model.soilCOSmodel,outputvar)) or hasattr(default_model.out,outputvar)):
@@ -7366,6 +7755,9 @@ class adjoint_modelling:
                     default_out = default_model.__dict__[outputvar]
             except KeyError:
                 default_out = default_model.soilCOSmodel.__dict__[outputvar] #than we are dealing with a module outside the main forwardmodel (or a typo, which will raise a new KeyError)
+        print(returnvariable+' :')
+        self.initialise_tl(dstate)
+        tl_output = self.tl_full_model(default_model,cpx,cpx_init,returnvariable=returnvariable,tl_dict='Output_tl_'+output_dict)
         alpharange = [1e-2,1e-4,1e-5,1e-6,1e-7,1e-9,1e-12]
         numderiv = {}
         for alpha in alpharange:
@@ -7434,13 +7826,10 @@ class adjoint_modelling:
                         self.failed_grad_test_list.append(str(returnvariable))
         self.gradienttesting = False
     
-    def grad_test_run_surface_layer(self,model,perturbationvars,outputvar,dstate,returnvariable):
-        self.gradienttestingrun_surf_lay = True
+    def grad_test_run_surface_layer(self,model,perturbationvars,outputvar,dstate,returnvariable,printmode='absolute'):
         dummy_model = cp.deepcopy(model) #just to not manipulate orig model
         dummy_model.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False,save_vars_indict=True)
         default_model = cp.deepcopy(dummy_model)
-        default_model.updatevals_surf_lay=True
-        default_model.checkpoint=True #Essential!!!!
         default_model.run_surface_layer()
         cpx =  default_model.cpx[-1]
         if hasattr(default_model,outputvar):
@@ -7448,9 +7837,10 @@ class adjoint_modelling:
         else:
             default_out = default_model.vars_rsl[outputvar]
         print(returnvariable+' :')
+        self.initialise_tl(dstate)
+        tl_output = self.tl_run_surface_layer(default_model,cpx,returnvariable=returnvariable)
         for alpha in [1e-2,1e-4,1e-5,1e-6,1e-8]:
             p_model = cp.deepcopy(dummy_model) #here we need to use a model that has been runned, without the extra call to surf layer
-            p_model.updatevals_surf_lay=True
             for item in perturbationvars:
                 p_model.__dict__[item] += alpha
             p_model.run_surface_layer()
@@ -7460,54 +7850,57 @@ class adjoint_modelling:
             else:
                 p_out = p_model.vars_rsl[outputvar]
             numderiv = (p_out - default_out)/alpha
-            print(numderiv)
-        self.initialise_tl(dstate)
-        tl_output = self.tl_run_surface_layer(default_model,cpx,returnvariable=returnvariable)
-        print('tl :'+str(tl_output))
+            if printmode == 'absolute':
+                print(numderiv)
+            elif printmode == 'relative':
+                try:
+                    print(numderiv/tl_output)
+                except ZeroDivisionError:
+                    print('NAN')
+        if printmode == 'absolute':
+            print('tl :'+str(tl_output))
         if (tl_output/numderiv<0.999 or tl_output/numderiv>1.001):
             for i in range(5):
                 print('GRADIENT TEST FAILURE!! '+str(returnvariable))
             self.all_tests_pass = False
-        self.gradienttestingrun_surf_lay = False
     
-    def grad_test_ribtol(self,model,perturbationvars,outputvar,dstate,returnvariable):
+    def grad_test_ribtol(self,model,perturbationvars,outputvar,dstate,returnvariable,printmode='absolute'):
         #this module is a bit special since it is a submodule
-        self.gradienttestingribtol = True
         dummy_model = cp.deepcopy(model) #just to not manipulate orig model
         dummy_model.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False,save_vars_indict=True)
         default_model = cp.deepcopy(dummy_model)
-        default_model.updatevals_surf_lay=True
-        default_model.checkpoint=True #Essential!!!!
         default_model.ribtol(default_model.Rib, default_model.zsl, default_model.z0m, default_model.z0h) 
         cpx =  default_model.cpx[-1]
         default_out = default_model.vars_rtl[outputvar] #we do not check for self variables, since Ribtol does not have any
         print(returnvariable+' :')
+        self.initialise_tl(dstate)
+        tl_output = self.tl_ribtol(default_model,cpx,returnvariable=returnvariable)
         for alpha in [1e-2,1e-4,1e-5,1e-6,1e-8]:
             p_model = cp.deepcopy(dummy_model) #here we need to use a model that has been runned, without the extra call to surf layer
-            p_model.updatevals_surf_lay=True
             for item in perturbationvars:
                 p_model.__dict__[item] += alpha
             p_model.ribtol(p_model.Rib, p_model.zsl, p_model.z0m, p_model.z0h)
             p_out = p_model.vars_rtl[outputvar]
             numderiv = (p_out - default_out)/alpha
-            print(numderiv)
-        self.initialise_tl(dstate)
-        tl_output = self.tl_ribtol(default_model,cpx,returnvariable=returnvariable)
-        print('tl :'+str(tl_output))
+            if printmode == 'absolute':
+                print(numderiv)
+            elif printmode == 'relative':
+                try:
+                    print(numderiv/tl_output)
+                except ZeroDivisionError:
+                    print('NAN')
+        if printmode == 'absolute':
+            print('tl :'+str(tl_output))
         if not (tl_output==0 and numderiv==0):
             if (tl_output/numderiv<0.999 or tl_output/numderiv>1.001):
                 for i in range(5):
                     print('GRADIENT TEST FAILURE!! '+str(returnvariable))
                 self.all_tests_pass = False
-        self.gradienttestingribtol= False
         
-    def grad_test_ags(self,model,perturbationvars,outputvar,dstate,returnvariable):
-        self.gradienttestingags = True
+    def grad_test_ags(self,model,perturbationvars,outputvar,dstate,returnvariable,printmode='absolute'):
         dummy_model = cp.deepcopy(model) #just to not manipulate orig model
         dummy_model.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False,save_vars_indict=True)
         default_model = cp.deepcopy(dummy_model)
-        default_model.updatevals_surf_lay=True
-        default_model.checkpoint=True #Essential!!!!
         default_model.ags()
         cpx =  default_model.cpx[-1]
         if hasattr(default_model,outputvar):
@@ -7515,9 +7908,10 @@ class adjoint_modelling:
         else:
             default_out = default_model.vars_ags[outputvar]
         print(returnvariable+' :')
+        self.initialise_tl(dstate)
+        tl_output = self.tl_ags(default_model,cpx,returnvariable=returnvariable)
         for alpha in [1e-2,1e-4,1e-5,1e-6,1e-7]:
             p_model = cp.deepcopy(dummy_model) #here we need to use a model that has been runned, without the extra call to surf layer
-            p_model.updatevals_surf_lay=True
             for item in perturbationvars:
                 p_model.__dict__[item] += alpha
             p_model.ags()
@@ -7527,24 +7921,25 @@ class adjoint_modelling:
             else:
                 p_out = p_model.vars_ags[outputvar]
             numderiv = (p_out - default_out)/alpha
-            print(numderiv)
-        self.initialise_tl(dstate)
-        tl_output = self.tl_ags(default_model,cpx,returnvariable=returnvariable)
-        print('tl :'+str(tl_output))
+            if printmode == 'absolute':
+                print(numderiv)
+            elif printmode == 'relative':
+                try:
+                    print(numderiv/tl_output)
+                except ZeroDivisionError:
+                    print('NAN')
+        if printmode == 'absolute':
+            print('tl :'+str(tl_output))
         if not (tl_output==0 and numderiv==0):
             if (tl_output/numderiv<0.999 or tl_output/numderiv>1.001):
                 for i in range(5):
                     print('GRADIENT TEST FAILURE!! '+str(returnvariable))
                 self.all_tests_pass = False
-        self.gradienttestingags = False
         
-    def grad_test_run_mixed_layer(self,model,perturbationvars,outputvar,dstate,returnvariable):
-        self.gradienttestingrun_mixed_layer = True
+    def grad_test_run_mixed_layer(self,model,perturbationvars,outputvar,dstate,returnvariable,printmode='absolute'):
         dummy_model = cp.deepcopy(model) #just to not manipulate orig model
         dummy_model.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False,save_vars_indict=True)
         default_model = cp.deepcopy(dummy_model)
-        default_model.updatevals_surf_lay=True
-        default_model.checkpoint=True #Essential!!!!
         default_model.run_mixed_layer()
         cpx =  default_model.cpx[-1]
         if hasattr(default_model,outputvar):
@@ -7552,9 +7947,10 @@ class adjoint_modelling:
         else:
             default_out = default_model.vars_rml[outputvar]
         print(returnvariable+' :')
+        self.initialise_tl(dstate)
+        tl_output = self.tl_run_mixed_layer(default_model,cpx,returnvariable=returnvariable)
         for alpha in [1e-2,1e-4,1e-5,1e-6,1e-8]:
             p_model = cp.deepcopy(dummy_model) #here we need to use a model that has been runned, without the extra call to surf layer
-            p_model.updatevals_surf_lay=True
             for item in perturbationvars:
                 p_model.__dict__[item] += alpha
             p_model.run_mixed_layer()
@@ -7564,24 +7960,25 @@ class adjoint_modelling:
             else:
                 p_out = p_model.vars_rml[outputvar]
             numderiv = (p_out - default_out)/alpha
-            print(numderiv)
-        self.initialise_tl(dstate)
-        tl_output = self.tl_run_mixed_layer(default_model,cpx,returnvariable=returnvariable)
-        print('tl :'+str(tl_output))
+            if printmode == 'absolute':
+                print(numderiv)
+            elif printmode == 'relative':
+                try:
+                    print(numderiv/tl_output)
+                except ZeroDivisionError:
+                    print('NAN')
+        if printmode == 'absolute':
+            print('tl :'+str(tl_output))
         if not (tl_output==0 and numderiv==0):
             if (tl_output/numderiv<0.999 or tl_output/numderiv>1.001):
                 for i in range(5):
                     print('GRADIENT TEST FAILURE!! '+str(returnvariable))
                 self.all_tests_pass = False
-        self.gradienttestingrun_mixed_layer = False
         
-    def grad_test_int_mixed_layer(self,model,perturbationvars,outputvar,dstate,returnvariable):
-        self.gradienttestingint_mixed_layer = True
+    def grad_test_int_mixed_layer(self,model,perturbationvars,outputvar,dstate,returnvariable,printmode='absolute'):
         dummy_model = cp.deepcopy(model) #just to not manipulate orig model
         dummy_model.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False,save_vars_indict=True)
         default_model = cp.deepcopy(dummy_model)
-        default_model.updatevals_surf_lay=True
-        default_model.checkpoint=True #Essential!!!!
         default_model.integrate_mixed_layer()
         cpx =  default_model.cpx[-1]
         if hasattr(default_model,outputvar):
@@ -7589,9 +7986,10 @@ class adjoint_modelling:
         else:
             default_out = default_model.vars_iml[outputvar]
         print(returnvariable+' :')
+        self.initialise_tl(dstate)
+        tl_output = self.tl_integrate_mixed_layer(default_model,cpx,returnvariable=returnvariable)
         for alpha in [1e-2,1e-4,1e-5,1e-6,1e-8]:
             p_model = cp.deepcopy(dummy_model) #here we need to use a model that has been runned, without the extra call to surf layer
-            p_model.updatevals_surf_lay=True
             for item in perturbationvars:
                 p_model.__dict__[item] += alpha
             p_model.integrate_mixed_layer()
@@ -7601,24 +7999,25 @@ class adjoint_modelling:
             else:
                 p_out = p_model.vars_iml[outputvar]
             numderiv = (p_out - default_out)/alpha
-            print(numderiv)
-        self.initialise_tl(dstate)
-        tl_output = self.tl_integrate_mixed_layer(default_model,cpx,returnvariable=returnvariable)
-        print('tl :'+str(tl_output))
+            if printmode == 'absolute':
+                print(numderiv)
+            elif printmode == 'relative':
+                try:
+                    print(numderiv/tl_output)
+                except ZeroDivisionError:
+                    print('NAN')
+        if printmode == 'absolute':
+            print('tl :'+str(tl_output))
         if not (tl_output==0 and numderiv==0):
             if (tl_output/numderiv<0.999 or tl_output/numderiv>1.001):
                 for i in range(5):
                     print('GRADIENT TEST FAILURE!! '+str(returnvariable))
                 self.all_tests_pass = False
-        self.gradienttestingint_mixed_layer = False
         
-    def grad_test_run_radiation(self,model,perturbationvars,outputvar,dstate,returnvariable):
-        self.gradienttestingrun_radiation = True
+    def grad_test_run_radiation(self,model,perturbationvars,outputvar,dstate,returnvariable,printmode='absolute'):
         dummy_model = cp.deepcopy(model) #just to not manipulate orig model
         dummy_model.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False,save_vars_indict=True)
         default_model = cp.deepcopy(dummy_model)
-        default_model.updatevals_surf_lay=True
-        default_model.checkpoint=True #Essential!!!!
         default_model.run_radiation()
         cpx =  default_model.cpx[-1]
         if hasattr(default_model,outputvar):
@@ -7626,9 +8025,10 @@ class adjoint_modelling:
         else:
             default_out = default_model.vars_rr[outputvar]
         print(returnvariable+' :')
+        self.initialise_tl(dstate)
+        tl_output = self.tl_run_radiation(default_model,cpx,returnvariable=returnvariable)
         for alpha in [1e-2,1e-4,1e-5,1e-6,1e-8]:
             p_model = cp.deepcopy(dummy_model) #here we need to use a model that has been runned, without the extra call to surf layer
-            p_model.updatevals_surf_lay=True
             for item in perturbationvars:
                 p_model.__dict__[item] += alpha
             p_model.run_radiation()
@@ -7637,24 +8037,25 @@ class adjoint_modelling:
             else:
                 p_out = p_model.vars_rr[outputvar]
             numderiv = (p_out - default_out)/alpha
-            print(numderiv)
-        self.initialise_tl(dstate)
-        tl_output = self.tl_run_radiation(default_model,cpx,returnvariable=returnvariable)
-        print('tl :'+str(tl_output))
+            if printmode == 'absolute':
+                print(numderiv)
+            elif printmode == 'relative':
+                try:
+                    print(numderiv/tl_output)
+                except ZeroDivisionError:
+                    print('NAN')
+        if printmode == 'absolute':
+            print('tl :'+str(tl_output))
         if not (tl_output==0 and numderiv==0):
             if (tl_output/numderiv<0.999 or tl_output/numderiv>1.001):
                 for i in range(5):
                     print('GRADIENT TEST FAILURE!! '+str(returnvariable))
                 self.all_tests_pass = False
-        self.gradienttestingrun_radiation = False
         
-    def grad_test_run_land_surface(self,model,perturbationvars,outputvar,dstate,returnvariable):
-        self.gradienttestingrun_land_surface = True
+    def grad_test_run_land_surface(self,model,perturbationvars,outputvar,dstate,returnvariable,printmode='absolute'):
         dummy_model = cp.deepcopy(model) #just to not manipulate orig model
         dummy_model.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False,save_vars_indict=True)
         default_model = cp.deepcopy(dummy_model)
-        default_model.updatevals_surf_lay=True
-        default_model.checkpoint=True #Essential!!!!
         default_model.run_land_surface()
         cpx =  default_model.cpx[-1]
         if hasattr(default_model,outputvar):
@@ -7662,9 +8063,11 @@ class adjoint_modelling:
         else:
             default_out = default_model.vars_rls[outputvar]
         print(returnvariable+' :')
-        for alpha in [1e-2,1e-4,1e-5,1e-6,1e-8,1e-9]:
+        self.initialise_tl(dstate)
+        tl_output = self.tl_run_land_surface(default_model,cpx,returnvariable=returnvariable)
+        alpharange = [1e-2,1e-4,1e-5,1e-6,1e-8,1e-9]
+        for alpha in alpharange:
             p_model = cp.deepcopy(dummy_model) #here we need to use a model that has been runned, without the extra call to surf layer
-            p_model.updatevals_surf_lay=True
             for item in perturbationvars:
                 p_model.__dict__[item] += alpha
             p_model.run_land_surface()
@@ -7673,24 +8076,25 @@ class adjoint_modelling:
             else:
                 p_out = p_model.vars_rls[outputvar]
             numderiv = (p_out - default_out)/alpha
-            print(numderiv)
-        self.initialise_tl(dstate)
-        tl_output = self.tl_run_land_surface(default_model,cpx,returnvariable=returnvariable)
-        print('tl :'+str(tl_output))
+            if printmode == 'absolute':
+                print(numderiv)
+            elif printmode == 'relative':
+                try:
+                    print(numderiv/tl_output)
+                except ZeroDivisionError:
+                    print('NAN')
+        if printmode == 'absolute':
+            print('tl :'+str(tl_output))
         if not (tl_output==0 and numderiv==0):
             if (tl_output/numderiv<0.999 or tl_output/numderiv>1.001):
                 for i in range(5):
                     print('GRADIENT TEST FAILURE!! '+str(returnvariable))
                 self.all_tests_pass = False
-        self.gradienttestingrun_land_surface = False
         
-    def grad_test_int_land_surface(self,model,perturbationvars,outputvar,dstate,returnvariable):
-        self.gradienttestingint_land_surface = True
+    def grad_test_int_land_surface(self,model,perturbationvars,outputvar,dstate,returnvariable,printmode='absolute'):
         dummy_model = cp.deepcopy(model) #just to not manipulate orig model
         dummy_model.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False,save_vars_indict=True)
         default_model = cp.deepcopy(dummy_model)
-        default_model.updatevals_surf_lay=True
-        default_model.checkpoint=True #Essential!!!!
         default_model.integrate_land_surface()
         cpx =  default_model.cpx[-1]
         if hasattr(default_model,outputvar):
@@ -7698,9 +8102,11 @@ class adjoint_modelling:
         else:
             default_out = default_model.vars_ils[outputvar]
         print(returnvariable+' :')
-        for alpha in [1e-2,1e-4,1e-5,1e-6,1e-8,1e-9]:
+        self.initialise_tl(dstate)
+        tl_output = self.tl_integrate_land_surface(default_model,cpx,returnvariable=returnvariable)
+        alpharange = [1e-2,1e-4,1e-5,1e-6,1e-8,1e-9]
+        for alpha in alpharange:
             p_model = cp.deepcopy(dummy_model) #here we need to use a model that has been runned, without the extra call to surf layer
-            p_model.updatevals_surf_lay=True
             for item in perturbationvars:
                 p_model.__dict__[item] += alpha
             p_model.integrate_land_surface()
@@ -7709,24 +8115,25 @@ class adjoint_modelling:
             else:
                 p_out = p_model.vars_ils[outputvar]  
             numderiv = (p_out - default_out)/alpha
-            print(numderiv)
-        self.initialise_tl(dstate)
-        tl_output = self.tl_integrate_land_surface(default_model,cpx,returnvariable=returnvariable)
-        print('tl :'+str(tl_output))
+            if printmode == 'absolute':
+                print(numderiv)
+            elif printmode == 'relative':
+                try:
+                    print(numderiv/tl_output)
+                except ZeroDivisionError:
+                    print('NAN')
+        if printmode == 'absolute':
+            print('tl :'+str(tl_output))
         if not (tl_output==0 and numderiv==0):
             if (tl_output/numderiv<0.999 or tl_output/numderiv>1.001):
                 for i in range(5):
                     print('GRADIENT TEST FAILURE!! '+str(returnvariable))
                 self.all_tests_pass = False
-        self.gradienttestingint_land_surface = False
         
-    def grad_test_statistics(self,model,perturbationvars,outputvar,dstate,returnvariable):
-        self.gradienttestingstatistics = True
+    def grad_test_statistics(self,model,perturbationvars,outputvar,dstate,returnvariable,printmode='absolute'):
         dummy_model = cp.deepcopy(model) #just to not manipulate orig model
         dummy_model.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False,save_vars_indict=True)
         default_model = cp.deepcopy(dummy_model)
-        default_model.updatevals_surf_lay=True
-        default_model.checkpoint=True #Essential!!!!
         default_model.statistics()
         cpx =  default_model.cpx[-1]
         if hasattr(default_model,outputvar):
@@ -7734,9 +8141,11 @@ class adjoint_modelling:
         else:
             default_out = default_model.vars_stat[outputvar]
         print(returnvariable+' :')
-        for alpha in [1e-2,1e-4,1e-5,1e-6,1e-8,1e-9]:
+        self.initialise_tl(dstate)
+        tl_output = self.tl_statistics(default_model,cpx,returnvariable=returnvariable)
+        alpharange = [1e-2,1e-4,1e-5,1e-6,1e-8,1e-9]
+        for alpha in alpharange:
             p_model = cp.deepcopy(dummy_model) #here we need to use a model that has been runned, without the extra call to surf layer
-            p_model.updatevals_surf_lay=True
             for item in perturbationvars:
                 p_model.__dict__[item] += alpha
             p_model.statistics()
@@ -7745,40 +8154,40 @@ class adjoint_modelling:
             else:
                 p_out = p_model.vars_stat[outputvar]   
             numderiv = (p_out - default_out)/alpha
-            print(numderiv)
-        self.initialise_tl(dstate)
-        tl_output = self.tl_statistics(default_model,cpx,returnvariable=returnvariable)
-        print('tl :'+str(tl_output))
+            if printmode == 'absolute':
+                print(numderiv)
+            elif printmode == 'relative':
+                try:
+                    print(numderiv/tl_output)
+                except ZeroDivisionError:
+                    print('NAN')
+        if printmode == 'absolute':
+            print('tl :'+str(tl_output))
         if not (tl_output==0 and numderiv==0):
             if (tl_output/numderiv<0.999 or tl_output/numderiv>1.001):
                 for i in range(5):
                     print('GRADIENT TEST FAILURE!! '+str(returnvariable))
                 self.all_tests_pass = False
-        self.gradienttestingstatistics = False
         
     def grad_test_run_cumulus(self,model,perturbationvars,outputvar,dstate,returnvariable,printmode='absolute'):
-        self.gradienttestingrun_cumulus = True
         dummy_model = cp.deepcopy(model) #just to not manipulate orig model
         dummy_model.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False,save_vars_indict=True)
         default_model = cp.deepcopy(dummy_model)
-        default_model.updatevals_surf_lay=True
-        default_model.checkpoint=True #Essential!!!!
         default_model.run_cumulus()
         cpx =  default_model.cpx[-1]
-        self.initialise_tl(dstate)
-        tl_output = self.tl_run_cumulus(default_model,cpx,returnvariable=returnvariable)
-        print(returnvariable+' :')
         if outputvar in default_model.vars_rc:
             default_out = default_model.vars_rc[outputvar]
             if hasattr(default_model,outputvar):
                 print ('WARNING: outputvar exists both as self-variable and in dictionary')    
         else:
             default_out = default_model.__dict__[outputvar]
+        print(returnvariable+' :')
+        self.initialise_tl(dstate)
+        tl_output = self.tl_run_cumulus(default_model,cpx,returnvariable=returnvariable)
         numderiv = {}
         alpharange = [1e-2,1e-4,1e-5,1e-6,1e-8,1e-9]
         for alpha in alpharange:
             p_model = cp.deepcopy(dummy_model) #here we need to use a model that has been runned, without the extra call to surf layer
-            p_model.updatevals_surf_lay=True
             for item in perturbationvars:
                 p_model.__dict__[item] += alpha
             p_model.run_cumulus()
@@ -7803,34 +8212,29 @@ class adjoint_modelling:
                 for i in range(5):
                     print('GRADIENT TEST FAILURE!! '+str(returnvariable))
                 self.all_tests_pass = False
-        self.gradienttestingrun_cumulus = False
         
     def grad_test_run_soil_COS_mod(self,model,perturbationvars,outputvar,dstate,returnvariable,printmode='absolute'):
         #this one is a bit special, since the forward model code is in a seperate class
-        self.gradienttestingrun_soil_COS_mod = True
         dummy_model = cp.deepcopy(model) #just to not manipulate orig model
         dummy_model.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False,save_vars_indict=True)
         default_model = cp.deepcopy(dummy_model)
-        default_model.updatevals_surf_lay=True
-        default_model.checkpoint=True #Essential!!!!
         #in this case the perturbed vars are partly in the argument list
         default_model.soilCOSmodel.run_soil_COS_mod(default_model.Tsoil,default_model.T2,default_model.wg,default_model.w2,default_model.COSsurf,default_model.Ps,default_model.Tsurf,default_model.wsat,default_model.dt)
         cpx =  default_model.cpx[-1]
-        self.initialise_tl(dstate)
-        tl_output = self.tl_run_soil_COS_mod(default_model,cpx,returnvariable=returnvariable)
-        print(returnvariable+' :')
         if outputvar in default_model.vars_rsCm:
             default_out = default_model.vars_rsCm[outputvar]
             if hasattr(default_model.soilCOSmodel,outputvar):
                 print ('WARNING: outputvar exists both as self-variable and in dictionary')
         else:
             default_out = default_model.soilCOSmodel.__dict__[outputvar]
+        print(returnvariable+' :')
+        self.initialise_tl(dstate)
+        tl_output = self.tl_run_soil_COS_mod(default_model,cpx,returnvariable=returnvariable)
         #in this test I say it passes if it is ok for the last or one but last value in alpharange
         alpharange = [1e-2,1e-4,1e-5,1e-6,1e-8,1e-12] #put at least two values here
         numderiv = {}
         for alpha in alpharange:
             p_model = cp.deepcopy(dummy_model) #here we need to use a model that has been runned, without the extra call to surf layer
-            p_model.updatevals_surf_lay=True
             for item in perturbationvars:
                 if hasattr(p_model.soilCOSmodel,item):
                     p_model.soilCOSmodel.__dict__[item] += alpha
@@ -7880,31 +8284,31 @@ class adjoint_modelling:
                     for i in range(5):
                         print('GRADIENT TEST FAILURE!! '+str(returnvariable))
                     self.all_tests_pass = False
-        self.gradienttestingrun_soil_COS_mod = False
         
     def grad_test_store(self,model,perturbationvars,outputvar,dstate,returnvariable,printmode='absolute'):
         #this test is a bit special since it involves output stored in the model output class
-        self.gradienttestingstore = True
+        varssetto0list = []
         dummy_model = cp.deepcopy(model) #just to not manipulate orig model
         dummy_model.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False,save_vars_indict=True)
         default_model = cp.deepcopy(dummy_model)
-        default_model.updatevals_surf_lay=True
-        default_model.checkpoint=True #Essential!!!!
         default_model.store()
         cpx =  default_model.cpx[-1]
-        self.initialise_tl(dstate)
-        tl_output = self.tl_store(default_model,cpx,returnvariable=returnvariable)
-        print(returnvariable+' :')
         if outputvar in default_model.vars_sto:
             default_out = default_model.vars_sto[outputvar]
             if hasattr(default_model.out,outputvar):
                 print ('WARNING: outputvar exists both as self.out-variable and in dictionary')
         else:
             default_out = default_model.out.__dict__[outputvar][-1]
+        print(returnvariable+' :')
+        self.initialise_tl(dstate)
+        tl_output = self.tl_store(default_model,cpx,returnvariable=returnvariable)
         for alpha in [1e-2,1e-4,1e-5,1e-6,1e-8,1e-9]:
             p_model = cp.deepcopy(dummy_model) #here we need to use a model that has been runned, without the extra call to surf layer
-            p_model.updatevals_surf_lay=True
             for item in perturbationvars:
+                if not hasattr(p_model,item) or p_model.__dict__[item] is None: #only for grad test, in case e.g. surf layer not turned on
+                    p_model.__dict__[item] = 0.
+                    if item not in varssetto0list:
+                        varssetto0list.append(item)
                 p_model.__dict__[item] += alpha
             p_model.store()
             if outputvar in default_model.vars_sto:
@@ -7918,7 +8322,7 @@ class adjoint_modelling:
                 print(numderiv)
             elif printmode == 'relative':
                 try:
-                    print(numderiv[str(alpha)]/tl_output)
+                    print(numderiv/tl_output)
                 except ZeroDivisionError:
                     print('NAN')
         if printmode == 'absolute':
@@ -7928,7 +8332,47 @@ class adjoint_modelling:
                 for i in range(5):
                     print('GRADIENT TEST FAILURE!! '+str(returnvariable))
                 self.all_tests_pass = False
-        self.gradienttestingstore = False
+        if len(varssetto0list) > 0:
+            print('Variables set to 0: '+str(varssetto0list))
+        
+    def grad_test_jarvis_stewart(self,model,perturbationvars,outputvar,dstate,returnvariable,printmode='absolute'):
+        dummy_model = cp.deepcopy(model) #just to not manipulate orig model
+        dummy_model.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False,save_vars_indict=True)
+        default_model = cp.deepcopy(dummy_model)
+        default_model.jarvis_stewart()
+        cpx =  default_model.cpx[-1]
+        if hasattr(default_model,outputvar):
+            default_out = default_model.__dict__[outputvar]
+        else:
+            default_out = default_model.vars_js[outputvar]
+        print(returnvariable+' :')
+        self.initialise_tl(dstate)
+        tl_output = self.tl_jarvis_stewart(default_model,cpx,returnvariable=returnvariable)
+        alpharange = [1e-2,1e-4,1e-5,1e-6,1e-8,1e-9]
+        for alpha in alpharange:
+            p_model = cp.deepcopy(dummy_model) #here we need to use a model that has been runned
+            for item in perturbationvars:
+                p_model.__dict__[item] += alpha
+            p_model.jarvis_stewart()
+            if hasattr(p_model,outputvar):
+                p_out = p_model.__dict__[outputvar]
+            else:
+                p_out = p_model.vars_js[outputvar]   
+            numderiv = (p_out - default_out)/alpha
+            if printmode == 'absolute':
+                print(numderiv)
+            elif printmode == 'relative':
+                try:
+                    print(numderiv/tl_output)
+                except ZeroDivisionError:
+                    print('NAN')
+        if printmode == 'absolute':
+            print('tl :'+str(tl_output))
+        if not (tl_output==0 and numderiv==0):
+            if (tl_output/numderiv<0.999 or tl_output/numderiv>1.001):
+                for i in range(5):
+                    print('GRADIENT TEST FAILURE!! '+str(returnvariable))
+                self.all_tests_pass = False
         
     def adjoint_test(self,model,x_variables,Hx_variable,y_variable,HTy_variables,Hx_dict):
         #Note that the order of x and HTy should be identical, e.g. the first element of HTy should be the adjoint variable of the first element of HTy!!
@@ -7989,7 +8433,7 @@ class adjoint_modelling:
         for i in range(len(self.x)):
             dotelem = np.dot(np.array(self.x[i]),np.array(self.HTy[i]))
             dotxhty += dotelem
-        print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
         if abs((dothxy-dotxhty)/dothxy) > 5e-13:
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
@@ -8000,9 +8444,8 @@ class adjoint_modelling:
     def adjoint_test_surf_lay(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
         self.adjointtestingrun_surf_lay = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
-        checkpoint_test = testmodel.cpx[0]
-        rand = np.random.random_sample(len(x_variables))
-        self.x = np.array(rand)
+        checkpoint_test = testmodel.cpx[0] #index for time step, use the same for adjoint and TL
+        self.x = np.random.random_sample(len(x_variables))
         self.initialise_tl({})
         for i in range(len(self.x)):
             self.__dict__[x_variables[i]] = self.x[i]
@@ -8019,18 +8462,18 @@ class adjoint_modelling:
         self.adj_run_surface_layer(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
         if abs((dothxy-dotxhty)/dothxy) > 5e-15:
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
-                self.all_tests_pass = False
+            self.all_tests_pass = False
         self.adjointtestingrun_surf_lay = False
         
     def adjoint_test_surf_lay_manual(self,testmodel):
         #for this function, place HTy, Hx etc manually in the code
         self.manualadjointtesting = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
-        checkpoint_test = testmodel.cpx[0]
+        checkpoint_test = testmodel.cpx[0] #index for time step, use the same for adjoint and TL
         rand1 = np.random.random_sample(1)[0]
         rand2 = np.random.random_sample(1)[0]
         rand3 = np.random.random_sample(1)[0]
@@ -8044,19 +8487,18 @@ class adjoint_modelling:
         self.adj_run_surface_layer(forcingdummy,checkpoint_test,testmodel) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, difference',dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy)
+        print('<Hx,y>,<x,Hty>, rel difference',dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy)
         if abs((dothxy-dotxhty)/dothxy) > 9.99e-16:
             for i in range(5):
                 print("ADJOINT TEST FAILURE!")
-                self.all_tests_pass = False
+            self.all_tests_pass = False
         self.manualadjointtesting = False
         
     def adjoint_test_ribtol(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
         self.adjointtestingribtol = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
-        checkpoint_test = testmodel.cpx[1]
-        rand = np.random.random_sample(len(x_variables))
-        self.x = np.array(rand)
+        checkpoint_test = testmodel.cpx[-1] #index for time step, use the same for adjoint and TL
+        self.x = np.random.random_sample(len(x_variables))
         self.initialise_tl({})
         for i in range(len(self.x)):
             self.__dict__[x_variables[i]] = self.x[i]
@@ -8073,19 +8515,18 @@ class adjoint_modelling:
         self.adj_ribtol(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
         if abs((dothxy-dotxhty)/dothxy) > 5e-15:
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
-                self.all_tests_pass = False
+            self.all_tests_pass = False
         self.adjointtestingribtol = False
         
     def adjoint_test_ags(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
         self.adjointtestingags = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
-        checkpoint_test = testmodel.cpx[0]
-        rand = np.random.random_sample(len(x_variables))
-        self.x = np.array(rand)
+        checkpoint_test = testmodel.cpx[0] #index for time step, use the same for adjoint and TL
+        self.x = np.random.random_sample(len(x_variables))
         self.initialise_tl({})
         for i in range(len(self.x)):
             self.__dict__[x_variables[i]] = self.x[i]
@@ -8102,18 +8543,18 @@ class adjoint_modelling:
         self.adj_ags(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
         if abs((dothxy-dotxhty)/dothxy) > 5e-15:
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
-                self.all_tests_pass = False
+            self.all_tests_pass = False
         self.adjointtestingags = False
         
     def adjoint_test_ags_manual(self,testmodel):
         #for this function, place HTy, Hx etc manually in the code
         self.manualadjointtesting = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
-        checkpoint_test = testmodel.cpx[0]
+        checkpoint_test = testmodel.cpx[0] #index for time step, use the same for adjoint and TL
         rand1 = np.random.random_sample(1)[0]
         rand2 = np.random.random_sample(1)[0]
         rand3 = np.random.random_sample(1)[0]
@@ -8127,19 +8568,18 @@ class adjoint_modelling:
         self.adj_ags(forcingdummy,checkpoint_test,testmodel) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, difference',dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy)
+        print('<Hx,y>,<x,Hty>, rel difference',dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy)
         if abs((dothxy-dotxhty)/dothxy) > 9.99e-16:
             for i in range(5):
                 print("ADJOINT TEST FAILURE!")
-                self.all_tests_pass = False
+            self.all_tests_pass = False
         self.manualadjointtesting = False
               
     def adjoint_test_run_mixed_layer(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
         self.adjointtestingrun_mixed_layer = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
-        checkpoint_test = testmodel.cpx[0]
-        rand = np.random.random_sample(len(x_variables))
-        self.x = np.array(rand)
+        checkpoint_test = testmodel.cpx[0] #index for time step, use the same for adjoint and TL
+        self.x = np.random.random_sample(len(x_variables))
         self.initialise_tl({})
         for i in range(len(self.x)):
             self.__dict__[x_variables[i]] = self.x[i]
@@ -8156,19 +8596,18 @@ class adjoint_modelling:
         self.adj_run_mixed_layer(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
         if abs((dothxy-dotxhty)/dothxy) > 5e-15:
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
-                self.all_tests_pass = False
+            self.all_tests_pass = False
         self.adjointtestingrun_mixed_layer = False
         
     def adjoint_test_int_mixed_layer(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
         self.adjointtestingint_mixed_layer = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
-        checkpoint_test = testmodel.cpx[0]
-        rand = np.random.random_sample(len(x_variables))
-        self.x = np.array(rand)
+        checkpoint_test = testmodel.cpx[0] #index for time step, use the same for adjoint and TL
+        self.x = np.random.random_sample(len(x_variables))
         self.initialise_tl({})
         for i in range(len(self.x)):
             self.__dict__[x_variables[i]] = self.x[i]
@@ -8185,19 +8624,18 @@ class adjoint_modelling:
         self.adj_integrate_mixed_layer(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
         if abs((dothxy-dotxhty)/dothxy) > 5e-15:
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
-                self.all_tests_pass = False
+            self.all_tests_pass = False
         self.adjointtestingint_mixed_layer = False
         
     def adjoint_test_run_radiation(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
         self.adjointtestingrun_radiation = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
-        checkpoint_test = testmodel.cpx[0]
-        rand = np.random.random_sample(len(x_variables))
-        self.x = np.array(rand)
+        checkpoint_test = testmodel.cpx[0] #index for time step, use the same for adjoint and TL
+        self.x = np.random.random_sample(len(x_variables))
         self.initialise_tl({})
         for i in range(len(self.x)):
             self.__dict__[x_variables[i]] = self.x[i]
@@ -8214,19 +8652,18 @@ class adjoint_modelling:
         self.adj_run_radiation(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
         if abs((dothxy-dotxhty)/dothxy) > 5e-15:
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
-                self.all_tests_pass = False
+            self.all_tests_pass = False
         self.adjointtestingrun_radiation = False
         
     def adjoint_test_run_land_surface(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
         self.adjointtestingrun_land_surface = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
-        checkpoint_test = testmodel.cpx[0]
-        rand = np.random.random_sample(len(x_variables))
-        self.x = np.array(rand)
+        checkpoint_test = testmodel.cpx[0] #index for time step, use the same for adjoint and TL
+        self.x = np.random.random_sample(len(x_variables))
         self.initialise_tl({})
         for i in range(len(self.x)):
             self.__dict__[x_variables[i]] = self.x[i]
@@ -8243,20 +8680,19 @@ class adjoint_modelling:
         self.adj_run_land_surface(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
         if abs((dothxy-dotxhty)/dothxy) > 2e-14: #note that this is not zero at all.. 
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
-                self.all_tests_pass = False
+            self.all_tests_pass = False
         self.adjointtestingrun_land_surface = False
         
     def adjoint_test_run_land_surface_manual(self,testmodel):
         #for this function, place HTy, Hx etc manually in the code
         self.manualadjointtesting = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
-        checkpoint_test = testmodel.cpx[0]
-        rand = np.random.random_sample(18)
-        self.x = np.array(rand)
+        checkpoint_test = testmodel.cpx[0] #index for time step, use the same for adjoint and TL
+        self.x = np.random.random_sample(18)
         self.initialise_tl({})
         self.tl_run_land_surface(testmodel,checkpoint_test)
         self.y = np.random.random_sample(1)[0]
@@ -8265,19 +8701,18 @@ class adjoint_modelling:
         self.adj_run_land_surface(forcingdummy,checkpoint_test,testmodel) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, difference',dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy)
+        print('<Hx,y>,<x,Hty>, rel difference',dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy)
         if abs((dothxy-dotxhty)/dothxy) > 9.99e-16:
             for i in range(5):
                 print("ADJOINT TEST FAILURE!")
-                self.all_tests_pass = False
+            self.all_tests_pass = False
         self.manualadjointtesting = False
         
     def adjoint_test_int_land_surface(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
         self.adjointtestingint_land_surface = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
-        checkpoint_test = testmodel.cpx[0]
-        rand = np.random.random_sample(len(x_variables))
-        self.x = np.array(rand)
+        checkpoint_test = testmodel.cpx[0] #index for time step, use the same for adjoint and TL
+        self.x = np.random.random_sample(len(x_variables))
         self.initialise_tl({})
         for i in range(len(self.x)):
             self.__dict__[x_variables[i]] = self.x[i]
@@ -8294,19 +8729,18 @@ class adjoint_modelling:
         self.adj_integrate_land_surface(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
         if abs((dothxy-dotxhty)/dothxy) > 2e-14: #note that this is not zero at all.. 
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
-                self.all_tests_pass = False
+            self.all_tests_pass = False
         self.adjointtestingint_land_surface = False
         
     def adjoint_test_statistics(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
         self.adjointtestingstatistics = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
-        checkpoint_test = testmodel.cpx[-1] # now also time is important
-        rand = np.random.random_sample(len(x_variables))
-        self.x = np.array(rand)
+        checkpoint_test = testmodel.cpx[-1] #index for time step, use the same for adjoint and TL
+        self.x = np.random.random_sample(len(x_variables))
         self.initialise_tl({})
         for i in range(len(self.x)):
             self.__dict__[x_variables[i]] = self.x[i]
@@ -8323,19 +8757,18 @@ class adjoint_modelling:
         self.adj_statistics(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
         if abs((dothxy-dotxhty)/dothxy) > 5e-15: 
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
-                self.all_tests_pass = False
+            self.all_tests_pass = False
         self.adjointtestingstatistics = False
         
     def adjoint_test_run_cumulus(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
         self.adjointtestingrun_cumulus = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
-        checkpoint_test = testmodel.cpx[0]
-        rand = np.random.random_sample(len(x_variables))
-        self.x = np.array(rand)
+        checkpoint_test = testmodel.cpx[0] #index for time step, use the same for adjoint and TL
+        self.x = np.random.random_sample(len(x_variables))
         self.initialise_tl({})
         for i in range(len(self.x)):
             self.__dict__[x_variables[i]] = self.x[i]
@@ -8352,17 +8785,17 @@ class adjoint_modelling:
         self.adj_run_cumulus(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
         if abs((dothxy-dotxhty)/dothxy) > 5e-15: 
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
-                self.all_tests_pass = False
+            self.all_tests_pass = False
         self.adjointtestingrun_cumulus = False
         
     def adjoint_test_run_soil_COS_mod(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
         self.adjointtestingrun_soil_COS_mod = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
-        checkpoint_test = testmodel.cpx[0]
+        checkpoint_test = testmodel.cpx[0]  #index for time step, use the same for adjoint and TL
         self.initialise_tl({})
         self.x_dict = {} #create dictionary, because some variables require to be initialised with an array, some with a scalar
         for i in range(len(x_variables)):
@@ -8402,19 +8835,18 @@ class adjoint_modelling:
                     self.x.append(self.x_dict[item][i])
                     self.HTy.append(self.HTy_dict['a'+item][i])
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
         if abs((dothxy-dotxhty)/dothxy) > 5e-15: 
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
-                self.all_tests_pass = False
+            self.all_tests_pass = False
         self.adjointtestingrun_soil_COS_mod = False
         
     def adjoint_test_store(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
         self.adjointtestingstore = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
         checkpoint_test = testmodel.cpx[0]
-        rand = np.random.random_sample(len(x_variables))
-        self.x = np.array(rand)
+        self.x = np.random.random_sample(len(x_variables))
         self.initialise_tl({})
         for i in range(len(self.x)):
             self.__dict__[x_variables[i]] = self.x[i]
@@ -8431,9 +8863,37 @@ class adjoint_modelling:
         self.adj_store(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
         if abs((dothxy-dotxhty)/dothxy) > 5e-15: 
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
-                self.all_tests_pass = False
+            self.all_tests_pass = False
         self.adjointtestingstore= False
+        
+    def adjoint_test_jarvis_stewart(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
+        self.adjointtestingjarvis_stewart = True
+        testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
+        checkpoint_test = testmodel.cpx[-1] # index for time step, use the same for adjoint and TL
+        self.x = np.random.random_sample(len(x_variables))
+        self.initialise_tl({})
+        for i in range(len(self.x)):
+            self.__dict__[x_variables[i]] = self.x[i]
+        self.tl_jarvis_stewart(testmodel,checkpoint_test)
+        if Hx_variable not in self.Output_tl_js:
+            print('ERROR, HX VARIABLE NOT IN TL OUTPUT')    
+        for key in self.Output_tl_js:
+            if key == Hx_variable:
+                self.Hx = self.Output_tl_js[Hx_variable]
+        self.y = np.random.random_sample(1)[0]
+        self.initialise_adjoint()
+        self.__dict__[y_variable] = self.y
+        forcingdummy = {}
+        self.adj_jarvis_stewart(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
+        dothxy = np.dot(np.array(self.Hx),np.array(self.y))
+        dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
+        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+        if abs((dothxy-dotxhty)/dothxy) > 5e-15: 
+            for i in range(5):
+                print("ADJOINT TEST FAILURE! "+str(Hx_variable))
+            self.all_tests_pass = False
+        self.adjointtestingjarvis_stewart = False
