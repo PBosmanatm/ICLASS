@@ -24,9 +24,10 @@ style.use('classic')
 ana_deriv = True #use analytical or numerical derivative
 use_backgr_in_cost = True #include the background (prior) part of the cost function
 write_to_f = True #write output and figures to files
-use_ensemble = False #use an ensemble of optimisations
+use_ensemble = True #use an ensemble of optimisations
 if use_ensemble:
     nr_of_members = 7
+    use_covar_to_pert = False #whether to take prior covariance (if specified) into account when perturbing the ensemble 
     pert_non_state_param = True #perturb parameters that are not in the state
     est_post_pdf_covmatr = True #estimate the posterior pdf and covariance matrix of the state (and more)
     if est_post_pdf_covmatr:
@@ -64,12 +65,14 @@ if use_weights:
     weight_morninghrs = 1/4 # to change weight of obs in the morning before 10, when everything less well mixed. 1 means equal weights
 if (use_backgr_in_cost and use_weights):
     obs_vs_backgr_weight = 1.0 # a scaling factor for the importance of all the observations in the cost function 
-plt.rc('font', size=12) #plot font size
 if write_to_f:
     figformat = 'eps' #the format in which you want figure output, e.g. 'png'
+plotfontsize = 12 #plot font size, except for legend 
+legendsize = plotfontsize - 1
 ######################################
 ###### end user input: settings ######
 ######################################
+plt.rc('font', size=plotfontsize)    
 #some input checks
 if use_ensemble:
     if (nr_of_members < 2 or type(nr_of_members) != int):
@@ -233,18 +236,18 @@ priorinput = cp.deepcopy(priormodinput)
 #truthinput.theta = 288
 #truthinput.h = 400
 
-################################################################################
-###### user input: non-model priorinput,state and list of used pseudo-obs ######
-################################################################################
-state=['theta','EnBalDiffObsHFrac']
+#################################################################################
+###### user input: state, list of used pseudo-obs and non-model priorinput ######
+#################################################################################
+state=['gammaq','EnBalDiffObsHFrac']
 obsvarlist=['h','q','H','LE']#
 #below we can add some input necessary for the state in the optimisation, that is not part of the model input (a scale for some of the observations in the costfunction if desired). Or EnBalDiffObsHFrac
 if 'EnBalDiffObsHFrac' in state:
     priorinput.EnBalDiffObsHFrac = 0.6
-#with 3, 1 and 0.25 for 'alfa_sto','deltatheta','alpha' it finds the truth (1, 2 ,0.2)back
-####################################################################################
-###### end user input: non-model priorinput,state and list of used pseudo-obs ######
-####################################################################################
+
+#####################################################################################
+###### end user input: state, list of used pseudo-obs and non-model priorinput ######
+#####################################################################################
 if len(set(state)) != len(state):
     raise Exception('Mulitiple occurences of same item in state')
 if len(set(obsvarlist)) != len(obsvarlist):
@@ -281,6 +284,7 @@ if use_backgr_in_cost or use_ensemble:
     #prior variances of the items in the state: 
     priorvar['alpha'] = 0.2**2
     priorvar['gammatheta'] = 0.003**2 
+    priorvar['gammaq'] = (0.003e-3)**2 
     priorvar['deltatheta'] = 0.75**2
     priorvar['theta'] = 2**2
     priorvar['h'] = 200**2
@@ -300,6 +304,8 @@ if use_backgr_in_cost or use_ensemble:
     for thing in priorvar:
         if thing not in priorinput.__dict__:
             raise Exception('Parameter \''+thing +'\' specified in priorvar, but does not exist in priorinput')
+        if priorvar[thing] <= 0:
+            raise Exception('Prior variance for '+thing+' should be greater than zero!')
     b_cov = np.diag(np.zeros(len(state)))
     i = 0
     for item in state:
@@ -319,6 +325,8 @@ if use_backgr_in_cost or use_ensemble:
                 raise Exception('Parameter \''+thing1 +'\' specified in priorcovar, but does not exist in priorinput')
             elif thing2 not in priorinput.__dict__:
                 raise Exception('Parameter \''+thing2 +'\' specified in priorcovar, but does not exist in priorinput')
+            if priorcovar[thing] > 1 * np.sqrt(priorvar[thing1])*np.sqrt(priorvar[thing2]) or priorcovar[thing] < -1 * np.sqrt(priorvar[thing1])*np.sqrt(priorvar[thing2]):
+                raise Exception('Prior covariance of '+thing + ' inconsistent with specified variances (deduced correlation not in [-1,1]).')
         for i in range(len(state)):
             item = state[i]
             for item2 in np.delete(state,i): #exclude item2 == item, that is for variance, not covar
@@ -328,6 +336,8 @@ if use_backgr_in_cost or use_ensemble:
                 elif item2+','+item in priorcovar:
                     b_cov[i][state.index(item2)] = priorcovar[item2+','+item] 
                     b_cov[state.index(item2)][i] = priorcovar[item2+','+item]             
+    if not np.all(np.linalg.eigvals(b_cov) > 0):
+        raise Exception('Prior error covariance matrix is not positive definite, check the specified elements')#See page 12 and 13 of Brasseur and Jacob 2017
 else:
      b_cov = None 
 
@@ -439,6 +449,19 @@ if use_ensemble:
 ###### user input: units of parameters for pdf figures (optional) ############
 ##############################################################################
         disp_units_par['theta'] = 'K'
+        disp_units_par['advtheta'] = 'Ks$^{-1}$'
+        disp_units_par['advq'] = 'kg kg$^{-1}$s$^{-1}$'
+        disp_units_par['advCO2'] = 'ppm s$^{-1}$'
+        disp_units_par['deltatheta'] = 'K'
+        disp_units_par['gammatheta'] = 'K m$^{-1}$'
+        disp_units_par['deltaq'] = 'kg kg$^{-1}$'
+        disp_units_par['gammaq'] = 'kg kg$^{-1}$m$^{-1}$'
+        disp_units_par['deltaCO2'] = 'ppm'
+        disp_units_par['gammaCO2'] = 'ppm m$^{-1}$'
+        disp_units_par['alfa_sto'] = '-'
+        disp_units_par['alpha'] = '-'
+        disp_units_par['EnBalDiffObsHFrac'] = '-'
+        disp_units_par['wg'] = '-'
     
 ##############################################################################
 ###### end user input: units of parameters for pdf figures (optional) ########
@@ -733,7 +756,7 @@ for item in obsvarlist: #some stuff involving mod_error
             mod_error[item] = np.zeros(len(measurement_error[item]))
     if len(obs_times[item]) != len(mod_error[item]):
         raise Exception('Error: size of mod_error and obstimes inconsistent for '+item+'!')
-    optim.__dict__['error_obs_' + item] = np.array(measurement_error[item]) + np.array(mod_error[item]) + np.array(repr_error[item])
+    optim.__dict__['error_obs_' + item] = np.sqrt(np.array(measurement_error[item])**2 + np.array(mod_error[item])**2 + np.array(repr_error[item])**2)
 
 
 
@@ -906,25 +929,45 @@ elif optim_method == 'tnc':
 else:
     raise Exception('Unavailable optim_method \'' + str(optim_method) + '\' specified')
 print('optimal state without ensemble='+str(state_opt0))
+CostParts0 = optim.cost_func(state_opt0,inputcopy,state,obs_times,obs_weights,True)
 
 def run_ensemble_member(counter,seed,non_state_paramdict={}):
     priorinput_mem = cp.deepcopy(priorinput)
     if seed != None:
         seed = seed + counter#create a unique seed for every member
     np.random.seed(seed) #VERY IMPORTANT! You have to explicitly set the seed (to None is ok), otherwise multicore implementation will use same random number for all ensemble members. 
-    for j in range(len(state)):
-        rand_nr_norm_distr = np.random.normal(0,np.sqrt(b_cov[j,j]))
-        priorinput_mem.__dict__[state[j]] += rand_nr_norm_distr
+    if np.count_nonzero(b_cov) == len(state) or not use_covar_to_pert: #than covariances all zero
+        for j in range(len(state)):
+            rand_nr_norm_distr = np.random.normal(0,np.sqrt(b_cov[j,j]))
+            priorinput_mem.__dict__[state[j]] += rand_nr_norm_distr
+            if imposeparambounds:
+                if state[j] in boundedvars:
+                    counter_while_loop = 1
+                    while (priorinput_mem.__dict__[state[j]] < boundedvars[state[j]][0] or priorinput_mem.__dict__[state[j]] > boundedvars[state[j]][1]): #lower than lower bound or higher than upper bound
+                        priorinput_mem.__dict__[state[j]] =  cp.deepcopy(priorinput.__dict__[state[j]])#so to make it within the bounds
+                        rand_nr_norm_distr = np.random.normal(0,np.sqrt(b_cov[j,j]))
+                        priorinput_mem.__dict__[state[j]] += rand_nr_norm_distr
+                        if counter_while_loop >= 100:
+                            raise Exception('No prior within bounds obtained for an ensemble member for state item '+state[j]+' after '+str(counter_while_loop)+ ' attempts')
+                        counter_while_loop += 1
+    else:
         if imposeparambounds:
-            if state[j] in boundedvars:
-                counter_while_loop = 1
-                while (priorinput_mem.__dict__[state[j]] < boundedvars[state[j]][0] or priorinput_mem.__dict__[state[j]] > boundedvars[state[j]][1]): #lower than lower bound or higher than upper bound
-                    priorinput_mem.__dict__[state[j]] =  cp.deepcopy(priorinput.__dict__[state[j]])#so to make it within the bounds
-                    rand_nr_norm_distr = np.random.normal(0,np.sqrt(b_cov[j,j]))
-                    priorinput_mem.__dict__[state[j]] += rand_nr_norm_distr
-                    if counter_while_loop >= 100:
-                        raise Exception('No prior within bounds obtained for an ensemble member for state item '+state[j]+' after '+str(counter_while_loop)+ ' attempts')
-                    counter_while_loop += 1
+            counter_while_loop = 1
+            continueloop = True
+            while continueloop:
+                rand_nrs = np.random.multivariate_normal(np.zeros(len(state)),b_cov,check_valid='raise')
+                continueloop = False            
+                for j in range(len(state)):
+                    if state[j] in boundedvars:
+                        if priorinput_mem.__dict__[state[j]] + rand_nrs[j] < boundedvars[state[j]][0] or priorinput_mem.__dict__[state[j]] + rand_nrs[j] > boundedvars[state[j]][1]:
+                            continueloop = True
+                if counter_while_loop >= len(state)*100:
+                    raise Exception('No prior within bounds obtained for an ensemble member after '+str(counter_while_loop)+ ' attempts')
+                counter_while_loop += 1
+        else:
+            rand_nrs = np.random.multivariate_normal(np.zeros(len(state)),b_cov,check_valid='raise')
+        for j in range(len(state)):
+            priorinput_mem.__dict__[state[j]] += rand_nrs[j]
     non_state_pparamvals = {}
     if pert_non_state_param:
         for param in non_state_paramdict:
@@ -974,13 +1017,13 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
                     plt.ylabel(item +' ('+ disp_units[item] + ')')
                 plt.xlabel('time (h)')
                 plt.subplots_adjust(left=0.17, right=0.92, top=0.96, bottom=0.15,wspace=0.1)
-                plt.legend()
+                plt.legend(prop={'size':legendsize})
                 if write_to_f:
-                    if not os.path.exists('fig_obs_'+item+'_mem'+str(counter)+'.'+figformat): 
+                    if not ('fig_obs_'+item+'_mem'+str(counter)+'.'+figformat).lower() in [x.lower() for x in os.listdir()]: #os.path.exists can be case-sensitive, depending on operating system
                         plt.savefig('fig_obs_'+item+'_mem'+str(counter)+'.'+figformat, format=figformat)
                     else:
                         itemname = item + '_'
-                        while os.path.exists('fig_obs_'+itemname+'_mem'+str(counter)+'.'+figformat):
+                        while ('fig_obs_'+itemname+'_mem'+str(counter)+'.'+figformat).lower() in [x.lower() for x in os.listdir()]: 
                             itemname += '_'
                         #Windows cannnot have a file 'fig_obs_H_mem1.png' and 'fig_obs_h_mem1.png' in the same folder. The while loop can also handle e.g. the combination of variables Abc, ABC and abc                
                         plt.savefig('fig_obs_'+itemname+'_mem'+str(counter)+'.'+figformat, format=figformat)                        
@@ -1120,9 +1163,10 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
                         min_costf_mem_ind = optim_mem.Costflist.index(min(optim_mem.Costflist)) #find the index number of the simulation where costf was minimal
                         state_opt_mem = optim_mem.Statelist[min_costf_mem_ind]
                     min_costf_mem = optim_mem.cost_func(state_opt_mem,inputcopy_mem,state,obs_times,obs_weights) 
+    CostParts = optim_mem.cost_func(state_opt_mem,inputcopy_mem,state,obs_times,obs_weights,True)
     if write_to_f:
         open('Optimfile'+str(counter)+'.txt','a').write('{0:>25s}'.format('\n finished'))
-    return min_costf_mem,state_opt_mem,optim_mem.pstate,non_state_pparamvals
+    return min_costf_mem,state_opt_mem,optim_mem.pstate,non_state_pparamvals,CostParts
   
 if use_ensemble:
     ensemble = []
@@ -1131,6 +1175,7 @@ if use_ensemble:
     ensemble[0]['min_costf'] = min_costf0
     ensemble[0]['state_opt'] = state_opt0   
     ensemble[0]['pstate'] = optim.pstate
+    ensemble[0]['CostParts'] = CostParts0
     if write_to_f:
         shutil.move('Optimfile.txt', 'Optimfile_'+str(0)+'.txt')
         shutil.move('Gradfile.txt', 'Gradfile_'+str(0)+'.txt')
@@ -1150,9 +1195,10 @@ if use_ensemble:
             ensemble[j]['state_opt'] = result_array[j-1][1]
             ensemble[j]['pstate'] = result_array[j-1][2]
             ensemble[j]['nonstateppars'] = result_array[j-1][3] #an empty dictionary if not pert_non_state_param=True
+            ensemble[j]['CostParts'] = result_array[j-1][4]
     else:
         for i in range(1,nr_of_members):
-            ensemble[i]['min_costf'],ensemble[i]['state_opt'],ensemble[i]['pstate'],ensemble[i]['nonstateppars'] =  run_ensemble_member(i,seedvalue,non_state_paramdict)
+            ensemble[i]['min_costf'],ensemble[i]['state_opt'],ensemble[i]['pstate'],ensemble[i]['nonstateppars'],ensemble[i]['CostParts'] =  run_ensemble_member(i,seedvalue,non_state_paramdict)
     print('ensemble:')
     print(ensemble)
     seq_costf = np.array([x['min_costf'] for x in ensemble]) #iterate over the dictionaries
@@ -1206,13 +1252,13 @@ if use_ensemble:
                 plt.xlabel(state[i] + ' ('+ disp_units_par[state[i]] +')')
                 plt.ylabel('Probability density (-)')  
                 plt.subplots_adjust(left=0.15, right=0.92, top=0.96, bottom=0.15,wspace=0.1)
-                plt.legend(loc=0, frameon=True) #prop={'size':20}
+                plt.legend(loc=0, frameon=True,prop={'size':legendsize}) 
                 if write_to_f:
-                    if not os.path.exists('pdf_posterior_'+state[i]+'.'+figformat): 
+                    if not ('pdf_posterior_'+state[i]+'.'+figformat).lower() in [x.lower() for x in os.listdir()]: #os.path.exists can be case-sensitive, depending on operating system 
                         plt.savefig('pdf_posterior_'+state[i]+'.'+figformat, format=figformat)
                     else:
                         itemname = state[i] + '_'
-                        while os.path.exists('pdf_posterior_'+itemname+'.'+figformat):
+                        while ('pdf_posterior_'+itemname+'.'+figformat).lower() in [x.lower() for x in os.listdir()]:
                             itemname += '_'
                         plt.savefig('pdf_posterior_'+itemname+'.'+figformat, format=figformat)
                 
@@ -1249,14 +1295,14 @@ if use_ensemble:
                     plt.axvline(mean_nonstate_p[param], linestyle='dashed',linewidth=2,color='black',label = 'mean')
                     plt.xlabel(param + ' ('+ disp_units_par[param] +')')
                     plt.ylabel('Probability density (-)')  
-                    plt.legend()
+                    plt.legend(prop={'size':legendsize})
                     plt.subplots_adjust(left=0.15, right=0.92, top=0.96, bottom=0.15,wspace=0.1)
                     if write_to_f:
-                        if not os.path.exists('pdf_nonstate_'+param+'.'+figformat): 
+                        if not ('pdf_nonstate_'+param+'.'+figformat).lower() in [x.lower() for x in os.listdir()]: #os.path.exists can be case-sensitive, depending on operating system 
                             plt.savefig('pdf_nonstate_'+param+'.'+figformat, format=figformat)
                         else:
                             itemname = param + '_'
-                            while os.path.exists('pdf_nonstate_'+itemname+'.'+figformat):
+                            while ('pdf_nonstate_'+itemname+'.'+figformat).lower() in [x.lower() for x in os.listdir()]: 
                                 itemname += '_'
                             plt.savefig('pdf_nonstate_'+itemname+'.'+figformat, format=figformat)
                     matr_incl_nonst = np.append(matr_incl_nonst,[seq_suc_ns],axis=0)
@@ -1345,6 +1391,27 @@ if write_to_f:
         open('Optstatsfile.txt','a').write('{0:>32s}'.format('index member with best state:'))
         open('Optstatsfile.txt','a').write('\n')
         open('Optstatsfile.txt','a').write('{0:>31s}'.format(str(opt_sim_nr)))
+        open('Optstatsfile.txt','a').write('\n')
+    open('Optstatsfile.txt','a').write('{0:>32s}'.format('costf parts best state:'))
+    open('Optstatsfile.txt','a').write('\n      ')
+    for obsvar in obsvarlist:
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(obsvar))
+    if use_backgr_in_cost:
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format('Background'))
+    if paramboundspenalty:
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format('Penalty'))
+    open('Optstatsfile.txt','a').write('\n      ')
+    if use_ensemble:
+        dictio = ensemble[opt_sim_nr]['CostParts']
+    else:
+        dictio = CostParts0
+    for obsvar in obsvarlist:
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(dictio[obsvar])))
+    if use_backgr_in_cost:
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(dictio['backgr'])))
+    if paramboundspenalty:
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(dictio['penalty'])))
+    if use_ensemble:
         if est_post_pdf_covmatr:
             open('Optstatsfile.txt','a').write('\n\n')
             open('Optstatsfile.txt','a').write('{0:>32s}'.format('estim post state covar matrix:'))
@@ -1470,13 +1537,28 @@ if write_to_f:
                         open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(priorinput.__dict__[param])))
             open('Optstatsfile.txt','a').write('\n')
             i += 1
+        open('Optstatsfile.txt','a').write('\n')
+        open('Optstatsfile.txt','a').write('{0:>32s}'.format('prior ensemble members:'))
+        open('Optstatsfile.txt','a').write('\n')
+        open('Optstatsfile.txt','a').write('{0:>6s}'.format('number'))
+        for item in state:
+            open('Optstatsfile.txt','a').write('{0:>25s}'.format(item))
+        open('Optstatsfile.txt','a').write('\n')
+        i = 0
+        for item in ensemble:
+            open('Optstatsfile.txt','a').write('{0:>6s}'.format(str(i)))
+            for param in item['pstate']:
+                open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(param)))
+            open('Optstatsfile.txt','a').write('\n')
+            i += 1        
 
 for i in range(len(obsvarlist)):
     unsca = 1 #a scale for plotting the obs with different units
     if (disp_units[obsvarlist[i]] == 'g/kg' or disp_units[obsvarlist[i]] == 'g kg$^{-1}$') and (obsvarlist[i] == 'q' or obsvarlist[i].startswith('qmh')): #q can be plotted differently for clarity
         unsca = 1000
     fig = plt.figure()
-    plt.errorbar(obs_times[obsvarlist[i]]/3600,unsca*optim.__dict__['obs_'+obsvarlist[i]],yerr=unsca*measurement_error[obsvarlist[i]],ecolor='black',fmt='None')
+    plt.errorbar(obs_times[obsvarlist[i]]/3600,unsca*optim.__dict__['obs_'+obsvarlist[i]],yerr=unsca*optim.__dict__['error_obs_'+obsvarlist[i]],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
+    plt.errorbar(obs_times[obsvarlist[i]]/3600,unsca*optim.__dict__['obs_'+obsvarlist[i]],yerr=unsca*measurement_error[obsvarlist[i]],ecolor='black',fmt='None',label = '$\sigma_{I}$')
     plt.plot(priormodel.out.t,unsca*priormodel.out.__dict__[obsvarlist[i]], ls='dashed', marker='None',color='gold',linewidth = 2.0,label = 'prior')
     plt.plot(priormodel.out.t,unsca*optimalmodel.out.__dict__[obsvarlist[i]], linestyle='-', marker='None',color='red',linewidth = 2.0,label = 'post')
     plt.plot(obs_times[obsvarlist[i]]/3600,unsca*optim.__dict__['obs_'+obsvarlist[i]], linestyle=' ', marker='*',color = 'black',ms=10, label = 'obs')
@@ -1488,13 +1570,13 @@ for i in range(len(obsvarlist)):
         plt.ylabel(obsvarlist[i] +' ('+ disp_units[obsvarlist[i]] + ')')
     plt.xlabel('time (h)')
     plt.subplots_adjust(left=0.18, right=0.92, top=0.96, bottom=0.15,wspace=0.1)
-    plt.legend()
+    plt.legend(prop={'size':legendsize})
     if write_to_f:
-        if not os.path.exists('fig_fit_'+obsvarlist[i]+'.'+figformat): 
+        if not ('fig_fit_'+obsvarlist[i]+'.'+figformat).lower() in [x.lower() for x in os.listdir()]: #os.path.exists can be case-sensitive, depending on operating system
             plt.savefig('fig_fit_'+obsvarlist[i]+'.'+figformat, format=figformat)
         else:
             itemname = obsvarlist[i] + '_'
-            while os.path.exists('fig_fit_'+itemname+'.'+figformat):
+            while ('fig_fit_'+itemname+'.'+figformat).lower() in [x.lower() for x in os.listdir()]:
                 itemname += '_'
             plt.savefig('fig_fit_'+itemname+'.'+figformat, format=figformat)#Windows cannnot have a file 'fig_fit_h' and 'fig_fit_H' in the same folder. The while loop can also handle e.g. the combination of variables Abc, ABC and abc         
         
@@ -1508,7 +1590,7 @@ if 'EnBalDiffObsHFrac' in state:
         plt.plot(obs_times['H']/3600,enbal_corr_H, linestyle=' ', marker='o',color = 'red',ms=10,label = 'obs corr')
         plt.ylabel('H (' + disp_units['H']+')')
         plt.xlabel('time (h)')
-        plt.legend()
+        plt.legend(prop={'size':legendsize})
         plt.subplots_adjust(left=0.18, right=0.92, top=0.96, bottom=0.15,wspace=0.1)
         if write_to_f:
             plt.savefig('fig_fit_enbalcorrH.'+figformat, format=figformat)
@@ -1521,7 +1603,7 @@ if 'EnBalDiffObsHFrac' in state:
         plt.plot(obs_times['LE']/3600,enbal_corr_LE, linestyle=' ', marker='o',color = 'red',ms=10,label = 'obs corr')
         plt.ylabel('LE (' + disp_units['LE']+')')
         plt.xlabel('time (h)')
-        plt.legend()
+        plt.legend(prop={'size':legendsize})
         plt.subplots_adjust(left=0.18, right=0.92, top=0.96, bottom=0.15,wspace=0.1)
         if write_to_f:
             plt.savefig('fig_fit_enbalcorrLE.'+figformat, format=figformat)
@@ -1536,5 +1618,5 @@ for i in range(len(obsvarlist)):
     plt.plot(obs_times[obsvarlist[i]],optim.__dict__['obs_'+obsvarlist[i]], linestyle=' ', marker='o',color = 'black')
     plt.ylabel(obsvarlist[i])
     plt.xlabel('timestep')
-    plt.legend()
+    plt.legend(prop={'size':legendsize})
 

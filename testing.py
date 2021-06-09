@@ -9,7 +9,7 @@ adjointtest_surf_lay = False
 gradtest_surf_lay = False
 adjointtest_ribtol = False
 gradtest_ribtol = False
-adjointtest_ags = False
+adjointtest_ags = True
 gradtest_ags = False
 adjointtest_run_mixed_layer = False
 gradtest_run_mixed_layer = False
@@ -28,7 +28,7 @@ gradtest_run_soil_COS_mod = False
 adjointtest_store = False
 gradtest_store = False
 adjointtest_run_cumulus = False
-gradtest_run_cumulus = True
+gradtest_run_cumulus = False
 adjointtest_jarvis_stewart = False
 gradtest_jarvis_stewart = False
 manual_adjointtest = False
@@ -123,7 +123,7 @@ testinput.tstart     = 10*3600/3600#11*3600/3600   # time of the day [h UTC]
 testinput.cc         = 0.6       # cloud cover fraction [-]
 #testinput.Q          = 600.      # net radiation [W m-2] 
 testinput.dFz        = 0.0002        # cloud top radiative divergence [W m-2] 
-testinput.sw_ls      = True     # land surface switch
+testinput.sw_ls      = True    # land surface switch
 testinput.ls_type    = 'ags'     # land-surface parameterization ('js' for Jarvis-Stewart or 'ags' for A-Gs)
 testinput.wg         = 0.19      # volumetric water content top soil layer [m3 m-3]
 testinput.w2         = 0.21      # volumetric water content deeper soil layer [m3 m-3]
@@ -159,6 +159,25 @@ testinput.sw_model_stable_con = True
 testinput.sw_use_ribtol = True
 testinput.sw_advfp = False
 testinput.sw_dyn_beta = False
+testinput.sw_printwarnings = True
+
+#tsteps = int(np.floor(testinput.runtime / testinput.dt)) #the number of timesteps, used below
+#testinput.wtheta_input = np.zeros(tsteps)
+#testinput.wq_input = np.zeros(tsteps)
+#testinput.wCO2_input = np.zeros(tsteps)
+#for t in range(tsteps):
+#    if (t*testinput.dt >= 1.5*3600) and (t*testinput.dt <= 9*3600):
+#        testinput.wtheta_input[t] = 0.08 * np.sin(np.pi*(t*testinput.dt-5400)/27000)
+#    else:
+#        testinput.wtheta_input[t] = 0
+#    testinput.wq_input[t] = 0.087 * np.sin(np.pi * t*testinput.dt/43200) /1000 #/1000 for conversion to kg/kg m s-1
+#    if (t*testinput.dt >= 2*3600) and (t*testinput.dt <= 9.5*3600):
+#        testinput.wCO2_input[t] = -0.1*np.sin(np.pi*(t*testinput.dt-7200)/27000)
+#    else:
+#        testinput.wCO2_input[t] = 0.
+##testinput.wCO2       = testinput.wCO2_input[0]        # surface kinematic CO2 flux [ppm m s-1]
+#testinput.wq         = testinput.wq_input[0]     # surface kinematic moisture flux [kg kg-1 m s-1]
+#testinput.wtheta     = testinput.wtheta_input[0]  +0.001     # surface kinematic heat flux [K m s-1]
 
 testinput.soilCOSmodeltype   = None #can be set to None or 'Sun_Ogee'
 testinput.uptakemodel = 'Ogee'
@@ -632,8 +651,8 @@ if adjointtest_ags:
     print('adjoint tests of ags:')
     if not testinput.ls_type == 'ags':
         raise Exception('Set ls_type to \'ags\' for adjoint tests of ags')
-    testx = ['dthetasurf','dTs','de','dCO2','dCO2surf','dPARfract','dSwin','dcveg','dw2','dwfc','dwwilt','dalfa_sto','dLAI','dTsoil','dra','dwg','dCOS','dCOSsurf','dgciCOS','dR10']
-    testHTy = ['adthetasurf','adTs','ade','adCO2','adCO2surf','adPARfract','adSwin','adcveg','adw2','adwfc','adwwilt','adalfa_sto','adLAI','adTsoil','adra','adwg','adCOS','adCOSsurf','adgciCOS','adR10']
+    testx = ['dthetasurf','dTs','de','dCO2','dCO2surf','dPARfract','dSwin','dcveg','dw2','dwfc','dwwilt','dalfa_sto','dLAI','dTsoil','dra','dwg','dCOS','dCOSsurf','dgciCOS','dE0','dR10']
+    testHTy = ['adthetasurf','adTs','ade','adCO2','adCO2surf','adPARfract','adSwin','adcveg','adw2','adwfc','adwwilt','adalfa_sto','adLAI','adTsoil','adra','adwg','adCOS','adCOSsurf','adgciCOS','adE0','adR10']
     adjoint_modelling.adjoint_test_ags(testmodel,x_variables=['dthetasurf'],Hx_variable='dCO2comp_dthetasurf',y_variable='adCO2comp_dthetasurf',HTy_variables=['adthetasurf'])
     adjoint_modelling.adjoint_test_ags(testmodel,x_variables=['dthetasurf'],Hx_variable='dgm1_dthetasurf',y_variable='adgm1_dthetasurf',HTy_variables=['adthetasurf'])    
     adjoint_modelling.adjoint_test_ags(testmodel,x_variables=['dthetasurf'],Hx_variable='dgm2_dthetasurf',y_variable='adgm2_dthetasurf',HTy_variables=['adthetasurf'])    
@@ -799,12 +818,14 @@ if adjointtest_ags:
     adjoint_modelling.adjoint_test_ags(testmodel,x_variables=['dalfa_sto'],Hx_variable='dAn_dalfa_sto',y_variable='adAn_dalfa_sto',HTy_variables=['adalfa_sto'])
     adjoint_modelling.adjoint_test_ags(testmodel,x_variables=['dLAI'],Hx_variable='dAn_dLAI',y_variable='adAn_dLAI',HTy_variables=['adLAI'])
     adjoint_modelling.adjoint_test_ags(testmodel,x_variables=['dwg'],Hx_variable='dfw_dwg',y_variable='adfw_dwg',HTy_variables=['adwg'])
+    adjoint_modelling.adjoint_test_ags(testmodel,x_variables=['dE0'],Hx_variable='dtexp_dE0',y_variable='adtexp_dE0',HTy_variables=['adE0'])
     adjoint_modelling.adjoint_test_ags(testmodel,x_variables=['dTsoil'],Hx_variable='dtexp_dTsoil',y_variable='adtexp_dTsoil',HTy_variables=['adTsoil'])
+    adjoint_modelling.adjoint_test_ags(testmodel,x_variables=['dE0'],Hx_variable='dResp_dE0',y_variable='adResp_dE0',HTy_variables=['adE0'])
     adjoint_modelling.adjoint_test_ags(testmodel,x_variables=['dTsoil'],Hx_variable='dResp_dTsoil',y_variable='adResp_dTsoil',HTy_variables=['adTsoil'])    
     adjoint_modelling.adjoint_test_ags(testmodel,x_variables=['dwg'],Hx_variable='dResp_dwg',y_variable='adResp_dwg',HTy_variables=['adwg'])
     adjoint_modelling.adjoint_test_ags(testmodel,x_variables=['dR10'],Hx_variable='dResp_dR10',y_variable='adResp_dR10',HTy_variables=['adR10'])
     adjoint_modelling.adjoint_test_ags(testmodel,x_variables=testx,Hx_variable='dwCO2A',y_variable='adwCO2A',HTy_variables=testHTy)   
-    adjoint_modelling.adjoint_test_ags(testmodel,x_variables=['dTsoil','dwg','dR10'],Hx_variable='dwCO2R',y_variable='adwCO2R',HTy_variables=['adTsoil','adwg','adR10'])
+    adjoint_modelling.adjoint_test_ags(testmodel,x_variables=['dE0','dTsoil','dwg','dR10'],Hx_variable='dwCO2R',y_variable='adwCO2R',HTy_variables=['adE0','adTsoil','adwg','adR10'])
     adjoint_modelling.adjoint_test_ags(testmodel,x_variables=testx,Hx_variable='dwCO2',y_variable='adwCO2',HTy_variables=testHTy)
     adjoint_modelling.adjoint_test_ags(testmodel,x_variables=testx,Hx_variable='dwCOSP',y_variable='adwCOSP',HTy_variables=testHTy)
     if testinput.soilCOSmodeltype == 'Sun_Ogee':
@@ -815,9 +836,9 @@ if adjointtest_ags:
 if gradtest_ags:
     if not testinput.ls_type == 'ags':
         raise Exception('Set ls_type to ags for the ags gradient tests')
-    testlist_ags = ['thetasurf','Ts','e','CO2','CO2surf','PARfract','Swin','cveg','w2','wfc','wwilt','alfa_sto','LAI','wg','Tsoil','R10','ra','COS','COSsurf','gciCOS']
+    testlist_ags = ['thetasurf','Ts','e','CO2','CO2surf','PARfract','Swin','cveg','w2','wfc','wwilt','alfa_sto','LAI','wg','Tsoil','E0','R10','ra','COS','COSsurf','gciCOS']
     print('gradient tests of ags:')
-    testdstate_ags = {'dthetasurf':1.0,'dTs':1.0,'de':1.0,'dCO2':1.0,'dCO2surf':1.0,'dPARfract':1.0,'dSwin':1.0,'dcveg':1.0,'dw2':1.0,'dwfc':1.0,'dwwilt':1.0,'dalfa_sto':1.0,'dLAI':1.0,'dwg':1.0,'dTsoil':1.0,'dR10':1.0,'dra':1.0,'dCOS':1.0,'dCOSsurf':1.0,'dgciCOS':1.0}
+    testdstate_ags = {'dthetasurf':1.0,'dTs':1.0,'de':1.0,'dCO2':1.0,'dCO2surf':1.0,'dPARfract':1.0,'dSwin':1.0,'dcveg':1.0,'dw2':1.0,'dwfc':1.0,'dwwilt':1.0,'dalfa_sto':1.0,'dLAI':1.0,'dwg':1.0,'dTsoil':1.0,'dE0':1.0,'dR10':1.0,'dra':1.0,'dCOS':1.0,'dCOSsurf':1.0,'dgciCOS':1.0}
     adjoint_modelling.grad_test_ags(testmodel,['thetasurf'],'CO2comp',{'dthetasurf':1.0},'dCO2comp_dthetasurf',printmode)   
     adjoint_modelling.grad_test_ags(testmodel,['thetasurf'],'gm1',{'dthetasurf':1.0},'dgm1_dthetasurf',printmode)
     adjoint_modelling.grad_test_ags(testmodel,['thetasurf'],'gm2',{'dthetasurf':1.0},'dgm2_dthetasurf',printmode)
@@ -982,12 +1003,14 @@ if gradtest_ags:
     adjoint_modelling.grad_test_ags(testmodel,['alfa_sto'],'An',{'dalfa_sto':1.0},'dAn_dalfa_sto',printmode)
     adjoint_modelling.grad_test_ags(testmodel,['LAI'],'An',{'dLAI':1.0},'dAn_dLAI',printmode)
     adjoint_modelling.grad_test_ags(testmodel,['wg'],'fw',{'dwg':1.0},'dfw_dwg',printmode)
+    adjoint_modelling.grad_test_ags(testmodel,['E0'],'texp',{'dE0':1.0},'dtexp_dE0',printmode)
     adjoint_modelling.grad_test_ags(testmodel,['Tsoil'],'texp',{'dTsoil':1.0},'dtexp_dTsoil',printmode)
+    adjoint_modelling.grad_test_ags(testmodel,['E0'],'Resp',{'dE0':1.0},'dResp_dE0',printmode)
     adjoint_modelling.grad_test_ags(testmodel,['Tsoil'],'Resp',{'dTsoil':1.0},'dResp_dTsoil',printmode)
     adjoint_modelling.grad_test_ags(testmodel,['wg'],'Resp',{'dwg':1.0},'dResp_dwg',printmode)   
     adjoint_modelling.grad_test_ags(testmodel,['R10'],'Resp',{'dR10':1.0},'dResp_dR10',printmode)  
     adjoint_modelling.grad_test_ags(testmodel,testlist_ags,'wCO2A',testdstate_ags,'dwCO2A',printmode)
-    adjoint_modelling.grad_test_ags(testmodel,['wg','Tsoil','R10'],'wCO2R',{'dwg':1.0,'dTsoil':1.0,'dR10':1.0},'dwCO2R',printmode)
+    adjoint_modelling.grad_test_ags(testmodel,['E0','wg','Tsoil','R10'],'wCO2R',{'dE0':1.0,'dwg':1.0,'dTsoil':1.0,'dR10':1.0},'dwCO2R',printmode)
     adjoint_modelling.grad_test_ags(testmodel,testlist_ags,'wCO2',testdstate_ags,'dwCO2',printmode)
     adjoint_modelling.grad_test_ags(testmodel,testlist_ags,'wCOSP',testdstate_ags,'dwCOSP',printmode)
     if testinput.soilCOSmodeltype == 'Sun_Ogee':
@@ -1183,10 +1206,11 @@ if gradtest_int_mixed_layer:
 
 if adjointtest_run_radiation:    
     print('adjoint tests of run radiation:')
-    testx = ['ddoy','dlat','dtheta','dh','dcc','dalpha','dTs']
-    testHTy = ['addoy','adlat','adtheta','adh','adcc','adalpha','adTs']
+    testx = ['ddoy','dlat','dlon','dtheta','dh','dcc','dalpha','dTs']
+    testHTy = ['addoy','adlat','adlon','adtheta','adh','adcc','adalpha','adTs']
     adjoint_modelling.adjoint_test_run_radiation(testmodel,x_variables=testx,Hx_variable='dsda',y_variable='adsda',HTy_variables=testHTy)
     adjoint_modelling.adjoint_test_run_radiation(testmodel,x_variables=testx,Hx_variable='dpart1_sinlea',y_variable='adpart1_sinlea',HTy_variables=testHTy)
+    adjoint_modelling.adjoint_test_run_radiation(testmodel,x_variables=testx,Hx_variable='dsinlea_lon',y_variable='adsinlea_lon',HTy_variables=testHTy)
     adjoint_modelling.adjoint_test_run_radiation(testmodel,x_variables=testx,Hx_variable='dpart2_sinlea',y_variable='adpart2_sinlea',HTy_variables=testHTy)
     adjoint_modelling.adjoint_test_run_radiation(testmodel,x_variables=testx,Hx_variable='dsinlea',y_variable='adsinlea',HTy_variables=testHTy)
     adjoint_modelling.adjoint_test_run_radiation(testmodel,x_variables=testx,Hx_variable='dTa_dtheta',y_variable='adTa_dtheta',HTy_variables=testHTy)
@@ -1201,10 +1225,11 @@ if adjointtest_run_radiation:
 
 if gradtest_run_radiation:
     print('gradient tests of run radiation:')
-    testlist = ['doy','lat','theta','h','cc','alpha','Ts']
-    testdstate = {'ddoy':1.0,'dlat':1.0,'dtheta':1.0,'dh':1.0,'dcc':1.0,'dalpha':1.0,'dTs':1.0}
+    testlist = ['doy','lat','lon','theta','h','cc','alpha','Ts']
+    testdstate = {'ddoy':1.0,'dlat':1.0,'dlon':1.0,'dtheta':1.0,'dh':1.0,'dcc':1.0,'dalpha':1.0,'dTs':1.0}
     adjoint_modelling.grad_test_run_radiation(testmodel,['doy'],'sda',{'ddoy':1.0},'dsda',printmode)
     adjoint_modelling.grad_test_run_radiation(testmodel,testlist,'part1_sinlea',testdstate,'dpart1_sinlea',printmode)
+    adjoint_modelling.grad_test_run_radiation(testmodel,testlist,'sinlea_lon',testdstate,'dsinlea_lon',printmode)
     adjoint_modelling.grad_test_run_radiation(testmodel,testlist,'part2_sinlea',testdstate,'dpart2_sinlea',printmode)
     adjoint_modelling.grad_test_run_radiation(testmodel,testlist,'sinlea',testdstate,'dsinlea',printmode)
     adjoint_modelling.grad_test_run_radiation(testmodel,['theta'],'Ta',{'dtheta':1.0},'dTa_dtheta',printmode)
@@ -1850,11 +1875,11 @@ if adjointtest:
     print('adjoint tests:')
     testx_stat = ['dtheta','dq','dwtheta','dwq','ddeltatheta','ddeltaq','dh']
     testHTy_stat = ['adtheta','adq','adwtheta','adwq','addeltatheta','addeltaq','adh']
-    testx_rr = ['ddoy','dlat','dtheta','dh','dalpha','dTs']
-    testHTy_rr = ['addoy','adlat','adtheta','adh','adalpha','adTs']
+    testx_rr = ['ddoy','dlat','dlon','dtheta','dh','dalpha','dTs']
+    testHTy_rr = ['addoy','adlat','adlon','adtheta','adh','adalpha','adTs']
     testx_rsl = ['du','dv','dtheta','dwtheta','dh','dwCOS','dCOS','dCs_start','dwCO2','dCO2','drs','dustar_start','dwthetav','dthetav','dq','dwq','dCOSmeasuring_height','dz0m','dz0h']
     testHTy_rsl = ['adu','adv','adtheta','adwtheta','adh','adwCOS','adCOS','adCs_start','adwCO2','adCO2','adrs','adustar_start','adwthetav','adthetav','adq','adwq','adCOSmeasuring_height','adz0m','adz0h']
-    testx_ags = ['dthetasurf','dTs','de','dCO2','dPARfract','dSwin','dcveg','dw2','dwfc','dwwilt','dalfa_sto','dLAI','dgciCOS','dTsoil','dra','dwg','dCOS','dR10']
+    testx_ags = ['dthetasurf','dTs','de','dCO2','dPARfract','dSwin','dcveg','dw2','dwfc','dwwilt','dalfa_sto','dLAI','dgciCOS','dTsoil','dra','dwg','dCOS','dE0','dR10']
     testHTy_ags = (['a'+item for item in testx_ags])
     testx_js = ['dgD']
     testHTy_js = (['a'+item for item in testx_js])
@@ -2502,7 +2527,7 @@ if gradtest:
     testdstate_stat = {}
     for item in testlist_stat:
         testdstate_stat['d'+item] = 1.0
-    testlist_rr = ['doy','lat','theta','h','cc','alpha','Ts']
+    testlist_rr = ['doy','lat','lon','theta','h','cc','alpha','Ts']
     testdstate_rr = {}
     for item in testlist_rr:
         testdstate_rr['d'+item] = 1.0
@@ -2520,7 +2545,7 @@ if gradtest:
                   'dLambda':1.0,'dTsoil':1.0,'drsmin':1.0,'dwsat':1.0,'dw2':1.0,'dT2':1.0,'drssoilmin':1.0,'dCGsat':1.0,'db':1.0,'da':1.0,'dp':1.0,'dC1sat':1.0,'dC2ref':1.0,'dQ':1.0}
     testlist_ils = ['Tsoil','wg']
     testdstate_ils = {'dTsoil':1.0,'dwg':1.0}
-    testlist_ags = ['Ts','CO2','PARfract','cveg','w2','wfc','wwilt','alfa_sto','LAI','gciCOS','wg','Tsoil','COS','R10']
+    testlist_ags = ['Ts','CO2','PARfract','cveg','w2','wfc','wwilt','alfa_sto','LAI','gciCOS','wg','Tsoil','COS','E0','R10']
     if not hasattr(testinput,'PARfract'):
         testlist_ags.remove('PARfract') #to avoid an error if PARfract not given
     testdstate_ags = {}
@@ -2542,13 +2567,13 @@ if gradtest:
         testdstate_rc['d'+item] = 1.0
     testlist_ts = []
     if hasattr(testinput,'wtheta_input'): #we have to check this, because if not present, there will be a keyerror (this variable is only used if no land surface and if specified in input)
-        testlist.append('wtheta_input')
+        testlist_ts.append('wtheta_input')
     if hasattr(testinput,'wq_input'):
-        testlist.append('wq_input')
+        testlist_ts.append('wq_input')
     if hasattr(testinput,'wCO2_input'):
-        testlist.append('wCO2_input')
+        testlist_ts.append('wCO2_input')
     if hasattr(testinput,'wCOS_input'):
-        testlist.append('wCOS_input')
+        testlist_ts.append('wCOS_input')
     testdstate_ts = {}
     for item in testlist_ts:
         testdstate_ts['d'+item] = np.ones(testmodel.tsteps)
@@ -2581,6 +2606,8 @@ if gradtest:
     testdstate.update(testdstate_rc)
     testlist = list(set(testlist + cp.deepcopy(testlist_ts))) #set to remove duplicates, ts for timestep
     testdstate.update(testdstate_ts)
+#    testlist = ['wtheta_input']
+#    testdstate = {'dwtheta_input':np.ones(testmodel.tsteps)}
     
 #     #statistics
     adjoint_modelling.grad_test(testinput,testlist,'thetav',testdstate,'dthetav','stat',printmode)

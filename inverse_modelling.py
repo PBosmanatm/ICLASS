@@ -170,7 +170,7 @@ class inverse_modelling:
                 raise static_costfError('too slow progress in costf')
         return cost
     
-    def cost_func(self,state_to_opt,inputdata,state_var_names,obs_times,obs_weights={}): #Similar to min func, but without file writing and changing forcings etc, so it can be called safely without altering an optimisation
+    def cost_func(self,state_to_opt,inputdata,state_var_names,obs_times,obs_weights={},RetCFParts=False): #Similar to min func, but without file writing and changing forcings etc, so it can be called safely without altering an optimisation
         cost = 0
         obs_sca_cf = {}
         for i in range(len(state_var_names)):
@@ -180,7 +180,10 @@ class inverse_modelling:
                 obs_sca_cf[item] = state_to_opt[i]
         model = fwdm.model(inputdata)
         model.run(checkpoint=False,updatevals_surf_lay=True,delete_at_end=False)
+        CostParts = {}
         for item in self.obsvarlist: #do not provide obs at a time that is not modelled, this will lead to false results! (make a check for this in the optimisation file!)
+            if RetCFParts: #means return cost function parts
+                CostParts[item] = 0
             if 'EnBalDiffObsHFrac' in state_var_names:
                 if item not in ['H','LE']:
                     observations_item = self.__dict__['obs_'+item]
@@ -200,25 +203,48 @@ class inverse_modelling:
                 if round(model.out.t[i] * 3600,3) in [round(num, 3) for num in obs_times[item]]: #so if we are at a time where we have an obs
                     if item in obs_weights:
                         weight = obs_weights[item][k]
-                    cost += weight * (model.out.__dict__[item][i]- obs_scale * observations_item[k])**2/(self.__dict__['error_obs_' + item][k]**2)
+                    increment = weight * (model.out.__dict__[item][i]- obs_scale * observations_item[k])**2/(self.__dict__['error_obs_' + item][k]**2)
+                    cost += increment
                     k += 1
+                    if RetCFParts:
+                        CostParts[item] += increment
+            
         if self.paramboundspenalty: #note that the code under this if statement will not perform any action if tnc method is used, since in case of tnc with parameter bounds, the state variables are always within the specified bounds. 
+            if RetCFParts:
+                CostParts['penalty'] = 0
             for i in range(len(state_var_names)):
                 if state_var_names[i] in self.boundedvars:
                     if state_to_opt[i] < self.boundedvars[state_var_names[i]][0]: #lower than lower bound
                         if self.setNanCostfOutBoundsTo0:
                             if math.isnan(cost):
                                 cost = 0 #to avoid ending up with a lot of nans. note that nan + a number gives nan. 
-                        cost += 1/self.penalty_exp*(2 - (state_to_opt[i] - self.boundedvars[state_var_names[i]][0]))**self.penalty_exp #note that this will always be positive
+                                if RetCFParts:
+                                    for key in RetCFParts:
+                                       RetCFParts[key] = 0
+                        increment = 1/self.penalty_exp*(2 - (state_to_opt[i] - self.boundedvars[state_var_names[i]][0]))**self.penalty_exp #note that this will always be positive
+                        cost += increment
+                        if RetCFParts:
+                            CostParts['penalty'] += increment
                     elif state_to_opt[i] > self.boundedvars[state_var_names[i]][1]: #higher than higher bound
                         if self.setNanCostfOutBoundsTo0:
                             if math.isnan(cost):
                                 cost = 0 #to avoid ending up with a lot of nans. note that nan + a number gives nan. 
-                        cost += 1/self.penalty_exp*(2 + (state_to_opt[i] - self.boundedvars[state_var_names[i]][1]))**self.penalty_exp 
+                                if RetCFParts:
+                                    for key in RetCFParts:
+                                       RetCFParts[key] = 0
+                        increment = 1/self.penalty_exp*(2 + (state_to_opt[i] - self.boundedvars[state_var_names[i]][1]))**self.penalty_exp 
+                        cost += increment
+                        if RetCFParts:
+                            CostParts['penalty'] += increment
         if self.use_backgr_in_cost:
             Jbackground = self.background_costf(state_to_opt)
             cost += Jbackground
-        return cost
+            if RetCFParts:
+                CostParts['backgr'] = Jbackground
+        if RetCFParts:
+            return CostParts 
+        else:
+            return cost
     
     def ana_deriv(self,state_to_opt,inputdata,state_var_names,obs_times,obs_weights={}): #some dummy vars as arg list of min_func and deriv_func needs to be the same
         model = self.model #just to ease notation later on
@@ -473,7 +499,7 @@ class inverse_modelling:
         self.dzsl, self.dRib = 0,0
         #ags
         self.dalfa_sto,self.dthetasurf,self.dTs,self.devap,self.dCO2,self.dwg,self.dw2,self.dSwin,self.dra,self.dTsoil,self.dcveg,self.de,self.dwwilt,self.dwfc,self.dCOSsurf = 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-        self.dCO2surf,self.dgciCOS,self.dR10,self.dPARfract = 0,0,0,0 #
+        self.dCO2surf,self.dgciCOS,self.dE0,self.dR10,self.dPARfract = 0,0,0,0,0 #
         #run mixed layer
         self.ddeltatheta,self.ddeltathetav,self.ddeltaq,self.ddeltaCO2,self.ddeltaCOS,self.dM,self.dadvtheta,self.dwqM,self.dadvq = 0,0,0,0,0,0,0,0,0
         self.dwCO2,self.dwCO2M,self.dadvCO2,self.dwCOSM,self.dadvCOS,self.dlcl,self.dustar,self.dgammatheta,self.dgammatheta2,self.dgammaq,self.dgammau,self.dgammav = 0,0,0,0,0,0,0,0,0,0,0,0
@@ -482,7 +508,7 @@ class inverse_modelling:
         self.ddz_h,self.dhtend,self.dthetatend,self.ddeltathetatend,self.dqtend,self.ddeltaqtend,self.dCO2tend = 0,0,0,0,0,0,0
         self.dCOStend,self.ddeltaCO2tend,self.ddeltaCOStend,self.ddztend,self.dutend,self.dvtend,self.ddeltautend,self.ddeltavtend = 0,0,0,0,0,0,0,0
         #run radiation
-        self.ddoy,self.dlat,self.dcc,self.dalpha = 0,0,0,0
+        self.ddoy,self.dlat,self.dlon,self.dcc,self.dalpha = 0,0,0,0,0
         #run land surface
         self.dwstar,self.dCs,self.dtheta,self.dq,self.dwfc,self.dwwilt,self.dwg,self.dLAI,self.dWmax,self.dWl,self.dcveg = 0,0,0,0,0,0,0,0,0,0,0
         self.dQ,self.dLambda,self.dTsoil,self.drsmin,self.dwsat,self.dw2,self.dT2 = 0,0,0,0,0,0,0
@@ -561,6 +587,11 @@ class inverse_modelling:
     def tl_init(self,model,checkpoint_init,returnvariable=None): #the tangent linear of the init part)
         if not hasattr(model.input,'gammatheta2'):
             self.dgammatheta2 = self.dgammatheta #we need to include this part of the initialistion of the forward model values, since it does not simply come from input for this case
+        fac = model.mair / (model.rho*model.mco2)
+        self.dwCO2 = fac * self.dwCO2
+        if not model.sw_ls:
+            if hasattr(model.input,'wCO2_input'):
+                self.dwCO2_input = self.dwCO2_input * fac
         self.tl_statistics(model,checkpoint_init[0]) #0 for all checkpoints, except surf layer, which has iterations
         if(model.sw_rad):
             self.tl_run_radiation(model,checkpoint_init[0]) 
@@ -666,7 +697,7 @@ class inverse_modelling:
         doy = checkpoint['rr_doy']
         sda = checkpoint['rr_sda_end']
         lat = checkpoint['rr_lat']
-        sinlea_constant = checkpoint['rr_sinlea_constant_end']
+        sinlea_lon = checkpoint['rr_sinlea_lon_end']
         sinlea = checkpoint['rr_sinlea_middle'] #we use middle for the value of the first occurence of a variable that is calulated twice in the same module, end is for the value of the last calculation (or for the value of a variable that is only calculated once in a module)
         h = checkpoint['rr_h']
         theta = checkpoint['rr_theta']
@@ -675,9 +706,12 @@ class inverse_modelling:
         alpha = checkpoint['rr_alpha']
         Ts = checkpoint['rr_Ts']
         Ta = checkpoint['rr_Ta_end']
+        t = checkpoint['rr_t']
+        lon = checkpoint['rr_lon']
         dsda = 0.409 * -np.sin(2. * np.pi * (doy - 173.) / 365.) * 2. * np.pi / 365 * self.ddoy
         dpart1_sinlea = np.sin(sda) * np.cos(2. * np.pi * lat / 360.) * 2. * np.pi / 360. * self.dlat + np.sin(2. * np.pi * lat / 360.) * np.cos(sda)*dsda
-        dpart2_sinlea = np.cos(sda) * sinlea_constant * -np.sin(2. * np.pi * lat / 360.) * 2. * np.pi / 360. * self.dlat + np.cos(2. * np.pi * lat / 360.) * sinlea_constant * -np.sin(sda) * dsda
+        dsinlea_lon = -np.sin(2. * np.pi * (t * model.dt + model.tstart * 3600.) / 86400. + 2. * np.pi * lon / 360.) * 2. * np.pi / 360. * self.dlon 
+        dpart2_sinlea = np.cos(sda) * sinlea_lon * -np.sin(2. * np.pi * lat / 360.) * 2. * np.pi / 360. * self.dlat + np.cos(2. * np.pi * lat / 360.) * sinlea_lon * -np.sin(sda) * dsda + np.cos(2. * np.pi * lat / 360.) * np.cos(sda) * dsinlea_lon
         dsinlea = dpart1_sinlea - dpart2_sinlea
         if sinlea < 0.0001:
             dsinlea = 0
@@ -1493,7 +1527,7 @@ class inverse_modelling:
         wwilt = checkpoint['ags_wwilt']
         wfc = checkpoint['ags_wfc']
         w2 = checkpoint['ags_w2']
-        R10 = checkpoint['ags_R10']
+        R10,E0 = checkpoint['ags_R10'],checkpoint['ags_E0']
         self.Output_tl_ags = {}
         # output:  wCO2A   wCO2R  wCO2 rs 
         # Select index for plap.nt type
@@ -1519,7 +1553,7 @@ class inverse_modelling:
         dfmin0_dthetasurf        = -1./9.*dgm_dthetasurf
         dsqrtf_dthetasurf        = 2.*fmin0*dfmin0_dthetasurf +  4*model.gmin[c]/model.nuco2q *dgm_dthetasurf
         dsqterm_dthetasurf       = dsqrtf_dthetasurf*0.5*pow(sqrtf,-0.5)
-        dfmin_dthetasurf         = -dfmin0_dthetasurf + dsqterm_dthetasurf/(2.*gm)-sqterm*dgm_dthetasurf/(2*gm**2)
+        dfmin_dthetasurf         = -dfmin0_dthetasurf/(2.*gm) + dsqterm_dthetasurf/(2.*gm)-(-fmin0 + sqterm)*dgm_dthetasurf/(2*gm**2)
 #        if self.manualadjointtesting:
 #            dfmin_dthetasurf = self.x
         dD0_dthetasurf           = -dfmin_dthetasurf/model.ad[c]
@@ -1751,15 +1785,17 @@ class inverse_modelling:
         dAn_dalfa_sto = -(co2abs - ci) * -1 * (ra + rsCO2)**(-2) * drsCO2_dalfa_sto
         dAn_dLAI      = drsCO2_dLAI   * (co2abs-ci)/((ra + rsCO2)**2)
         dfw_dwg      = -self.dwg* model.Cw * model.wmax / ((wg + model.wmin)**2)
-        #texp = model.E0 / (283.15 * 8.314) * (1. - 283.15 / Tsoil) = model.E0 / (283.15 * 8.314) \
-        #  - model.E0 / (283.15 * 8.314)*283.15/Tsoil = .. - model.E0/(8.314*Tsoil)
-        dtexp_dTsoil = self.dTsoil*model.E0/(8.314*Tsoil**2)
+        #texp = E0 / (283.15 * 8.314) * (1. - 283.15 / Tsoil) = E0 / (283.15 * 8.314) \
+        #  - E0 / (283.15 * 8.314)*283.15/Tsoil = .. - E0/(8.314*Tsoil)
+        dtexp_dE0 = self.dE0 / (283.15 * 8.314) * (1. - 283.15 / Tsoil)
+        dtexp_dTsoil = self.dTsoil*E0/(8.314*Tsoil**2)
         #Resp         = R10 * (1. - fw) * np.exp(texp)
+        dResp_dE0 = dtexp_dE0*R10 * (1. - fw) * np.exp(texp)
         dResp_dTsoil = dtexp_dTsoil*R10 * (1. - fw) * np.exp(texp)
         dResp_dwg    = -dfw_dwg*R10* np.exp(texp)
         dResp_dR10    = (1. - fw) * np.exp(texp) * self.dR10
         dwCO2A  = (dAn_dthetasurf + dAn_dTs + dAn_de + dAn_dCO2 + dAn_dra + dAn_dPARfract + dAn_dSwin + dAn_dcveg + dAn_dw2 + dAn_dwfc + dAn_dwwilt + dAn_dalfa_sto + dAn_dLAI)  * (model.mair / (model.rho * model.mco2))
-        dwCO2R  = (dResp_dTsoil + dResp_dwg + dResp_dR10)  * (model.mair / (model.rho * model.mco2))
+        dwCO2R  = (dResp_dE0 + dResp_dTsoil + dResp_dwg + dResp_dR10)  * (model.mair / (model.rho * model.mco2))
         dwCO2   = dwCO2A + dwCO2R
         #self.hx = drs
         if model.ags_C_mode == 'MXL': 
@@ -2775,6 +2811,7 @@ class inverse_modelling:
         self.adgcco2 = 0
         self.adPARfract = 0
         self.adR10 = 0
+        self.adE0 = 0
         
         self.adgctCOS_dthetasurf = 0
         self.adgctCOS_dTs = 0
@@ -2953,6 +2990,8 @@ class inverse_modelling:
         self.adPAR_dPARfract = 0
         self.adpexp_dPARfract = 0
         self.adResp_dR10 = 0
+        self.adResp_dE0 = 0
+        self.adtexp_dE0 = 0
         
         #run mixed layer
         self.addeltatheta = 0
@@ -3047,7 +3086,9 @@ class inverse_modelling:
         #run radiation
         self.addoy = 0
         self.adlat = 0
+        self.adlon = 0
         self.adpart1_sinlea = 0
+        self.adsinlea_lon = 0
         self.adpart2_sinlea = 0
         self.adsinlea = 0
         self.adTa_dtheta = 0
@@ -3446,6 +3487,13 @@ class inverse_modelling:
             self.adj_run_radiation(forcing,checkpoint_init[0],model)
         #statement self.tl_statistics(model,checkpoint)
         self.adj_statistics(forcing,checkpoint_init[0],model)
+        fac = model.mair / (model.rho*model.mco2)
+        if not model.sw_ls:
+            if hasattr(model.input,'wCO2_input'):
+                #statement self.dwCO2_input = self.dwCO2_input * fac
+                self.adwCO2_input *= fac
+        #statement self.dwCO2 = fac * self.dwCO2
+        self.adwCO2 *= fac
         if not hasattr(model.input,'gammatheta2'):
             #statement self.dgammatheta2 = self.dgammatheta
             self.adgammatheta += self.adgammatheta2
@@ -5330,7 +5378,7 @@ class inverse_modelling:
         wwilt = checkpoint['ags_wwilt']
         wfc = checkpoint['ags_wfc']
         w2 = checkpoint['ags_w2']
-        R10 = checkpoint['ags_R10']
+        R10,E0 = checkpoint['ags_R10'],checkpoint['ags_E0']
         #statement dwCOS   = dwCOSP + dwCOSS
         self.adwCOSP += self.adwCOS
         self.adwCOSS += self.adwCOS
@@ -5371,7 +5419,8 @@ class inverse_modelling:
         self.adwCO2A  += self.adwCO2
         self.adwCO2R  += self.adwCO2
         self.adwCO2   = 0.0
-        # statement dwCO2R  = (dResp_dTsoil + dResp_dwg + dResp_dR10)  * (model.mair / (model.rho * model.mco2))
+        # statement dwCO2R  = (dResp_dE0 + dResp_dTsoil + dResp_dwg + dResp_dR10)  * (model.mair / (model.rho * model.mco2))
+        self.adResp_dE0     += self.adwCO2R * (model.mair / (model.rho * model.mco2))
         self.adResp_dTsoil  += self.adwCO2R * (model.mair / (model.rho * model.mco2))
         self.adResp_dwg     += self.adwCO2R * (model.mair / (model.rho * model.mco2))
         self.adResp_dR10    += self.adwCO2R * (model.mair / (model.rho * model.mco2))
@@ -5400,9 +5449,15 @@ class inverse_modelling:
         #statement dResp_dTsoil = dtexp_dTsoil*R10 * (1. - fw) * np.exp(texp)
         self.adtexp_dTsoil +=  self.adResp_dTsoil *R10 * (1. - fw) * np.exp(texp)       
         self.adResp_dTsoil  = 0.0
-        #       dtexp_dTsoil = dTsoil*model.E0/(8.314*Tsoil**2)
-        self.adTsoil   += self.adtexp_dTsoil*model.E0/(8.314*Tsoil**2)
+        #statement dResp_dE0 = dtexp_dE0*R10 * (1. - fw) * np.exp(texp)
+        self.adtexp_dE0 += R10 * (1. - fw) * np.exp(texp) * self.adResp_dE0
+        self.adResp_dE0 = 0
+        #       dtexp_dTsoil = dTsoil*E0/(8.314*Tsoil**2)
+        self.adTsoil   += self.adtexp_dTsoil*E0/(8.314*Tsoil**2)
         self.adtexp_dTsoil  = 0.0
+        #statement dtexp_dE0 = self.dE0 / (283.15 * 8.314) * (1. - 283.15 / Tsoil)
+        self.adE0 += self.adtexp_dE0 / (283.15 * 8.314) * (1. - 283.15 / Tsoil)
+        self.adtexp_dE0 = 0
         # statement dfw_dwg      = -dwg* model.Cw * model.wmax / ((wg + model.wmin)**2)
         self.adwg       += -self.adfw_dwg*model.Cw * model.wmax / ((wg + model.wmin)**2)
         self.adfw_dwg = 0.0        
@@ -6013,10 +6068,10 @@ class inverse_modelling:
         self.adD0_dthetasurf = 0
 #        if self.manualadjointtesting:
 #            self.HTy = self.adfmin_dthetasurf
-        #statement dfmin_dthetasurf = -dfmin0_dthetasurf + dsqterm_dthetasurf/(2.*gm)-sqterm*dgm_dthetasurf/(2*gm**2)
-        self.adfmin0_dthetasurf += -self.adfmin_dthetasurf
+        #statement dfmin_dthetasurf         = -dfmin0_dthetasurf/(2.*gm) + dsqterm_dthetasurf/(2.*gm)-(-fmin0 + sqterm)*dgm_dthetasurf/(2*gm**2)
+        self.adfmin0_dthetasurf += -self.adfmin_dthetasurf/(2.*gm)
         self.adsqterm_dthetasurf += 1/(2.*gm) * self.adfmin_dthetasurf
-        self.adgm_dthetasurf += -sqterm*1/(2*gm**2) * self.adfmin_dthetasurf
+        self.adgm_dthetasurf += -(-fmin0 + sqterm)*1/(2*gm**2) * self.adfmin_dthetasurf
         self.adfmin_dthetasurf = 0
         #statement dsqterm_dthetasurf = dsqrtf_dthetasurf*0.5*pow(sqrtf,-0.5)
         self.adsqrtf_dthetasurf += 0.5*pow(sqrtf,-0.5) * self.adsqterm_dthetasurf
@@ -7565,7 +7620,7 @@ class inverse_modelling:
         lat = checkpoint['rr_lat']
         h = checkpoint['rr_h']
         theta = checkpoint['rr_theta']
-        sinlea_constant = checkpoint['rr_sinlea_constant_end']
+        sinlea_lon = checkpoint['rr_sinlea_lon_end']
         sda = checkpoint['rr_sda_end']
         sinlea = checkpoint['rr_sinlea_end']
         Tr = checkpoint['rr_Tr_end']
@@ -7573,6 +7628,8 @@ class inverse_modelling:
         Ta = checkpoint['rr_Ta_end']
         cc = checkpoint['rr_cc']
         Ts = checkpoint['rr_Ts']
+        t = checkpoint['rr_t']
+        lon = checkpoint['rr_lon']
         #statement dQ = dSwin - dSwout + dLwin - dLwout
         self.adSwin += self.adQ
         self.adSwout += - self.adQ
@@ -7616,10 +7673,14 @@ class inverse_modelling:
         self.adpart1_sinlea += self.adsinlea
         self.adpart2_sinlea += - self.adsinlea
         self.adsinlea = 0
-        #statement dpart2_sinlea = np.cos(sda) * sinlea_constant * -np.sin(2. * np.pi * lat / 360.) * 2. * np.pi / 360. * self.dlat + np.cos(2. * np.pi * lat / 360.) * sinlea_constant * -np.sin(sda) * dsda
-        self.adlat += np.cos(sda) * sinlea_constant * -np.sin(2. * np.pi * lat / 360.) * 2. * np.pi / 360. * self.adpart2_sinlea
-        self.adsda += np.cos(2. * np.pi * lat / 360.) * sinlea_constant * -np.sin(sda) * self.adpart2_sinlea
+        #statement dpart2_sinlea = np.cos(sda) * sinlea_lon * -np.sin(2. * np.pi * lat / 360.) * 2. * np.pi / 360. * self.dlat + np.cos(2. * np.pi * lat / 360.) * sinlea_lon * -np.sin(sda) * dsda + np.cos(2. * np.pi * lat / 360.) * np.cos(sda) * dsinlea_lon
+        self.adlat += np.cos(sda) * sinlea_lon * -np.sin(2. * np.pi * lat / 360.) * 2. * np.pi / 360. * self.adpart2_sinlea
+        self.adsda += np.cos(2. * np.pi * lat / 360.) * sinlea_lon * -np.sin(sda) * self.adpart2_sinlea
+        self.adsinlea_lon += np.cos(2. * np.pi * lat / 360.) * np.cos(sda) * self.adpart2_sinlea
         self.adpart2_sinlea = 0
+        #statement dsinlea_lon = -np.sin(2. * np.pi * (t * model.dt + model.tstart * 3600.) / 86400. + 2. * np.pi * lon / 360.) * 2. * np.pi / 360. * self.dlon
+        self.adlon += -np.sin(2. * np.pi * (t * model.dt + model.tstart * 3600.) / 86400. + 2. * np.pi * lon / 360.) * 2. * np.pi / 360. * self.adsinlea_lon
+        self.adsinlea_lon = 0
         #statement dpart1_sinlea = np.sin(sda) * np.cos(2. * np.pi * lat / 360.) * 2. * np.pi / 360. * self.dlat + np.sin(2. * np.pi * lat / 360.) * np.cos(sda)*dsda
         self.adlat += np.sin(sda) * np.cos(2. * np.pi * lat / 360.) * 2. * np.pi / 360. * self.adpart1_sinlea
         self.adsda += np.sin(2. * np.pi * lat / 360.) * np.cos(sda) * self.adpart1_sinlea

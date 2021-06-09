@@ -212,7 +212,10 @@ class model:
             self.R10 = self.input.R10
         else:
             self.R10        =  0.23;                # respiration at 10 C [mg CO2 m-2 s-1]
-        self.E0         =  53.3e3;              # activation energy [53.3 kJ kmol-1]
+        if hasattr(self.input,'E0'):
+            self.E0 = self.input.E0
+        else:
+            self.E0         =  53.3e3;              # activation energy [53.3 kJ kmol-1]
 
   
         # initialize mixed-layer
@@ -421,7 +424,6 @@ class model:
         self.t      = 0
         
         # CO2,COS and canopy
-        #fac = self.mair / (self.rho*self.mco2)  # Conversion factor mgC m-2 s-1 to ppm m s-1
         self.CO2        = self.input.CO2        # initial mixed-layer CO2 [ppm]
         self.COS        = self.input.COS        # initial mixed-layer COS [ppb]
         if hasattr(self.input,'alfa_sto'):
@@ -540,7 +542,8 @@ class model:
         self.gammaCOS   = self.input.gammaCOS   # free atmosphere CO2 lapse rate [ppb m-1]
         self.advCO2     = self.input.advCO2     # advection of CO2 [ppm s-1]
         self.advCOS     = self.input.advCOS     # advection of COS [ppb s-1]
-        self.wCO2       = self.input.wCO2       # surface kinematic CO2 flux [ppm m s-1]
+        fac = self.mair / (self.rho*self.mco2)  # Conversion factor mgCO2 m-2 s-1 to ppm m s-1
+        self.wCO2       = self.input.wCO2 * fac       # surface kinematic CO2 flux [ppm m s-1]
         self.wCOS       = self.input.wCOS # surface kinematic COS flux [ppb m s-1] #used in surf layer module before calculated in ags (via call to land surface)
         self.wCO2A      = 0                     # surface assimulation CO2 flux [ppm m s-1]
         self.wCO2R      = 0                     # surface respiration CO2 flux [ppm m s-1]
@@ -580,7 +583,7 @@ class model:
                 if len(self.wq_input) != self.tsteps:
                     raise Exception('Wrong length of wq_input')
             if hasattr(self.input,'wCO2_input'):
-                self.wCO2_input = self.input.wCO2_input
+                self.wCO2_input = self.input.wCO2_input * fac
                 if len(self.wCO2_input) != self.tsteps:
                     raise Exception('Wrong length of wCO2_input')
             if hasattr(self.input,'wCOS_input'):
@@ -623,7 +626,7 @@ class model:
             if hasattr(self,'wq_input'):
                 self.wq = self.wq_input[self.t]
             if hasattr(self,'wCO2_input'):
-                self.wCO2 = self.wCO2_input[self.t]
+                self.wCO2 = self.wCO2_input[self.t] #fac already applied in init
             if hasattr(self,'wCOS_input'):
                 self.wCOS = self.wCOS_input[self.t]
         self.statistics()
@@ -1114,6 +1117,8 @@ class model:
                 self.cpx_init[0]['rr_cc']    = self.cc
                 self.cpx_init[0]['rr_alpha']    = self.alpha
                 self.cpx_init[0]['rr_Ts']    = self.Ts
+                self.cpx_init[0]['rr_t']    = self.t
+                self.cpx_init[0]['rr_lon']    = self.lon
             else:
                 self.cpx[self.t]['rr_doy']    = self.doy #subscript rr from run_radiation
                 self.cpx[self.t]['rr_lat']    = self.lat
@@ -1122,10 +1127,12 @@ class model:
                 self.cpx[self.t]['rr_cc']    = self.cc
                 self.cpx[self.t]['rr_alpha']    = self.alpha
                 self.cpx[self.t]['rr_Ts']    = self.Ts
+                self.cpx[self.t]['rr_t']    = self.t
+                self.cpx[self.t]['rr_lon']    = self.lon
         sda    = 0.409 * np.cos(2. * np.pi * (self.doy - 173.) / 365.)
         part1_sinlea = np.sin(2. * np.pi * self.lat / 360.) * np.sin(sda)
-        sinlea_constant = np.cos(2. * np.pi * (self.t * self.dt + self.tstart * 3600.) / 86400. + 2. * np.pi * self.lon / 360.)
-        part2_sinlea = np.cos(2. * np.pi * self.lat / 360.) * np.cos(sda) * sinlea_constant        
+        sinlea_lon = np.cos(2. * np.pi * (self.t * self.dt + self.tstart * 3600.) / 86400. + 2. * np.pi * self.lon / 360.)
+        part2_sinlea = np.cos(2. * np.pi * self.lat / 360.) * np.cos(sda) * sinlea_lon        
         sinlea = part1_sinlea - part2_sinlea
         if self.checkpoint:
             if call_from_init:
@@ -1150,13 +1157,13 @@ class model:
         if self.checkpoint:
             if call_from_init:
                 self.cpx_init[0]['rr_sda_end']    = sda
-                self.cpx_init[0]['rr_sinlea_constant_end']    = sinlea_constant
+                self.cpx_init[0]['rr_sinlea_lon_end']    = sinlea_lon
                 self.cpx_init[0]['rr_sinlea_end']    = sinlea
                 self.cpx_init[0]['rr_Tr_end']    = Tr
                 self.cpx_init[0]['rr_Ta_end']    = Ta
             else:
                 self.cpx[self.t]['rr_sda_end']    = sda
-                self.cpx[self.t]['rr_sinlea_constant_end']    = sinlea_constant
+                self.cpx[self.t]['rr_sinlea_lon_end']    = sinlea_lon
                 self.cpx[self.t]['rr_sinlea_end']    = sinlea
                 self.cpx[self.t]['rr_Tr_end']    = Tr
                 self.cpx[self.t]['rr_Ta_end']    = Ta
@@ -1600,6 +1607,7 @@ class model:
                 self.cpx_init[0]['ags_wfc'] = self.wfc
                 self.cpx_init[0]['ags_wwilt'] = self.wwilt
                 self.cpx_init[0]['ags_R10'] = self.R10
+                self.cpx_init[0]['ags_E0'] = self.E0
             else:
                 self.cpx[self.t]['ags_COS'] = self.COS
                 if self.ags_C_mode == 'surf':
@@ -1619,6 +1627,7 @@ class model:
                 self.cpx[self.t]['ags_wfc'] = self.wfc
                 self.cpx[self.t]['ags_wwilt'] = self.wwilt
                 self.cpx[self.t]['ags_R10'] = self.R10
+                self.cpx[self.t]['ags_E0'] = self.E0
         # Select index for plant type
         if(self.c3c4 == 'c3'):
             c = 0
@@ -1642,12 +1651,12 @@ class model:
         sqrtf         = pow(fmin0,2.) + 4 * self.gmin[c]/self.nuco2q * gm
         sqterm        = pow(sqrtf,0.5)
         
-        fmin          = -fmin0 + sqterm / (2. * gm)
+        fmin          = (-fmin0 + sqterm) / (2. * gm)
   
         Ds            = (esat(self.Ts) - self.e) / 1000. # kPa
         D0            = (self.f0[c] - fmin) / self.ad[c]
   
-        cfrac         = self.f0[c] * (1. - (Ds / D0)) + fmin * (Ds / D0)
+        cfrac         = self.f0[c] * (1. - (Ds / D0)) + fmin * (Ds / D0) #Note that dcfrac_dfmin = 0
         if self.ags_C_mode == 'MXL':
             co2abs        = self.CO2 * (self.mco2 / self.mair) * self.rho # conversion mumol mol-1 (ppm) to mgCO2/m3
         elif self.ags_C_mode == 'surf':
@@ -2734,7 +2743,7 @@ class model_input:
         self.gammaCO2   = None  # free atmosphere potential temperature lapse rate [K m-1]
         self.gammaCOS   = None
         self.advCO2     = None  # advection of heat [K s-1]
-        self.wCO2       = None  # surface kinematic heat flux [K m s-1]
+        self.wCO2       = None  # surface kinematic CO2 flux [ppm m s-1]
         self.wCOS       = None  # surface kinematic COS flux [ppb m s-1]
         
         self.sw_wind    = None  # prognostic wind switch
