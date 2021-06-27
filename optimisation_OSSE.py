@@ -15,6 +15,7 @@ import os
 from joblib import Parallel, delayed
 import glob
 import matplotlib.style as style
+import pickle
 style.use('classic')
 
 
@@ -34,6 +35,7 @@ if use_ensemble:
         plot_perturbed_obs = True #perturb the observations of each member (except 0) in the ensemble
         nr_bins = 3 #nr of bins for the pdfs
         succes_opt_crit = 6 #the chi squared (obs only part) at which an optimisation is considered successfull (lower or equal to is succesfull)
+    print_status_dur_ens = False #whether to print state etc info during ensemble of optimisations (during member 0 printing will always take place)
 estimate_model_err = True #estimate the model error by perturbing specified non-state parameters
 if estimate_model_err:
     nr_of_members_moderr = 30 #number of members for the ensemble that estimates the model error
@@ -63,9 +65,11 @@ discard_nan_minims = True #if False, if in a minimisation nan is encountered, it
 use_weights = False #weights for the cost function, to enlarge or reduce the importance of certain obs 
 if use_weights:
     weight_morninghrs = 1/4 # to change weight of obs in the morning before 10, when everything less well mixed. 1 means equal weights
+    end_morninghrs = 10 #At all times smaller than this time (UTC, decimal hour), weight_morninghrs is longer applied
 if (use_backgr_in_cost and use_weights):
     obs_vs_backgr_weight = 1.0 # a scaling factor for the importance of all the observations in the cost function 
 if write_to_f:
+    wr_obj_to_pickle_files = True #write certain variables to files for possible postprocessing later
     figformat = 'eps' #the format in which you want figure output, e.g. 'png'
 plotfontsize = 12 #plot font size, except for legend 
 legendsize = plotfontsize - 1
@@ -87,6 +91,13 @@ if use_ensemble or estimate_model_err:
             if max_num_cores < 2:
                 raise Exception('max_num_cores should be larger or equal than 2')
 
+if write_to_f:
+    if wr_obj_to_pickle_files:
+        vars_to_pickle = ['priormodel','priorinput','obsvarlist','disp_units','disp_units_par','optim','obs_times','measurement_error','display_names','optimalinput','optimalinput_onsp','optimalmodel','optimalmodel_onsp'] #list of strings      
+        for item in vars_to_pickle:
+            if item in vars(): #check if variable exists, if so, delete so we do not write anything from a previous script/run to files
+                del(vars()[item])
+storefolder_objects = 'pickle_objects' #the folder where to store pickled variables when wr_obj_to_pickle_files == True
 #remove previous files
 if remove_prev:
     filelist_list = []
@@ -98,6 +109,8 @@ if remove_prev:
     filelist_list += [glob.glob('pdf_nonstate_*')]
     filelist_list += [glob.glob('fig_fit*')]
     filelist_list += [glob.glob('fig_obs*')]
+    filelist_list += [glob.glob('pp_*')]
+    filelist_list += [glob.glob(storefolder_objects+'/*')]
     for filelist in filelist_list:
         for filename in filelist:
             if os.path.isfile(filename): #in case file occurs in two filelists in filelist_list, two attempts to remove would give error
@@ -475,8 +488,8 @@ if 'EnBalDiffObsHFrac' in state:
     obs_times['H'] = truthmodel.out.t[::4] * 3600
     optim.obs_H = truthmodel.out.H[::4]
     measurement_error['H'] = [30 for number in range(len(obs_times['H']))]
-    optim.EnBalDiffObs_atHtimes = 0.2 * (truthmodel.out.H[::4] + truthmodel.out.LE[::4] + truthmodel.out.G[::4])
-    optim.EnBalDiffObs_atLEtimes = 0.2 * (truthmodel.out.H[::6] + truthmodel.out.LE[::6] + truthmodel.out.G[::6])
+    optim.EnBalDiffObs_atHtimes = 0.25 * (truthmodel.out.H[::4] + truthmodel.out.LE[::4] + truthmodel.out.G[::4])
+    optim.EnBalDiffObs_atLEtimes = 0.25 * (truthmodel.out.H[::6] + truthmodel.out.LE[::6] + truthmodel.out.G[::6])
     optim.obs_H = optim.obs_H - truthinput.EnBalDiffObsHFrac * optim.EnBalDiffObs_atHtimes  
     optim.obs_LE = optim.obs_LE - (1 - truthinput.EnBalDiffObsHFrac) * optim.EnBalDiffObs_atLEtimes 
             
@@ -533,8 +546,8 @@ if estimate_model_err:
     if not bool(me_paramdict): #checks wether dictionary empty
         raise Exception('When estimate_model_err == True, include at least one parameter (that is not included in the state) in me_paramdict')
 if use_ensemble:
+    non_state_paramdict = {}
     if pert_non_state_param:   
-        non_state_paramdict = {}
 ################################################################################
 ###### user input: non-state parameters to perturb in ensemble (if used) #######
 ################################################################################
@@ -619,18 +632,20 @@ for item in obsvarlist:
     if use_weights:
         if item in obs_weights: #if already a weight specified for the specific type of obs
             for i in range(len(obs_times[item])):
-                if obs_times[item][i] < 10 * 3600:
+                if obs_times[item][i] < end_morninghrs * 3600:
                     obs_weights[item][i] = obs_weights[item][i] * weight_morninghrs
         else:
             obs_weights[item] = np.ones(len(optim.__dict__['obs_'+item]))
             for i in range(len(obs_times[item])):
-                if obs_times[item][i] < 10 * 3600:
+                if obs_times[item][i] < end_morninghrs * 3600:
                     obs_weights[item][i] = weight_morninghrs #nans are already excluded in the obs at this stage, so no problem with nan
     for num in obs_times[item]:
         if round(num, 10) not in [round(num2, 10) for num2 in priormodel.out.t * 3600]:
             raise Exception('Error: obs occuring at a time that is not modelled (' + str(item) +')')
     if item not in disp_units:
         disp_units[item] = ''
+    if item not in display_names:
+        display_names[item] = item
 if use_ensemble:
     if est_post_pdf_covmatr:
         for item in state:
@@ -767,14 +782,13 @@ for item in obsvarlist:
     number_of_obs += len(optim.__dict__['obs_'+item])
 print(number_of_obs)
 if use_weights:
-    sum_of_weights = 0
-    for item in obsvarlist: 
-        if item in obs_weights:
-            sum_of_weights += np.sum(obs_weights[item])#need sum, the weights are an array for every item
-        else:
-            sum_of_weights += len(optim.__dict__['obs_'+item])
+    WeightsSums = {}
+    tot_sum_of_weights = 0
+    for item in obsvarlist: #if use_weights and no weight specified for a type of obs, the weights for the type of obs have been set to one before
+        WeightsSums[item] = np.sum(obs_weights[item])#need sum, the weights are an array for every item
+        tot_sum_of_weights += WeightsSums[item]
     print('total number of obs, corrected for weights:')
-    print(sum_of_weights)
+    print(tot_sum_of_weights)
 print('number of params to optimise:')
 number_of_params = len(state)
 print(number_of_params)        
@@ -993,6 +1007,7 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
     priormodel_mem.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False,save_vars_indict=False) #delete_at_end should be false, to keep tsteps of model
     optim_mem = im.inverse_modelling(priormodel_mem,write_to_file=write_to_f,use_backgr_in_cost=use_backgr_in_cost,StateVarNames=state,obsvarlist=obsvarlist,Optimfile='Optimfile'+str(counter)+'.txt',
                                      Gradfile='Gradfile'+str(counter)+'.txt',pri_err_cov_matr=b_cov,paramboundspenalty=paramboundspenalty,boundedvars=boundedvars)
+    optim_mem.print = print_status_dur_ens
     Hx_prior_mem = {}
     for item in obsvarlist:
         Hx_prior_mem[item] = priormodel_mem.out.__dict__[item]
@@ -1011,13 +1026,10 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
                     plt.plot(obs_times[item]/3600,unsca*optim.__dict__['obs_'+item], linestyle=' ', marker='o',color = 'blue',label = 'member 0')
                 plt.errorbar(obs_times[item]/3600,unsca*optim.__dict__['obs_'+item],yerr=unsca*measurement_error[item],ecolor='black',fmt='None')
                 plt.plot(obs_times[item]/3600,unsca*optim_mem.__dict__['obs_'+item], linestyle=' ', marker='D',color = 'orange',label = 'pert')
-                if item in display_names:
-                    plt.ylabel(display_names[item] +' ('+ disp_units[item] + ')')
-                else:
-                    plt.ylabel(item +' ('+ disp_units[item] + ')')
+                plt.ylabel(display_names[item] +' ('+ disp_units[item] + ')')
                 plt.xlabel('time (h)')
                 plt.subplots_adjust(left=0.17, right=0.92, top=0.96, bottom=0.15,wspace=0.1)
-                plt.legend(prop={'size':legendsize})
+                plt.legend(prop={'size':legendsize},loc=0)
                 if write_to_f:
                     if not ('fig_obs_'+item+'_mem'+str(counter)+'.'+figformat).lower() in [x.lower() for x in os.listdir()]: #os.path.exists can be case-sensitive, depending on operating system
                         plt.savefig('fig_obs_'+item+'_mem'+str(counter)+'.'+figformat, format=figformat)
@@ -1181,8 +1193,6 @@ if use_ensemble:
         shutil.move('Gradfile.txt', 'Gradfile_'+str(0)+'.txt')
     if not set_seed:
         seedvalue = None
-    if not pert_non_state_param:
-        non_state_paramdict = {}
     if run_multicore:
         if max_num_cores == 'all':
             max_num_cores_ = -1
@@ -1217,7 +1227,7 @@ if use_ensemble:
         for i in range(len(ensemble)):
             if not np.isnan(seq_costf[i]):
                 if use_weights:
-                    chi_sq_obs[i] = seq_costf[i]/(sum_of_weights)
+                    chi_sq_obs[i] = seq_costf[i]/(tot_sum_of_weights)
                 else:
                     chi_sq_obs[i] = seq_costf[i]/(number_of_obs)
                 if chi_sq_obs[i] <= succes_opt_crit:
@@ -1295,7 +1305,7 @@ if use_ensemble:
                     plt.axvline(mean_nonstate_p[param], linestyle='dashed',linewidth=2,color='black',label = 'mean')
                     plt.xlabel(param + ' ('+ disp_units_par[param] +')')
                     plt.ylabel('Probability density (-)')  
-                    plt.legend(prop={'size':legendsize})
+                    plt.legend(prop={'size':legendsize},loc=0)
                     plt.subplots_adjust(left=0.15, right=0.92, top=0.96, bottom=0.15,wspace=0.1)
                     if write_to_f:
                         if not ('pdf_nonstate_'+param+'.'+figformat).lower() in [x.lower() for x in os.listdir()]: #os.path.exists can be case-sensitive, depending on operating system 
@@ -1318,15 +1328,22 @@ for item in state:
     else:
         optimalinput.__dict__[item] = state_opt0[i]
     i += 1
-optimalmodel = fwdm.model(optimalinput)
+optimalmodel = fwdm.model(optimalinput) #Note that this does not account for non-state parameters possibly changed in the ensemble
 optimalmodel.run(checkpoint=False,updatevals_surf_lay=True,delete_at_end=False)
 
-
+if use_ensemble:
+    if pert_non_state_param and opt_sim_nr != 0:
+        optimalinput_onsp = cp.deepcopy(optimalinput)#onsp means optimal non-state params
+        for item in nonstparamlist:
+            optimalinput_onsp.__dict__[item] = ensemble[opt_sim_nr]['nonstateppars'][item]
+        optimalmodel_onsp = fwdm.model(optimalinput_onsp) 
+        optimalmodel_onsp.run(checkpoint=False,updatevals_surf_lay=True,delete_at_end=False)
+               
 ############################
 #stats file
 ############################
 if use_weights:
-    denom_chisq = sum_of_weights
+    denom_chisq = tot_sum_of_weights
 else:
     denom_chisq = number_of_obs
 if use_backgr_in_cost:
@@ -1350,7 +1367,7 @@ if write_to_f:
     open('Optstatsfile.txt','a').write('\n')
     open('Optstatsfile.txt','a').write('{0:>9s}'.format(str(number_of_obs)))
     if use_weights:
-        open('Optstatsfile.txt','a').write('{0:>40s}'.format(str(sum_of_weights)))
+        open('Optstatsfile.txt','a').write('{0:>40s}'.format(str(tot_sum_of_weights)))
     open('Optstatsfile.txt','a').write('{0:>35s}'.format(str(number_of_params)))
     open('Optstatsfile.txt','a').write('{0:>35s}'.format(str(chi_sq)))
     prior_costf = optim.cost_func(optim.pstate,inputcopy,state,obs_times,obs_weights)
@@ -1402,15 +1419,25 @@ if write_to_f:
         open('Optstatsfile.txt','a').write('{0:>25s}'.format('Penalty'))
     open('Optstatsfile.txt','a').write('\n      ')
     if use_ensemble:
-        dictio = ensemble[opt_sim_nr]['CostParts']
+        CPdictio = ensemble[opt_sim_nr]['CostParts']
     else:
-        dictio = CostParts0
+        CPdictio = CostParts0
     for obsvar in obsvarlist:
-        open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(dictio[obsvar])))
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(CPdictio[obsvar])))
     if use_backgr_in_cost:
-        open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(dictio['backgr'])))
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(CPdictio['backgr'])))
     if paramboundspenalty:
-        open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(dictio['penalty'])))
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(CPdictio['penalty'])))
+    open('Optstatsfile.txt','a').write('\n')
+    open('Optstatsfile.txt','a').write('{0:>32s}'.format('chi squared for those parts:'))
+    open('Optstatsfile.txt','a').write('\n      ')
+    for obsvar in obsvarlist:
+        if use_weights:
+            open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(CPdictio[obsvar] / WeightsSums[obsvar])))
+        else:
+            open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(CPdictio[obsvar] / len(optim.__dict__['obs_'+obsvar]))))
+    if use_backgr_in_cost:
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(CPdictio['backgr'] / number_of_params)))
     if use_ensemble:
         if est_post_pdf_covmatr:
             open('Optstatsfile.txt','a').write('\n\n')
@@ -1499,7 +1526,6 @@ if write_to_f:
                     open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(ratio))) 
             else:
                 open('Optstatsfile.txt','a').write('Not enough successful optimisations (selected criterion obs only chi squared <= '+str(succes_opt_crit)+') to estimate posterior error covariance matrix \n')
-        if est_post_pdf_covmatr:
             open('Optstatsfile.txt','a').write('{0:>32s}'.format('\n\nNr of success mems (excl mem 0):\n'))
             open('Optstatsfile.txt','a').write('{0:>31s}'.format(str(np.sum(success_ens[1:]))))
         open('Optstatsfile.txt','a').write('\n\n')
@@ -1561,16 +1587,16 @@ for i in range(len(obsvarlist)):
     plt.errorbar(obs_times[obsvarlist[i]]/3600,unsca*optim.__dict__['obs_'+obsvarlist[i]],yerr=unsca*measurement_error[obsvarlist[i]],ecolor='black',fmt='None',label = '$\sigma_{I}$')
     plt.plot(priormodel.out.t,unsca*priormodel.out.__dict__[obsvarlist[i]], ls='dashed', marker='None',color='gold',linewidth = 2.0,label = 'prior')
     plt.plot(priormodel.out.t,unsca*optimalmodel.out.__dict__[obsvarlist[i]], linestyle='-', marker='None',color='red',linewidth = 2.0,label = 'post')
+    if use_ensemble:
+        if pert_non_state_param and opt_sim_nr != 0:
+            plt.plot(priormodel.out.t,unsca*optimalmodel_onsp.out.__dict__[obsvarlist[i]], linestyle='dashdot', marker='None',color='magenta',linewidth = 2.0,label = 'post onsp')
     plt.plot(obs_times[obsvarlist[i]]/3600,unsca*optim.__dict__['obs_'+obsvarlist[i]], linestyle=' ', marker='*',color = 'black',ms=10, label = 'obs')
     if 'obs_sca_cf_'+obsvarlist[i] in state: #plot the obs scaled with the scaling factors (if applicable)
         plt.plot(obs_times[obsvarlist[i]]/3600,optimalinput.__dict__['obs_sca_cf_'+obsvarlist[i]]*unsca*optim.__dict__['obs_'+obsvarlist[i]], linestyle=' ', marker='o',color = 'red',ms=10,label = 'obs sca')
-    if obsvarlist[i] in display_names:
-        plt.ylabel(display_names[obsvarlist[i]] +' ('+ disp_units[obsvarlist[i]] + ')')
-    else:
-        plt.ylabel(obsvarlist[i] +' ('+ disp_units[obsvarlist[i]] + ')')
+    plt.ylabel(display_names[obsvarlist[i]] +' ('+ disp_units[obsvarlist[i]] + ')')
     plt.xlabel('time (h)')
     plt.subplots_adjust(left=0.18, right=0.92, top=0.96, bottom=0.15,wspace=0.1)
-    plt.legend(prop={'size':legendsize})
+    plt.legend(prop={'size':legendsize},loc=0)
     if write_to_f:
         if not ('fig_fit_'+obsvarlist[i]+'.'+figformat).lower() in [x.lower() for x in os.listdir()]: #os.path.exists can be case-sensitive, depending on operating system
             plt.savefig('fig_fit_'+obsvarlist[i]+'.'+figformat, format=figformat)
@@ -1584,39 +1610,58 @@ if 'EnBalDiffObsHFrac' in state:
     if 'H' in obsvarlist:
         enbal_corr_H = optim.obs_H + optimalinput.EnBalDiffObsHFrac * optim.EnBalDiffObs_atHtimes
         fig = plt.figure()
+        plt.errorbar(obs_times['H']/3600,enbal_corr_H,yerr=optim.__dict__['error_obs_H'],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
+        plt.errorbar(obs_times['H']/3600,enbal_corr_H,yerr=measurement_error['H'],ecolor='black',fmt='None',label = '$\sigma_{I}$')
         plt.plot(priormodel.out.t,priormodel.out.H, ls='dashed', marker='None',color='gold',linewidth = 2.0,label = 'prior')
         plt.plot(optimalmodel.out.t,optimalmodel.out.H, linestyle='-', marker='None',color='red',linewidth = 2.0,label = 'post')
+        if use_ensemble:
+            if pert_non_state_param and opt_sim_nr != 0:
+                plt.plot(optimalmodel.out.t,optimalmodel_onsp.out.H, linestyle='dashdot', marker='None',color='magenta',linewidth = 2.0,label = 'post onsp')
         plt.plot(obs_times['H']/3600,optim.__dict__['obs_'+'H'], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs orig')
         plt.plot(obs_times['H']/3600,enbal_corr_H, linestyle=' ', marker='o',color = 'red',ms=10,label = 'obs corr')
         plt.ylabel('H (' + disp_units['H']+')')
         plt.xlabel('time (h)')
-        plt.legend(prop={'size':legendsize})
+        plt.legend(prop={'size':legendsize},loc=0)
         plt.subplots_adjust(left=0.18, right=0.92, top=0.96, bottom=0.15,wspace=0.1)
         if write_to_f:
             plt.savefig('fig_fit_enbalcorrH.'+figformat, format=figformat)
     if 'LE' in obsvarlist:
         enbal_corr_LE = optim.obs_LE + (1 - optimalinput.EnBalDiffObsHFrac) * optim.EnBalDiffObs_atLEtimes
         fig = plt.figure()
+        plt.errorbar(obs_times['LE']/3600,enbal_corr_LE,yerr=optim.__dict__['error_obs_LE'],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
+        plt.errorbar(obs_times['LE']/3600,enbal_corr_LE,yerr=measurement_error['LE'],ecolor='black',fmt='None',label = '$\sigma_{I}$')
         plt.plot(priormodel.out.t,priormodel.out.LE, ls='dashed', marker='None',color='gold',linewidth = 2.0,label = 'prior')
         plt.plot(optimalmodel.out.t,optimalmodel.out.LE, linestyle='-', marker='None',color='red',linewidth = 2.0,label = 'post')
+        if use_ensemble:
+            if pert_non_state_param and opt_sim_nr != 0:
+                plt.plot(optimalmodel.out.t,optimalmodel_onsp.out.LE, linestyle='dashdot', marker='None',color='magenta',linewidth = 2.0,label = 'post onsp')
         plt.plot(obs_times['LE']/3600,optim.__dict__['obs_'+'LE'], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs orig')
         plt.plot(obs_times['LE']/3600,enbal_corr_LE, linestyle=' ', marker='o',color = 'red',ms=10,label = 'obs corr')
         plt.ylabel('LE (' + disp_units['LE']+')')
         plt.xlabel('time (h)')
-        plt.legend(prop={'size':legendsize})
+        plt.legend(prop={'size':legendsize},loc=0)
         plt.subplots_adjust(left=0.18, right=0.92, top=0.96, bottom=0.15,wspace=0.1)
         if write_to_f:
             plt.savefig('fig_fit_enbalcorrLE.'+figformat, format=figformat)
 
+if write_to_f:
+    if wr_obj_to_pickle_files:
+        if storefolder_objects not in os.listdir():
+            os.mkdir(storefolder_objects)
+        for item in vars_to_pickle:
+            if item in vars(): #check if variable exists
+                with open(storefolder_objects+'/'+item+'.pkl', 'wb') as output:
+                    pickle.dump(vars()[item], output, pickle.HIGHEST_PROTOCOL)
+
 ########################################################
 ###### user input: additional plotting etc. ############
 ########################################################  
-for i in range(len(obsvarlist)):
-    fig = plt.figure()
-    plt.plot(priormodel.out.t*3600,priormodel.out.__dict__[obsvarlist[i]], linestyle=' ', marker='o',color='yellow',label = 'prior')
-    plt.plot(optimalmodel.out.t*3600,optimalmodel.out.__dict__[obsvarlist[i]], linestyle=' ', marker='o',color='red',label = 'post')
-    plt.plot(obs_times[obsvarlist[i]],optim.__dict__['obs_'+obsvarlist[i]], linestyle=' ', marker='o',color = 'black')
-    plt.ylabel(obsvarlist[i])
-    plt.xlabel('timestep')
-    plt.legend(prop={'size':legendsize})
+#for i in range(len(obsvarlist)):
+#    fig = plt.figure()
+#    plt.plot(priormodel.out.t*3600,priormodel.out.__dict__[obsvarlist[i]], linestyle=' ', marker='o',color='yellow',label = 'prior')
+#    plt.plot(optimalmodel.out.t*3600,optimalmodel.out.__dict__[obsvarlist[i]], linestyle=' ', marker='o',color='red',label = 'post')
+#    plt.plot(obs_times[obsvarlist[i]],optim.__dict__['obs_'+obsvarlist[i]], linestyle=' ', marker='o',color = 'black')
+#    plt.ylabel(obsvarlist[i])
+#    plt.xlabel('timestep')
+#    plt.legend(prop={'size':legendsize})
 

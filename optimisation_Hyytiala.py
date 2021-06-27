@@ -13,7 +13,6 @@ from scipy import stats
 import matplotlib.pyplot as plt
 import shutil
 import os
-import multiprocessing
 from joblib import Parallel, delayed
 import csv
 import pandas as pd
@@ -31,13 +30,16 @@ write_to_f = True
 use_ensemble = False
 if use_ensemble:
     nr_of_members = 2
-    est_post_pdf = True
-    plot_perturbed_obs = True
+    run_multicore = False #only possible when using ensemble, not working?
+    if run_multicore:
+        max_num_cores = 'all' #'all' to use all available cores, otherwise specify an integer
+    est_post_pdf_covmatr = True
+    if est_post_pdf_covmatr:
+        plot_perturbed_obs = True
 maxnr_of_restarts = 3 #only implemented for tnc method at the moment
 imposeparambounds = True
 remove_all_prev = True #Use with caution, be careful for other files in working directory!!
 optim_method = 'tnc' #bfgs or tnc
-run_multicore = False #only possible when using ensemble, not working?
 stopcrit = 1.0
 use_mean = True #switch for using mean of obs over several days
 use_weights = False #weights for the cost function, to enlarge the importance of certain obs
@@ -533,7 +535,23 @@ obslist =['COSmh','COSmh2','Tmh','qmh','qmh2','CO2mh','CO2mh2']
 ###################################################################
 ###### end user input: obs scales,state and list of used obs ######
 ###################################################################
-
+if use_ensemble:
+    if (nr_of_members < 2 or type(nr_of_members) != int):
+        raise Exception('When use_ensemble is True, nr_of_members should be an integer and > 1')
+if len(set(state)) != len(state):
+    raise Exception('Mulitiple occurences of same item in state')
+if len(set(obslist)) != len(obslist):
+    raise Exception('Mulitiple occurences of same item in obslist')
+if ('EnBalDiffObsHFrac' in state and ('obs_sca_cf_H' in state or 'obs_sca_cf_LE' in state)):
+    raise Exception('When EnBalDiffObsHFrac in state, you cannot include obs_sca_cf_H or obs_sca_cf_LE in state as well')
+for item in state:
+    if item.startswith('obs_sca_cf_'):
+        obsname = item.split("obs_sca_cf_",1)[1]
+        if obsname not in obslist:
+            raise Exception(item+' given in state, but '+obsname+' not given in obslist')
+for item in obslist:
+    if not hasattr(priormodel.out,item):
+        raise Exception(item +' from obslist is not a model variable occurring in class \'model_output\' in forwardmodel.py')
 if use_backgr_in_cost or use_ensemble:
     priorvar = {}   
 ###########################################################
@@ -572,16 +590,29 @@ else:
      b_cov = None         
 
 #create inverse modelling framework, do check,...
-optim = im.adjoint_modelling(priormodel,write_to_file=write_to_f,use_backgr_in_cost=use_backgr_in_cost,imposeparambounds=True,state=state,pri_err_cov_matr=b_cov)
+optim = im.inverse_modelling(priormodel,write_to_file=write_to_f,use_backgr_in_cost=use_backgr_in_cost,imposeparambounds=imposeparambounds,state=state,pri_err_cov_matr=b_cov)
 optim.obs = obslist
 for item in priorinput.__dict__: #just a check
     if item.startswith('obs_sca_cf') and (item not in state):
         raise Exception(item +' given in priorinput, but not part of state. Remove from priorinput or add '+item+' to the state')
+    elif item == 'EnBalDiffObsHFrac' and (item not in state):
+        raise Exception(item +' given in priorinput, but not part of state. Remove from priorinput or add '+item+' to the state')
+for item in state:
+    if item not in priorinput.__dict__ or priorinput.__dict__[item] is None:
+        raise Exception(item +' given in state, but no prior given!')
 Hx_prior = {}
 for item in optim.obs:
     Hx_prior[item] = priormodel.out.__dict__[item]
-checkpoint_prior = priormodel.cpx
-checkpoint_init_prior = priormodel.cpx_init    
+
+if imposeparambounds:
+    pass
+#############################################################
+###### user input: parameter bounds (if non-default) ########
+#############################################################
+    #optim.boundedvars['h'] = [50,3200]
+#############################################################
+###### end user input: parameter bounds (if non-default) ####
+#############################################################   
 
 #The observations
 obs_times = {}
@@ -648,17 +679,36 @@ for item in optim.obs:
 ###########################################################
 ###### end user input: observation information ############
 ########################################################### 
+            
+if 'EnBalDiffObsHFrac' in state:              
+##################################################################
+###### user input: energy balance information (if used) ##########
+##################################################################
+
+##################################################################
+###### end user input: energy balance information (if used) ######
+##################################################################
+    for item in ['H','LE']:
+        if item in obslist:
+            if len(optim.__dict__['EnBalDiffObs_at'+item+'times']) != len(optim.__dict__['obs_'+item]):
+                raise Exception('When including EnBalDiffObsHFrac in state and '+ item + ' in obslist, an EnBalDiffObs_at' +item+'times value should correspond to every obs of ' + item)
+            if type(optim.__dict__['EnBalDiffObs_at'+item+'times']) not in [np.ndarray,list]: #a check to see whether data is of a correct type
+                raise Exception('Please convert EnBalDiffObs_at'+item+'times data into type \'numpy.ndarray\' or list!')    
+    
+for item in optim.obs:
     if (not hasattr(optim,'obs_'+item) or not hasattr(optim,'error_obs_'+item)): #a check to see wether all info is specified
         raise Exception('Incomplete or no information on obs of ' + item)
+    if item not in obs_times:
+        raise Exception('Please specify the observation times of '+item+'.')
     if type(optim.__dict__['obs_'+item]) not in [np.ndarray,list]: #a check to see whether data is of a correct type
-        raise Exception('Please convert observation data into type \'numpy.ndarray\' or list!')
+        raise Exception('Please convert observation data of '+item+' into type \'numpy.ndarray\' or list!')
     if type(optim.__dict__['error_obs_'+item]) not in [np.ndarray,list]:
-        raise Exception('Please convert observation error data into type \'numpy.ndarray\' or list!')
+        raise Exception('Please convert observation error data of '+item+' into type \'numpy.ndarray\' or list!')
     if type(obs_times[item]) not in [np.ndarray,list]:
-        raise Exception('Please convert observation time data into type \'numpy.ndarray\' or list!')
+        raise Exception('Please convert observation time data of '+item+' into type \'numpy.ndarray\' or list!')
     if use_weights and item in obs_weights:
         if type(obs_weights[item]) not in [np.ndarray,list]:
-            raise Exception('Please convert observation weight data into type \'numpy.ndarray\' or list!')
+            raise Exception('Please convert observation weight data of '+item+' into type \'numpy.ndarray\' or list!')
     itoremove = []
     for i in range(len(optim.__dict__['obs_'+item])):
         if math.isnan(optim.__dict__['obs_'+item][i]):
@@ -719,9 +769,18 @@ for item in state:
 optim.pstate = np.array(optim.pstate)
 optiminput = cp.deepcopy(priorinput) #deepcopy!
 params = tuple([optiminput,state,obs_times,obs_weights])
-optim.checkpoint = cp.deepcopy(checkpoint_prior) #needed, as first thing optimizer does is calculating the gradient
-optim.checkpoint_init = cp.deepcopy(checkpoint_init_prior) #needed, as first thing optimizer does is calculating the gradient
+optim.checkpoint = cp.deepcopy(priormodel.cpx) #needed, as first thing optimizer does is calculating the gradient
+optim.checkpoint_init = cp.deepcopy(priormodel.cpx_init) #needed, as first thing optimizer does is calculating the gradient
 for item in optim.obs:
+    if 'EnBalDiffObsHFrac' in state:
+        if item not in ['H','LE']:
+            observations_item = optim.__dict__['obs_'+item]
+        elif item == 'H':
+            observations_item = cp.deepcopy(optim.__dict__['obs_H']) + optim.pstate[state.index('EnBalDiffObsHFrac')] * optim.EnBalDiffObs_atHtimes
+        elif item == 'LE':
+            observations_item = cp.deepcopy(optim.__dict__['obs_LE']) + (1 - optim.pstate[state.index('EnBalDiffObsHFrac')]) * optim.EnBalDiffObs_atLEtimes  
+    else:
+        observations_item = optim.__dict__['obs_'+item]
     if item in obs_sca_cf:
         obs_scale = obs_sca_cf[item] #a scale for increasing/decreasing the magnitude of the observation in the cost function, useful if observations are possibly biased (scale not time dependent).
     else:
@@ -732,7 +791,7 @@ for item in optim.obs:
         if round(priormodel.out.t[ti] * 3600,10) in [round(num, 10) for num in obs_times[item]]: #so if we are at a time where we have an obs        
             if item in obs_weights:
                 weight = obs_weights[item][k]
-            forcing = weight * (Hx_prior[item][ti] - obs_scale * optim.__dict__['obs_'+item][k])/(optim.__dict__['error_obs_' + item][k]**2)
+            forcing = weight * (Hx_prior[item][ti] - obs_scale * observations_item[k])/(optim.__dict__['error_obs_' + item][k]**2)
             optim.forcing[ti][item] = forcing
             k += 1
 if optim_method == 'bfgs':
@@ -743,13 +802,16 @@ if optim_method == 'bfgs':
     state_opt0 = minimisation[0]
     min_costf = minimisation[1]
 elif optim_method == 'tnc':
-    bounds = []
-    for i in range(len(state)):
-        for key in optim.boundedvars:
-            if key == state[i]:
-                bounds.append((optim.boundedvars[key][0],optim.boundedvars[key][1]))
-        if state[i] not in optim.boundedvars:
-            bounds.append((None,None)) #bounds need something
+    if imposeparambounds:
+        bounds = []
+        for i in range(len(state)):
+            for key in optim.boundedvars:
+                if key == state[i]:
+                    bounds.append((optim.boundedvars[key][0],optim.boundedvars[key][1]))
+            if state[i] not in optim.boundedvars:
+                bounds.append((None,None)) #bounds need something
+    else:
+        bounds = [(None,None) for item in state]
     try:
         if ana_deriv:
             minimisation = optimize.fmin_tnc(optim.min_func,optim.pstate,fprime=optim.ana_deriv,args=params,bounds=bounds,maxfun=None)
@@ -838,7 +900,7 @@ def run_ensemble_member(counter,seed):
 #    for j in range(len(state)):
 #        open('errorfile'+str(counter)+'.txt','a').write('{0:>25s}'.format(str(priorinput_mem.__dict__[state[j]])))
     priormodel_mem.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False,save_vars_indict=False) #delete_at_end should be false, to keep tsteps of model
-    optim_mem = im.adjoint_modelling(priormodel_mem,write_to_file=write_to_f,use_backgr_in_cost=use_backgr_in_cost,imposeparambounds=imposeparambounds,state=state,Optimfile='Optimfile'+str(counter)+'.txt',Gradfile='Gradfile'+str(counter)+'.txt',pri_err_cov_matr=b_cov)
+    optim_mem = im.inverse_modelling(priormodel_mem,write_to_file=write_to_f,use_backgr_in_cost=use_backgr_in_cost,imposeparambounds=imposeparambounds,state=state,Optimfile='Optimfile'+str(counter)+'.txt',Gradfile='Gradfile'+str(counter)+'.txt',pri_err_cov_matr=b_cov)
     optim_mem.obs = cp.deepcopy(optim.obs)
     for item in optim_mem.obs:
         optim_mem.__dict__['obs_'+item] = cp.deepcopy(optim.__dict__['obs_'+item])
@@ -846,7 +908,7 @@ def run_ensemble_member(counter,seed):
     for item in optim_mem.obs:
         Hx_prior_mem[item] = priormodel_mem.out.__dict__[item]
         optim_mem.__dict__['error_obs_' + item] = cp.deepcopy(optim.__dict__['error_obs_' + item])
-    if est_post_pdf:
+    if est_post_pdf_covmatr:
         for item in optim_mem.obs:
             np.random.seed(seed)  
             rand_nr_list = ([np.random.normal(0,optim_mem.__dict__['error_obs_' + item][i]) for i in range(len(optim_mem.__dict__['error_obs_' + item]))])
@@ -866,24 +928,44 @@ def run_ensemble_member(counter,seed):
                 plt.legend()
                 if write_to_f:
                     plt.savefig('fig_obs_'+optim.obs[i]+'_mem'+str(counter)+'.png', format='png')
-    checkpoint_prior_mem = priormodel_mem.cpx
-    checkpoint_init_prior_mem = priormodel_mem.cpx_init
+    obs_sca_cf_mem = {}
     optim_mem.pstate = []
     for item in state:
         optim_mem.pstate.append(priorinput_mem.__dict__[item])
+        if item.startswith('obs_sca_cf_'):
+            obsname = item.split("obs_sca_cf_",1)[1] #split so we get the part after obs_sca_cf_
+            obs_sca_cf_mem[obsname] = cp.deepcopy(priorinput_mem.__dict__[item])
     optim_mem.pstate = np.array(optim_mem.pstate)
     optiminput_mem = cp.deepcopy(priorinput_mem) #deepcopy!
     params = tuple([optiminput_mem,state,obs_times,obs_weights])
-    optim_mem.checkpoint = cp.deepcopy(checkpoint_prior_mem) #needed, as first thing optimizer does is calculating the gradient
-    optim_mem.checkpoint_init = cp.deepcopy(checkpoint_init_prior_mem) #needed, as first thing optimizer does is calculating the gradient
+    optim_mem.checkpoint = cp.deepcopy(priormodel_mem.cpx) #needed, as first thing optimizer does is calculating the gradient
+    optim_mem.checkpoint_init = cp.deepcopy(priormodel_mem.cpx_init) #needed, as first thing optimizer does is calculating the gradient
+    if 'EnBalDiffObsHFrac' in state:
+        if 'H' in obslist:
+            optim_mem.EnBalDiffObs_atHtimes = optim.EnBalDiffObs_atHtimes
+        if 'LE' in obslist:
+            optim_mem.EnBalDiffObs_atLEtimes = optim.EnBalDiffObs_atLEtimes
     for item in optim_mem.obs:
+        if 'EnBalDiffObsHFrac' in state:
+            if item not in ['H','LE']:
+                observations_item = optim_mem.__dict__['obs_'+item]
+            elif item == 'H':
+                observations_item = cp.deepcopy(optim_mem.__dict__['obs_H']) + optim_mem.pstate[state.index('EnBalDiffObsHFrac')] * optim_mem.EnBalDiffObs_atHtimes
+            elif item == 'LE':
+                observations_item = cp.deepcopy(optim_mem.__dict__['obs_LE']) + (1 - optim_mem.pstate[state.index('EnBalDiffObsHFrac')]) * optim_mem.EnBalDiffObs_atLEtimes 
+        else:
+            observations_item = optim_mem.__dict__['obs_'+item]
+        if item in obs_sca_cf_mem:
+            obs_scale = obs_sca_cf_mem[item] #a scale for increasing/decreasing the magnitude of the observation in the cost function, useful if observations are possibly biased (scale not time dependent).
+        else:
+            obs_scale = 1.0 
         weight = 1.0 # a weight for the observations in the cost function, modified below if weights are specified. For each variable in the obs, provide either no weights or a weight for every time there is an observation for that variable 
         k = 0 #counter for the observations (specific for each type of obs) 
         for ti in range(priormodel_mem.tsteps):
             if round(priormodel_mem.out.t[ti] * 3600,10) in [round(num, 10) for num in obs_times[item]]: #so if we are at a time where we have an obs
                 if item in obs_weights:
                     weight = obs_weights[item][k]
-                forcing = weight * (Hx_prior_mem[item][ti]-optim_mem.__dict__['obs_'+item][k])/(optim_mem.__dict__['error_obs_' + item][k]**2)
+                forcing = weight * (Hx_prior_mem[item][ti] - obs_scale * observations_item[k])/(optim_mem.__dict__['error_obs_' + item][k]**2)
                 optim_mem.forcing[ti][item] = forcing
                 k += 1
     if optim_method == 'bfgs':
@@ -970,8 +1052,9 @@ if use_ensemble:
     shutil.copyfile('Optimfile.txt', 'Optimfile_'+str(0)+'.txt')
     shutil.copyfile('Gradfile.txt', 'Gradfile_'+str(0)+'.txt')
     if run_multicore:
-        num_cores = multiprocessing.cpu_count()
-        result_array = Parallel(n_jobs=num_cores)(delayed(run_ensemble_member)(i,None)  for i in range(1,nr_of_members)) #, prefer="threads" makes it work, but probably not multiprocess. None is for the seed
+        if max_num_cores == 'all':
+            max_num_cores = -1
+        result_array = Parallel(n_jobs=max_num_cores)(delayed(run_ensemble_member)(i,None)  for i in range(1,nr_of_members)) #, prefer="threads" makes it work, but probably not multiprocess. None is for the seed
         #the above returns a list of tuples
         for j in range(1,nr_of_members):
             ensemble[j]['min_costf'] = result_array[j-1][0] #-1 due to the fact that the zeroth ensemble member is not part of the result_array, while it is part of ensemble
@@ -989,7 +1072,7 @@ if use_ensemble:
     print(state_opt)
     print('index of member with the best state:')
     print(opt_sim_nr)
-    if est_post_pdf:
+    if est_post_pdf_covmatr:
         stdev_post = np.zeros(len(state))
         for i in range(len(state)):
             seq = np.array([x['state_opt'][i] for x in ensemble]) #iterate over the dictionaries,gives array 
@@ -1022,42 +1105,55 @@ optimalmodel.run(checkpoint=False,updatevals_surf_lay=True,delete_at_end=False)
 ############################
 #stats file
 ############################
+if use_backgr_in_cost:
+    if use_weights:
+        chi_sq = min_costf/(sum_of_weights + number_of_params)
+    else:
+        chi_sq = min_costf/(number_of_obs + number_of_params) #calculation of chi squared statistic
+else:
+    if use_weights:
+        chi_sq = min_costf/(sum_of_weights)
+    else:
+        chi_sq = min_costf/(number_of_obs)
 if use_ensemble:
     if use_backgr_in_cost:
         if use_weights:
-            chi_sq = min_costf_ensemble/(sum_of_weights + number_of_params)
+            chi_sq_ens = min_costf_ensemble/(sum_of_weights + number_of_params)
         else:
-            chi_sq = min_costf_ensemble/(number_of_obs + number_of_params) #calculation of chi squared statistic
+            chi_sq_ens = min_costf_ensemble/(number_of_obs + number_of_params) #calculation of chi squared statistic
     else:
         if use_weights:
-            chi_sq = min_costf_ensemble/(sum_of_weights)
+            chi_sq_ens = min_costf_ensemble/(sum_of_weights)
         else:
-            chi_sq = min_costf_ensemble/(number_of_obs)
-else:
-    if use_backgr_in_cost:
-        if use_weights:
-            chi_sq = min_costf/(sum_of_weights + number_of_params)
-        else:
-            chi_sq = min_costf/(number_of_obs + number_of_params) #calculation of chi squared statistic
-    else:
-        if use_weights:
-            chi_sq = min_costf/(sum_of_weights)
-        else:
-            chi_sq = min_costf/(number_of_obs)
+            chi_sq_ens = min_costf_ensemble/(number_of_obs)
 if write_to_f:
     open('Optstatsfile.txt','w').write('{0:>9s}'.format('nr of obs')) #here we make the file   
     if use_weights:
         open('Optstatsfile.txt','a').write('{0:>40s}'.format('total nr obs, corrected for weights'))
     open('Optstatsfile.txt','a').write('{0:>35s}'.format('number of params to optimise'))
-    open('Optstatsfile.txt','a').write('{0:>25s}'.format('chi squared'))
+    open('Optstatsfile.txt','a').write('{0:>35s}'.format('chi squared without ensemble'))
+    open('Optstatsfile.txt','a').write('{0:>35s}'.format('prior costf without ensemble'))
+    open('Optstatsfile.txt','a').write('{0:>35s}'.format('post costf without ensemble'))
     if use_ensemble:
-        open('Optstatsfile.txt','a').write('{0:>25s}'.format(' (of member with lowest costf)'))
+        open('Optstatsfile.txt','a').write('{0:>50s}'.format('chi squared of member with lowest post costf'))
+        open('Optstatsfile.txt','a').write('{0:>50s}'.format('prior costf of member with lowest post costf'))
+        open('Optstatsfile.txt','a').write('{0:>50s}'.format('post costf of member with lowest post costf'))
     open('Optstatsfile.txt','a').write('\n')
     open('Optstatsfile.txt','a').write('{0:>9s}'.format(str(number_of_obs)))
     if use_weights:
         open('Optstatsfile.txt','a').write('{0:>40s}'.format(str(sum_of_weights)))
     open('Optstatsfile.txt','a').write('{0:>35s}'.format(str(number_of_params)))
-    open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(chi_sq)))
+    open('Optstatsfile.txt','a').write('{0:>35s}'.format(str(chi_sq)))
+    prior_costf = optim.cost_func(optim.pstate,cp.deepcopy(priorinput),state,obs_times,obs_weights)
+    post_costf = optim.cost_func(state_opt0,cp.deepcopy(priorinput),state,obs_times,obs_weights)
+    open('Optstatsfile.txt','a').write('{0:>35s}'.format(str(prior_costf)))
+    open('Optstatsfile.txt','a').write('{0:>35s}'.format(str(post_costf)))
+    if use_ensemble:
+        open('Optstatsfile.txt','a').write('{0:>50s}'.format(str(chi_sq_ens)))
+        prior_costf_ens = optim.cost_func(ensemble[opt_sim_nr]['pstate'],cp.deepcopy(priorinput),state,obs_times,obs_weights) 
+        #note that we use priorinput here instead of the priorinput of the member, but not important since cost_func will adapt the priorinput that is in the state, and the rest of the input is identical among members
+        open('Optstatsfile.txt','a').write('{0:>50s}'.format(str(prior_costf_ens)))
+        open('Optstatsfile.txt','a').write('{0:>50s}'.format(str(ensemble[opt_sim_nr]['min_costf'])))
     open('Optstatsfile.txt','a').write('\n\n')
     open('Optstatsfile.txt','a').write('{0:>31s}'.format('optimal state without ensemble:'))
     open('Optstatsfile.txt','a').write('\n')
@@ -1079,15 +1175,39 @@ if write_to_f:
         open('Optstatsfile.txt','a').write('{0:>31s}'.format('index member with best state:'))
         open('Optstatsfile.txt','a').write('\n')
         open('Optstatsfile.txt','a').write('{0:>31s}'.format(str(opt_sim_nr)))
+        if est_post_pdf_covmatr:
+            open('Optstatsfile.txt','a').write('\n\n')
+            open('Optstatsfile.txt','a').write('{0:>31s}'.format('estim post state covar matrix:'))
+            open('Optstatsfile.txt','a').write('\n')
+            open('Optstatsfile.txt','a').write('{0:>31s}'.format(' '))
+            for item in state:
+                open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(item)))
+            open('Optstatsfile.txt','a').write('\n')
+            for i in range(len(state)):
+                open('Optstatsfile.txt','a').write('{0:>31s}'.format(str(state[i])))
+                for item in post_cov_matr[i]:
+                    open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(item)))
+                open('Optstatsfile.txt','a').write('\n\n')
+            open('Optstatsfile.txt','a').write('{0:>32s}'.format('post/prior variance ratio:\n'))  
+            open('Optstatsfile.txt','a').write('{0:>6s}'.format(' '))
+            for item in state:
+                open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(item)))
+            open('Optstatsfile.txt','a').write('\n')
+            open('Optstatsfile.txt','a').write('{0:>6s}'.format(' '))
+            for i in range(len(state)):
+                ratio = post_cov_matr[i][i]/priorvar[state[i]]
+                open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(ratio)))            
         open('Optstatsfile.txt','a').write('\n')
         open('Optstatsfile.txt','a').write('\n')
-        open('Optstatsfile.txt','a').write('{0:>9s}'.format('ensemble members:'))
+        open('Optstatsfile.txt','a').write('{0:>31s}'.format('ensemble members:'))
         open('Optstatsfile.txt','a').write('\n')
+        open('Optstatsfile.txt','a').write('{0:>6s}'.format(' '))
         open('Optstatsfile.txt','a').write('{0:>25s}'.format('minimum costf'))
         for item in state:
             open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(item)))
         open('Optstatsfile.txt','a').write('\n')
         for item in ensemble:
+            open('Optstatsfile.txt','a').write('{0:>6s}'.format(' '))
             open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(item['min_costf'])))
             for param in item['state_opt']:
                 open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(param)))
@@ -1107,6 +1227,35 @@ for i in range(len(obslist)):
     if write_to_f:
         plt.savefig('fig_fit_'+optim.obs[i]+'.png', format='png')
 
+if 'EnBalDiffObsHFrac' in state:
+    if 'H' in obslist:
+        enbal_corr_H = optim.obs_H + optimalinput.EnBalDiffObsHFrac * optim.EnBalDiffObs_atHtimes
+        fig = plt.figure()
+        plt.plot(priormodel.out.t-priorinput.tstart,priormodel.out.H, linestyle=' ', marker='o',color='yellow',label = 'prior')
+        plt.plot(optimalmodel.out.t-priorinput.tstart,optimalmodel.out.H, linestyle=' ', marker='o',color='red',label = 'post')
+        plt.plot(obs_times['H']/3600-priorinput.tstart,optim.__dict__['obs_'+'H'], linestyle=' ', marker='x',color = 'black',label = 'obs orig')
+        if 'H' in obslist:
+            plt.plot(obs_times['H']/3600-priorinput.tstart,enbal_corr_H, linestyle=' ', marker='D',color = 'black',label = 'obs corr')
+        plt.ylabel('H')
+        plt.xlabel('time (h)')
+        plt.legend()
+        plt.subplots_adjust(left=0.18, right=0.92, top=0.96, bottom=0.15,wspace=0.1)
+        if write_to_f:
+            plt.savefig('fig_fit_enbalcorrH.eps', format='eps')
+    if 'LE' in obslist:        
+        enbal_corr_LE = optim.obs_LE + (1 - optimalinput.EnBalDiffObsHFrac) * optim.EnBalDiffObs_atLEtimes
+        fig = plt.figure()
+        plt.plot(priormodel.out.t-priorinput.tstart,priormodel.out.LE, linestyle=' ', marker='o',color='yellow',label = 'prior')
+        plt.plot(optimalmodel.out.t-priorinput.tstart,optimalmodel.out.LE, linestyle=' ', marker='o',color='red',label = 'post')
+        plt.plot(obs_times['LE']/3600-priorinput.tstart,optim.__dict__['obs_'+'LE'], linestyle=' ', marker='x',color = 'black',label = 'obs orig')
+        if 'LE' in obslist:
+            plt.plot(obs_times['LE']/3600-priorinput.tstart,enbal_corr_LE, linestyle=' ', marker='D',color = 'black',label = 'obs corr')
+        plt.ylabel('LE')
+        plt.xlabel('time (h)')
+        plt.legend()
+        plt.subplots_adjust(left=0.18, right=0.92, top=0.96, bottom=0.15,wspace=0.1)
+        if write_to_f:
+            plt.savefig('fig_fit_enbalcorrLE.eps', format='eps')
 ########################################################
 ###### user input: additional plotting etc. ############
 ######################################################## 

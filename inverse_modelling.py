@@ -64,6 +64,7 @@ class inverse_modelling:
         self.Statelist = []
         self.nr_sims_for_check = 10 #when the cost function changes too slowly, the minimisation will be aborted. This number determines how many of the most recent simulations (their cost function value) will be taken into account 
         self.nr_of_sim_bef_restart = 0 #the simulation nr reached before restart took place (if applicable, at this point in the code no restart has taken place). 
+        self.print = True
         if self.write_to_f:
             self.Optimf = Optimfile
             self.Gradf = Gradfile
@@ -87,8 +88,9 @@ class inverse_modelling:
     def min_func(self,state_to_opt,inputdata,state_var_names,obs_times,obs_weights={}): #some dummy vars as arg list of min_func and deriv_func needs to be the same
         cost = 0
         self.sim_nr += 1
-        print('accessing min func')
-        print('state_to_opt'+str(state_to_opt))
+        if self.print:
+            print('accessing min func')
+            print('state_to_opt'+str(state_to_opt))
         obs_sca_cf = {}
         for i in range(len(state_var_names)):
             inputdata.__dict__[state_var_names[i]] = state_to_opt[i]
@@ -148,10 +150,11 @@ class inverse_modelling:
             cost += Jbackground
             if self.write_to_f:
                 open(self.Optimf,'a').write('{0:>25s}'.format(str(Jbackground)))
-        print('costf='+str(cost))
         if self.write_to_f:
             open(self.Optimf,'a').write('{0:>25s}'.format(str(cost)))
-        print('end min func')
+        if self.print:
+            print('costf='+str(cost))
+            print('end min func')
         if math.isnan(cost):
             raise nan_incostfError('nan in costf')
         self.Costflist.append(cost)
@@ -248,8 +251,9 @@ class inverse_modelling:
     
     def ana_deriv(self,state_to_opt,inputdata,state_var_names,obs_times,obs_weights={}): #some dummy vars as arg list of min_func and deriv_func needs to be the same
         model = self.model #just to ease notation later on
-        print('accessing deriv_func')
-        print ('state'+str(state_to_opt))
+        if self.print:
+            print('accessing deriv_func')
+            print ('state'+str(state_to_opt))
         if self.write_to_f:
             open(self.Gradf,'a').write('\n')
             open(self.Gradf,'a').write('{0:>25s}'.format(str(self.sim_nr)))
@@ -318,12 +322,14 @@ class inverse_modelling:
         if self.write_to_f:
             for item in gradient:
                 open(self.Gradf,'a').write('{0:>30s}'.format(str(item)))
-        print ('grad'+str(gradient))
-        print('end deriv_func')
+        if self.print:
+            print ('grad'+str(gradient))
+            print('end deriv_func')
         return np.array(gradient) #!!!!must return an array!!
     
     def num_deriv(self,state_to_opt,inputdata,state_var_names,obs_times,obs_weights={}): #some dummy vars as arg list of min_func and deriv_func needs to be the same
-        print('accessing num_deriv')
+        if self.print:
+            print('accessing num_deriv')
         if self.write_to_f:
             open(self.Gradf,'a').write('\n')
             open(self.Gradf,'a').write('{0:>25s}'.format(str(self.sim_nr)))
@@ -434,8 +440,9 @@ class inverse_modelling:
         if self.write_to_f:
             for item in gradient:
                 open(self.Gradf,'a').write('{0:>30s}'.format(str(item)))
-        print ('grad'+str(gradient))
-        print('end num_deriv')
+        if self.print:
+            print ('grad'+str(gradient))
+            print('end num_deriv')
         return np.array(gradient)
     
     def background_costf(self,state):
