@@ -535,7 +535,7 @@ class inverse_modelling:
         self.dwthetae,self.dwthetave,self.dwqe,self.dwCO2A,self.dwCO2R,self.dwCO2e,self.dwCO2M,self.duw,self.dvw = 0,0,0,0,0,0,0,0,0
         self.dT2m,self.dthetamh,self.dthetamh2,self.dthetamh3,self.dthetamh4,self.dthetamh5,self.dthetamh6,self.dthetamh7 = 0,0,0,0,0,0,0,0
         self.dTmh,self.dTmh2,self.dTmh3,self.dTmh4,self.dTmh5,self.dTmh6,self.dTmh7,self.dq2m,self.dqmh,self.dqmh2,self.dqmh3,self.dqmh4,self.dqmh5,self.dqmh6,self.dqmh7,self.du2m,self.dv2m,self.de2m,self.desat2m = 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-        self.dCOSmh,self.dCOSmh2,self.dCOSmh3,self.dCO2mh,self.dCO2mh2,self.dCO2mh3,self.dCO2mh4,self.dCOS2m = 0,0,0,0,0,0,0,0#
+        self.dCOSmh,self.dCOSmh2,self.dCOSmh3,self.dCOSmh4,self.dCO2mh,self.dCO2mh2,self.dCO2mh3,self.dCO2mh4,self.dCOS2m = 0,0,0,0,0,0,0,0,0#
         self.dthetavsurf,self.dqsurf,self.dSwout,self.dSwin,self.dLwin,self.dLwout,self.dH,self.dLE,self.dLEliq,self.dLEveg,self.dLEsoil = 0,0,0,0,0,0,0,0,0,0,0
         self.dLEpot,self.dLEref,self.dG,self.dRH_h,self.desatvar,self.dqsatvar,self.dwCOS,self.dwCOSP,self.dwCOSS = 0,0,0,0,0,0,0,0,0
         self.dac,self.dCO22m,self.dCm,self.dL = 0,0,0,0#
@@ -867,6 +867,7 @@ class inverse_modelling:
         dzeta_dL_COSmh = self.dzeta_dL(COSmeasuring_height,L) * dL
         dzeta_dL_COSmh2 = self.dzeta_dL(model.COSmeasuring_height2,L) * dL
         dzeta_dL_COSmh3 = self.dzeta_dL(model.COSmeasuring_height3,L) * dL
+        dzeta_dL_COSmh4 = self.dzeta_dL(model.COSmeasuring_height4,L) * dL
         dzeta_dL_CO2mh = self.dzeta_dL(model.CO2measuring_height,L) * dL
         dzeta_dL_CO2mh2 = self.dzeta_dL(model.CO2measuring_height2,L) * dL
         dzeta_dL_CO2mh3 = self.dzeta_dL(model.CO2measuring_height3,L) * dL
@@ -1052,6 +1053,13 @@ class inverse_modelling:
         dpsih_COSmh3_L = self.dpsih(model.COSmeasuring_height3 / L,dzeta_dL_COSmh3)
         dCOSmh3_dL = - wCOS / ustar / model.k * (- dpsih_COSmh3_L + dpsih_z0h_L)
         dCOSmh3 = dCOSmh3_dCOSsurf + dCOSmh3_dwCOS + dCOSmh3_dustar + dCOSmh3_dz0h + dCOSmh3_dL
+        dCOSmh4_dCOSsurf = dCOSsurf
+        dCOSmh4_dwCOS = - 1 / ustar / model.k * (np.log(model.COSmeasuring_height4 / z0h) - model.psih(model.COSmeasuring_height4 / L) + model.psih(z0h / L)) * self.dwCOS
+        dCOSmh4_dustar = - wCOS / model.k * (np.log(model.COSmeasuring_height4 / z0h) - model.psih(model.COSmeasuring_height4 / L) + model.psih(z0h / L)) * (-1) * ustar**(-2) * dustar
+        dCOSmh4_dz0h = - wCOS / ustar / model.k * (1 / (model.COSmeasuring_height4 / z0h) * model.COSmeasuring_height4 * -1 * z0h**-2 * self.dz0h + dpsihterm_for_dCs_dz0h)
+        dpsih_COSmh4_L = self.dpsih(model.COSmeasuring_height4 / L,dzeta_dL_COSmh4)
+        dCOSmh4_dL = - wCOS / ustar / model.k * (- dpsih_COSmh4_L + dpsih_z0h_L)
+        dCOSmh4 = dCOSmh4_dCOSsurf + dCOSmh4_dwCOS + dCOSmh4_dustar + dCOSmh4_dz0h + dCOSmh4_dL
         dCO22m_dCO2surf = dCO2surf
         dCO22m_dwCO2 = - 1 / ustar / model.k * (np.log(2. / z0h) - model.psih(2. / L) + model.psih(z0h / L)) * self.dwCO2
         dCO22m_dustar = - wCO2 / model.k * (np.log(2. / z0h) - model.psih(2. / L) + model.psih(z0h / L)) * (-1) * ustar**(-2) * dustar
@@ -1142,6 +1150,8 @@ class inverse_modelling:
                 dCOSmh2 = self.dCOS
             if model.COSmeasuring_height3 > zsl:
                 dCOSmh3 = self.dCOS
+            if model.COSmeasuring_height4 > zsl:
+                dCOSmh4 = self.dCOS
             if model.CO2measuring_height > zsl:
                 dCO2mh = self.dCO2
             if model.CO2measuring_height2 > zsl:
@@ -2139,7 +2149,7 @@ class inverse_modelling:
         fc = checkpoint['rml_fc']
         dFz = checkpoint['rml_dFz']
         wstar = checkpoint['rml_wstar_end']
-        beta = checkpoint['rml_beta_end']
+        beta = checkpoint['rml_beta']
         self.Output_tl_rml = {}
         if(not model.sw_sl):
             duw_dustar = - np.sign(u) * 0.5 * (ustar ** 4. / (v ** 2. / u ** 2. + 1.)) ** (-0.5) * 4 * ustar ** 3 * self.dustar * 1 / (v ** 2. / u ** 2. + 1.)
@@ -2176,9 +2186,10 @@ class inverse_modelling:
             dwstar_dwthetav = 0
             dwstar_dthetav = 0
         dwstar = dwstar_dh + dwstar_dwthetav + dwstar_dthetav
-        if model.sw_dyn_beta:
-            dbeta = 5 * 3 * (ustar/wstar)**2. * (1 / wstar * self.dustar + ustar * -1 * wstar**-2 * dwstar)
-            self.dbeta = dbeta #needed since in the statement below, dbeta either comes from outside this module (self.dbeta), or this dbeta is used, depending on a switch
+#        The part below is commented out since not used, text remained as comments since interesting technique 
+#        if model.sw_dyn_beta:
+#            dbeta = 5 * 3 * (ustar/wstar)**2. * (1 / wstar * self.dustar + ustar * -1 * wstar**-2 * dwstar)
+#            self.dbeta = dbeta #needed since in the statement below, dbeta either comes from outside this module (self.dbeta), or this dbeta is used, depending on a switch
         dwthetave = -1 * beta * self.dwthetav - wthetav * self.dbeta
         if(model.sw_shearwe):
             dwe_dwthetav = -1 / deltathetav * dwthetave
@@ -2326,6 +2337,7 @@ class inverse_modelling:
             dout_COSmh         = self.dCOSmh
             dout_COSmh2        = self.dCOSmh2
             dout_COSmh3        = self.dCOSmh3
+            dout_COSmh4        = self.dCOSmh4
             dout_CO22m         = self.dCO22m
             dout_CO2mh         = self.dCO2mh
             dout_CO2mh2        = self.dCO2mh2
@@ -2505,6 +2517,7 @@ class inverse_modelling:
         self.adzeta_dL_COSmh = 0
         self.adzeta_dL_COSmh2 = 0
         self.adzeta_dL_COSmh3 = 0
+        self.adzeta_dL_COSmh4 = 0
         self.adzeta_dL_CO2mh = 0
         self.adzeta_dL_CO2mh2 = 0
         self.adzeta_dL_CO2mh3 = 0
@@ -2526,6 +2539,11 @@ class inverse_modelling:
         self.adCOSmh3_dwCOS = 0
         self.adCOSmh3_dustar = 0
         self.adCOSmh3_dL = 0
+        self.adCOSmh4_dCOSsurf = 0
+        self.adCOSmh4 = 0
+        self.adCOSmh4_dwCOS = 0
+        self.adCOSmh4_dustar = 0
+        self.adCOSmh4_dL = 0
         self.adCO2mh_dCO2surf = 0
         self.adCO2mh = 0
         self.adCO2mh_dwCO2 = 0
@@ -2552,6 +2570,7 @@ class inverse_modelling:
         self.adpsih_COSmh_L = 0
         self.adpsih_COSmh2_L = 0
         self.adpsih_COSmh3_L = 0
+        self.adpsih_COSmh4_L = 0
         self.adpsih_CO2mh_L = 0
         self.adpsih_CO2mh2_L = 0
         self.adpsih_CO2mh3_L = 0
@@ -2693,6 +2712,7 @@ class inverse_modelling:
         self.adpsimterm_for_dCm_dz0m = 0
         self.adCs_dz0m = 0
         self.adCm_dz0m = 0
+        self.adCOSmh4_dz0h = 0
         self.adCOSmh3_dz0h = 0
         self.adCOSmh2_dz0h = 0
         self.adCOSmh_dz0h = 0
@@ -3330,6 +3350,7 @@ class inverse_modelling:
         self.adout_CO2mh2 = 0
         self.adout_CO2mh = 0
         self.adout_CO22m = 0
+        self.adout_COSmh4 = 0
         self.adout_COSmh3 = 0
         self.adout_COSmh2 = 0
         self.adout_COSmh = 0
@@ -3801,6 +3822,9 @@ class inverse_modelling:
             #statement dout_CO22m         = self.dCO22m
             self.adCO22m += self.adout_CO22m
             self.adout_CO22m = 0
+            #statement dout_COSmh4        = self.dCOSmh4
+            self.adCOSmh4 += self.adout_COSmh4
+            self.adout_COSmh4 = 0
             #statement dout_COSmh3        = self.dCOSmh3
             self.adCOSmh3 += self.adout_COSmh3
             self.adout_COSmh3 = 0
@@ -4055,7 +4079,7 @@ class inverse_modelling:
         fc = checkpoint['rml_fc']
         dFz = checkpoint['rml_dFz']
         wstar = checkpoint['rml_wstar_end']
-        beta = checkpoint['rml_beta_end']
+        beta = checkpoint['rml_beta']
         if(ac > 0 or lcl - h < 300):
             #statement ddztend = (self.dlcl - self.dh - self.ddz_h) / 7200.
             self.adlcl += self.addztend/7200
@@ -4255,11 +4279,6 @@ class inverse_modelling:
         self.adwthetav += -1 * beta * self.adwthetave
         self.adbeta += - wthetav * self.adwthetave
         self.adwthetave = 0
-        if model.sw_dyn_beta:
-            #statement dbeta = 5 * 3 * (ustar/wstar)**2. * (1 / wstar * self.dustar + ustar * -1 * wstar**-2 * dwstar)
-            self.adustar += 5 * 3 * (ustar/wstar)**2. * (1 / wstar * self.adbeta)
-            self.adwstar += 5 * 3 * (ustar/wstar)**2. * (ustar * -1 * wstar**-2 * self.adbeta)
-            self.adbeta = 0.
         #statement dwstar = dwstar_dh + dwstar_dwthetav + dwstar_dthetav
         self.adwstar_dh += self.adwstar
         self.adwstar_dwthetav += self.adwstar
@@ -6168,6 +6187,10 @@ class inverse_modelling:
                 #statement dCO2mh = self.dCO2
                 self.adCO2 += self.adCO2mh
                 self.adCO2mh = 0
+            if model.COSmeasuring_height4 > zsl:
+                #statement dCOSmh4 = self.dCOS
+                self.adCOS += self.adCOSmh4
+                self.adCOSmh4 = 0
             if model.COSmeasuring_height3 > zsl:
                 #statement dCOSmh3 = self.dCOS
                 self.adCOS += self.adCOSmh3
@@ -6443,7 +6466,34 @@ class inverse_modelling:
         self.adCO22m_dwCO2 = 0
         #statement dCO22m_dCO2surf = dCO2surf
         self.adCO2surf += self.adCO22m_dCO2surf
-        self.adCO22m_dCO2surf = 0
+        self.adCO22m_dCO2surf = 0        
+        #statement dCOSmh4 = dCOSmh4_dCOSsurf + dCOSmh4_dwCOS + dCOSmh4_dustar + dCOSmh4_dz0h + dCOSmh4_dL
+        self.adCOSmh4_dCOSsurf = self.adCOSmh4 + self.adCOSmh4_dCOSsurf
+        self.adCOSmh4_dwCOS = self.adCOSmh4 + self.adCOSmh4_dwCOS
+        self.adCOSmh4_dustar = self.adCOSmh4 + self.adCOSmh4_dustar
+        self.adCOSmh4_dz0h += self.adCOSmh4
+        self.adCOSmh4_dL = self.adCOSmh4 + self.adCOSmh4_dL
+        self.adCOSmh4 = 0
+        #statement dCOSmh4_dL = - wCOS / ustar / model.k * (- dpsih_COSmh4_L + dpsih_z0h_L)
+        self.adpsih_COSmh4_L = - wCOS / ustar / model.k * (-1) * self.adCOSmh4_dL + self.adpsih_COSmh4_L
+        self.adpsih_z0h_L = - wCOS / ustar / model.k * self.adCOSmh4_dL + self.adpsih_z0h_L
+        self.adCOSmh4_dL = 0
+        #statement dpsih_COSmh4_L = self.dpsih(model.COSmeasuring_height4 / L,dzeta_dL_COSmh4)
+        self.adzeta_dL_COSmh4 = self.dpsih(model.COSmeasuring_height4 / L,self.adpsih_COSmh4_L) + self.adzeta_dL_COSmh4
+        self.adpsih_COSmh4_L = 0
+        #statement dCOSmh4_dz0h = - wCOS / ustar / model.k * (1 / (model.COSmeasuring_height4 / z0h) * model.COSmeasuring_height4 * -1 * z0h**-2 * self.dz0h + dpsihterm_for_dCs_dz0h)
+        self.adz0h += - wCOS / ustar / model.k * 1 / (model.COSmeasuring_height4 / z0h) * model.COSmeasuring_height4 * -1 * z0h**-2 * self.adCOSmh4_dz0h
+        self.adpsihterm_for_dCs_dz0h += - wCOS / ustar / model.k * self.adCOSmh4_dz0h
+        self.adCOSmh4_dz0h = 0
+        #statement dCOSmh4_dustar = - wCOS / model.k * (np.log(model.COSmeasuring_height4 / z0h) - model.psih(model.COSmeasuring_height4 / L) + model.psih(z0h / L)) * (-1) * ustar**(-2) * dustar
+        self.adustar = - wCOS / model.k * (np.log(model.COSmeasuring_height4 / z0h) - model.psih(model.COSmeasuring_height4 / L) + model.psih(z0h / L)) * (-1) * ustar**(-2) * self.adCOSmh4_dustar + self.adustar
+        self.adCOSmh4_dustar = 0
+        #statement dCOSmh4_dwCOS = - 1 / ustar / model.k * (np.log(model.COSmeasuring_height4 / z0h) - model.psih(model.COSmeasuring_height4 / L) + model.psih(z0h / L)) * self.dwCOS
+        self.adwCOS = - 1 / ustar / model.k * (np.log(model.COSmeasuring_height4 / z0h) - model.psih(model.COSmeasuring_height4 / L) + model.psih(z0h / L)) * self.adCOSmh4_dwCOS + self.adwCOS
+        self.adCOSmh4_dwCOS = 0
+        #statement dCOSmh4_dCOSsurf = dCOSsurf
+        self.adCOSsurf = self.adCOSmh4_dCOSsurf + self.adCOSsurf
+        self.adCOSmh4_dCOSsurf = 0
         #statement dCOSmh3 = dCOSmh3_dCOSsurf + dCOSmh3_dwCOS + dCOSmh3_dustar + dCOSmh3_dz0h + dCOSmh3_dL
         self.adCOSmh3_dCOSsurf = self.adCOSmh3 + self.adCOSmh3_dCOSsurf
         self.adCOSmh3_dwCOS = self.adCOSmh3 + self.adCOSmh3_dwCOS
@@ -7121,6 +7171,9 @@ class inverse_modelling:
         #statement dzeta_dL_CO2mh = self.dzeta_dL(model.CO2measuring_height,L) * dL
         self.adL = self.dzeta_dL(model.CO2measuring_height,L) * self.adzeta_dL_CO2mh + self.adL
         self.adzeta_dL_CO2mh = 0
+        #statement dzeta_dL_COSmh4 = self.dzeta_dL(model.COSmeasuring_height4,L) * dL
+        self.adL = self.dzeta_dL(model.COSmeasuring_height4,L) * self.adzeta_dL_COSmh4 + self.adL
+        self.adzeta_dL_COSmh4 = 0
         #statement dzeta_dL_COSmh3 = self.dzeta_dL(model.COSmeasuring_height3,L) * dL
         self.adL = self.dzeta_dL(model.COSmeasuring_height3,L) * self.adzeta_dL_COSmh3 + self.adL
         self.adzeta_dL_COSmh3 = 0

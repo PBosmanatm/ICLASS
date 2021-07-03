@@ -369,8 +369,8 @@ if plot_obsfit:
             if use_ensemble:
                 if pert_non_state_param and opt_sim_nr != 0:
                     plt.plot(optimalmodel.out.t,optimalmodel_onsp.out.H, linestyle='dashdot', marker='None',color='magenta',linewidth = 2.0,label = 'post onsp')
-            plt.plot(obs_times['H']/3600,optim.__dict__['obs_'+'H'], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs orig')
-            plt.plot(obs_times['H']/3600,enbal_corr_H, linestyle=' ', marker='o',color = 'red',ms=10,label = 'obs corr')
+            plt.plot(obs_times['H']/3600,optim.__dict__['obs_'+'H'], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs ori')
+            plt.plot(obs_times['H']/3600,enbal_corr_H, linestyle=' ', marker='o',color = 'red',ms=10,label = 'obs cor')
             plt.ylabel('H (' + disp_units['H']+')')
             plt.xlabel('time (h)')
             plt.legend(prop={'size':legendsize},loc=0)
@@ -386,8 +386,8 @@ if plot_obsfit:
             if use_ensemble:
                 if pert_non_state_param and opt_sim_nr != 0:
                     plt.plot(optimalmodel.out.t,optimalmodel_onsp.out.LE, linestyle='dashdot', marker='None',color='magenta',linewidth = 2.0,label = 'post onsp')
-            plt.plot(obs_times['LE']/3600,optim.__dict__['obs_'+'LE'], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs orig')
-            plt.plot(obs_times['LE']/3600,enbal_corr_LE, linestyle=' ', marker='o',color = 'red',ms=10,label = 'obs corr')
+            plt.plot(obs_times['LE']/3600,optim.__dict__['obs_'+'LE'], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs ori')
+            plt.plot(obs_times['LE']/3600,enbal_corr_LE, linestyle=' ', marker='o',color = 'red',ms=10,label = 'obs cor')
             plt.ylabel('LE (' + disp_units['LE']+')')
             plt.xlabel('time (h)')
             plt.legend(prop={'size':legendsize},loc=0)

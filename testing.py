@@ -9,7 +9,7 @@ adjointtest_surf_lay = False
 gradtest_surf_lay = False
 adjointtest_ribtol = False
 gradtest_ribtol = False
-adjointtest_ags = True
+adjointtest_ags = False
 gradtest_ags = False
 adjointtest_run_mixed_layer = False
 gradtest_run_mixed_layer = False
@@ -25,7 +25,7 @@ adjointtest_statistics = False
 gradtest_statistics = False
 adjointtest_run_soil_COS_mod = False
 gradtest_run_soil_COS_mod = False
-adjointtest_store = False
+adjointtest_store = True
 gradtest_store = False
 adjointtest_run_cumulus = False
 gradtest_run_cumulus = False
@@ -96,7 +96,7 @@ testinput.CO2        = 422.      # initial mixed-layer CO2 [ppm]
 testinput.deltaCO2   = -44.      # initial CO2 jump at h [ppm]
 testinput.deltaCOS   = -50.      # initial COS jump at h [ppb]
 testinput.gammaCO2   = 0.0004        # free atmosphere CO2 lapse rate [ppm m-1]
-testinput.gammaCOS   = 0.001        # free atmosphere CO2 lapse rate [ppb m-1]
+testinput.gammaCOS   = 0.001        # free atmosphere COS lapse rate [ppb m-1]
 testinput.advCO2     = 0.00004        # advection of CO2 [ppm s-1]
 testinput.advCOS     = 0.00003        # advection of COS [ppb s-1]
 testinput.wCO2       = 0.        # surface kinematic CO2 flux [ppm m s-1]
@@ -154,11 +154,11 @@ testinput.dz_h       = 150.      # Transition layer thickness [m]
 testinput.Cs         = 1e12      # drag coefficient for scalars [-]
 testinput.PARfract = 0.5 #fraction of shortwave radiation at the surface that is PAR (-)
 testinput.R10 = 0.23
+testinput.E0 = 53.3e3    #activation energy [53.3 kJ kmol-1]
 testinput.sw_dynamicsl_border = False
 testinput.sw_model_stable_con = True
 testinput.sw_use_ribtol = True
 testinput.sw_advfp = False
-testinput.sw_dyn_beta = False
 testinput.sw_printwarnings = True
 
 #tsteps = int(np.floor(testinput.runtime / testinput.dt)) #the number of timesteps, used below
@@ -269,6 +269,7 @@ if adjointtest_surf_lay:
     adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='dzeta_dL_COSmh',y_variable='adzeta_dL_COSmh',HTy_variables=testHTy)
     adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='dzeta_dL_COSmh2',y_variable='adzeta_dL_COSmh2',HTy_variables=testHTy)
     adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='dzeta_dL_COSmh3',y_variable='adzeta_dL_COSmh3',HTy_variables=testHTy)
+    adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='dzeta_dL_COSmh4',y_variable='adzeta_dL_COSmh4',HTy_variables=testHTy)
     adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='dzeta_dL_CO2mh',y_variable='adzeta_dL_CO2mh',HTy_variables=testHTy)
     adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='dzeta_dL_CO2mh2',y_variable='adzeta_dL_CO2mh2',HTy_variables=testHTy)
     adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='dzeta_dL_CO2mh3',y_variable='adzeta_dL_CO2mh3',HTy_variables=testHTy)
@@ -444,6 +445,13 @@ if adjointtest_surf_lay:
     adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='dpsih_COSmh3_L',y_variable='adpsih_COSmh3_L',HTy_variables=testHTy)
     adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='dCOSmh3_dL',y_variable='adCOSmh3_dL',HTy_variables=testHTy)
     adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='dCOSmh3',y_variable='adCOSmh3',HTy_variables=testHTy)
+    adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='dCOSmh4_dCOSsurf',y_variable='adCOSmh4_dCOSsurf',HTy_variables=testHTy)
+    adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='dCOSmh4_dwCOS',y_variable='adCOSmh4_dwCOS',HTy_variables=testHTy)
+    adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='dCOSmh4_dustar',y_variable='adCOSmh4_dustar',HTy_variables=testHTy)
+    adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='dCOSmh4_dz0h',y_variable='adCOSmh4_dz0h',HTy_variables=testHTy)
+    adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='dpsih_COSmh4_L',y_variable='adpsih_COSmh4_L',HTy_variables=testHTy)
+    adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='dCOSmh4_dL',y_variable='adCOSmh4_dL',HTy_variables=testHTy)
+    adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='dCOSmh4',y_variable='adCOSmh4',HTy_variables=testHTy)
     adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='dCO22m_dCO2surf',y_variable='adCO22m_dCO2surf',HTy_variables=testHTy)
     adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='dCO22m_dwCO2',y_variable='adCO22m_dwCO2',HTy_variables=testHTy)
     adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='dCO22m_dustar',y_variable='adCO22m_dustar',HTy_variables=testHTy)
@@ -557,6 +565,7 @@ if gradtest_surf_lay:
     adjoint_modelling.grad_test_run_surface_layer(testmodel,testlist_rsl,'COSmh',testdstate_rsl,'dCOSmh',printmode)
     adjoint_modelling.grad_test_run_surface_layer(testmodel,testlist_rsl,'COSmh2',testdstate_rsl,'dCOSmh2',printmode)
     adjoint_modelling.grad_test_run_surface_layer(testmodel,testlist_rsl,'COSmh3',testdstate_rsl,'dCOSmh3',printmode)
+    adjoint_modelling.grad_test_run_surface_layer(testmodel,testlist_rsl,'COSmh4',testdstate_rsl,'dCOSmh4',printmode)
     adjoint_modelling.grad_test_run_surface_layer(testmodel,testlist_rsl,'CO22m',testdstate_rsl,'dCO22m',printmode)
     adjoint_modelling.grad_test_run_surface_layer(testmodel,testlist_rsl,'CO2mh',testdstate_rsl,'dCO2mh',printmode)
     adjoint_modelling.grad_test_run_surface_layer(testmodel,testlist_rsl,'CO2mh2',testdstate_rsl,'dCO2mh2',printmode)
@@ -1042,8 +1051,6 @@ if adjointtest_run_mixed_layer:
     adjoint_modelling.adjoint_test_run_mixed_layer(testmodel,x_variables=testx,Hx_variable='dwstar_dwthetav',y_variable='adwstar_dwthetav',HTy_variables=testHTy)
     adjoint_modelling.adjoint_test_run_mixed_layer(testmodel,x_variables=testx,Hx_variable='dwstar_dthetav',y_variable='adwstar_dthetav',HTy_variables=testHTy)
     adjoint_modelling.adjoint_test_run_mixed_layer(testmodel,x_variables=testx,Hx_variable='dwstar',y_variable='adwstar',HTy_variables=testHTy)
-    if testmodel.sw_dyn_beta:
-        adjoint_modelling.adjoint_test_run_mixed_layer(testmodel,x_variables=testx,Hx_variable='dbeta',y_variable='adbeta',HTy_variables=testHTy)
     adjoint_modelling.adjoint_test_run_mixed_layer(testmodel,x_variables=testx,Hx_variable='dwthetave',y_variable='adwthetave',HTy_variables=testHTy)
     adjoint_modelling.adjoint_test_run_mixed_layer(testmodel,x_variables=testx,Hx_variable='dwe_dwthetav',y_variable='adwe_dwthetav',HTy_variables=testHTy)
     adjoint_modelling.adjoint_test_run_mixed_layer(testmodel,x_variables=testx,Hx_variable='dwe_dustar',y_variable='adwe_dustar',HTy_variables=testHTy)
@@ -1100,8 +1107,6 @@ if gradtest_run_mixed_layer:
     adjoint_modelling.grad_test_run_mixed_layer(testmodel,['thetav'],'wstar',{'dthetav':1.0},'dwstar_dthetav',printmode)
     adjoint_modelling.grad_test_run_mixed_layer(testmodel,['thetav'],'wstar',{'dthetav':1.0},'dwstar',printmode)
     adjoint_modelling.grad_test_run_mixed_layer(testmodel,testlist,'wstar',testdstate,'dwstar',printmode)
-    if testmodel.sw_dyn_beta:
-        adjoint_modelling.grad_test_run_mixed_layer(testmodel,testlist,'beta',testdstate,'dbeta',printmode)
     adjoint_modelling.grad_test_run_mixed_layer(testmodel,['wthetav'],'wthetave',{'dwthetav':1.0},'dwthetave',printmode)
     adjoint_modelling.grad_test_run_mixed_layer(testmodel,testlist,'wthetave',testdstate,'dwthetave',printmode)
     adjoint_modelling.grad_test_run_mixed_layer(testmodel,['wthetav'],'we',{'dwthetav':1.0},'dwe_dwthetav',printmode)
@@ -1533,7 +1538,7 @@ if adjointtest_store:
     print('adjoint tests of store:')
     testx = ['dh','dtheta','dthetav','ddeltatheta','ddeltathetav','dwtheta','dwthetav','dwthetae','dwthetave','dq','ddeltaq','dwq','dwqe','dwqM','dqsatvar','desatvar','dCO2','ddeltaCO2','dwCO2','dwCO2A','dwCO2R','dwCO2e','dwCO2M','dwCOS','dwCOSP','dwCOSS','dCOS','ddeltaCOS','du','ddeltau','duw',
              'dv','ddeltav','dvw','dT2m','dthetamh','dthetamh2','dthetamh3','dthetamh4','dthetamh5','dthetamh6','dthetamh7','dTmh','dTmh2','dTmh3','dTmh4','dTmh5','dTmh6','dTmh7','dq2m','dqmh','dqmh2','dqmh3','dqmh4','dqmh5','dqmh6','dqmh7','du2m','dv2m','de2m'
-             ,'desat2m','dCOSmh','dCOSmh2','dCOSmh3','dCO2mh','dCO2mh2','dCO2mh3','dCO2mh4','dCOS2m','dCO22m','dCOSsurf','dCO2surf','dTsurf','dthetasurf','dthetavsurf','dqsurf','dustar','dCs','dSwin','dSwout','dLwin',
+             ,'desat2m','dCOSmh','dCOSmh2','dCOSmh3','dCOSmh4','dCO2mh','dCO2mh2','dCO2mh3','dCO2mh4','dCOS2m','dCO22m','dCOSsurf','dCO2surf','dTsurf','dthetasurf','dthetavsurf','dqsurf','dustar','dCs','dSwin','dSwout','dLwin',
              'dLwout','dQ','dra','drs','dH','dLE','dLEliq','dLEveg','dLEsoil','dLEpot','dLEref','dG','dlcl','dRH_h','dM','ddz_h','dCm','dRib','dL','dTs','de']
     testHTy = (['a'+item for item in testx])
     adjoint_modelling.adjoint_test_store(testmodel,x_variables=testx,Hx_variable='dout_h',y_variable='adout_h',HTy_variables=testHTy)
@@ -1604,6 +1609,7 @@ if adjointtest_store:
         adjoint_modelling.adjoint_test_store(testmodel,x_variables=testx,Hx_variable='dout_COSmh',y_variable='adout_COSmh',HTy_variables=testHTy)
         adjoint_modelling.adjoint_test_store(testmodel,x_variables=testx,Hx_variable='dout_COSmh2',y_variable='adout_COSmh2',HTy_variables=testHTy)
         adjoint_modelling.adjoint_test_store(testmodel,x_variables=testx,Hx_variable='dout_COSmh3',y_variable='adout_COSmh3',HTy_variables=testHTy)
+        adjoint_modelling.adjoint_test_store(testmodel,x_variables=testx,Hx_variable='dout_COSmh4',y_variable='adout_COSmh4',HTy_variables=testHTy)
         adjoint_modelling.adjoint_test_store(testmodel,x_variables=testx,Hx_variable='dout_CO22m',y_variable='adout_CO22m',HTy_variables=testHTy)
         adjoint_modelling.adjoint_test_store(testmodel,x_variables=testx,Hx_variable='dout_CO2mh',y_variable='adout_CO2mh',HTy_variables=testHTy)
         adjoint_modelling.adjoint_test_store(testmodel,x_variables=testx,Hx_variable='dout_CO2mh2',y_variable='adout_CO2mh2',HTy_variables=testHTy)
@@ -1646,7 +1652,7 @@ if gradtest_store: #turn on land surface for this test, probably need radiation 
     print('gradient tests of store:')
     testlist = ['h','theta','thetav','deltatheta','deltathetav','wtheta','wthetav','wthetae','wthetave','q','deltaq','wq','wqe','wqM','qsatvar','esatvar','CO2','deltaCO2','wCO2','wCO2A','wCO2R','wCO2e','wCO2M','wCOS','wCOSP','wCOSS','COS','deltaCOS','u','deltau','uw',
              'v','deltav','vw','T2m','thetamh','thetamh2','thetamh3','thetamh4','thetamh5','thetamh6','thetamh7','Tmh','Tmh2','Tmh3','Tmh4','Tmh5','Tmh6','Tmh7',
-             'q2m','qmh','qmh2','qmh3','qmh4','qmh5','qmh6','qmh7','u2m','v2m','e2m','esat2m','COSmh','COSmh2','COSmh3','CO2mh','CO2mh2','CO2mh3','CO2mh4','COS2m','CO22m','COSsurf','CO2surf','Tsurf','thetasurf','thetavsurf','qsurf','ustar','Cs','Swin','Swout','Lwin',
+             'q2m','qmh','qmh2','qmh3','qmh4','qmh5','qmh6','qmh7','u2m','v2m','e2m','esat2m','COSmh','COSmh2','COSmh3','COSmh4','CO2mh','CO2mh2','CO2mh3','CO2mh4','COS2m','CO22m','COSsurf','CO2surf','Tsurf','thetasurf','thetavsurf','qsurf','ustar','Cs','Swin','Swout','Lwin',
              'Lwout','Q','ra','rs','H','LE','LEliq','LEveg','LEsoil','LEpot','LEref','G','lcl','RH_h','M','dz_h','Cm','Rib','L','Ts','e']
     testdstate = {}
     for item in testlist:
@@ -1719,6 +1725,7 @@ if gradtest_store: #turn on land surface for this test, probably need radiation 
         adjoint_modelling.grad_test_store(testmodel,testlist,'COSmh',testdstate,'dout_COSmh',printmode)
         adjoint_modelling.grad_test_store(testmodel,testlist,'COSmh2',testdstate,'dout_COSmh2',printmode)
         adjoint_modelling.grad_test_store(testmodel,testlist,'COSmh3',testdstate,'dout_COSmh3',printmode)
+        adjoint_modelling.grad_test_store(testmodel,testlist,'COSmh4',testdstate,'dout_COSmh4',printmode)
         adjoint_modelling.grad_test_store(testmodel,testlist,'CO22m',testdstate,'dout_CO22m',printmode)
         adjoint_modelling.grad_test_store(testmodel,testlist,'CO2mh',testdstate,'dout_CO2mh',printmode)
         adjoint_modelling.grad_test_store(testmodel,testlist,'CO2mh2',testdstate,'dout_CO2mh2',printmode)
@@ -1898,7 +1905,7 @@ if adjointtest:
     testHTy_rsCm = ['adTsoil','adT2','adwg','adw2','admol_rat_ocs_atm','adairtemp','adwsat','adC_soilair_current','adfCA','adVspmax','adQ10','adb_sCOSm']
     testx_sto = ['dh','dtheta','dthetav','ddeltatheta','ddeltathetav','dwtheta','dwthetav','dwthetae','dwthetave','dq','ddeltaq','dwq','dwqe','dwqM','dqsatvar','desatvar','dCO2','ddeltaCO2','dwCO2','dwCO2A','dwCO2R','dwCO2e','dwCO2M','dwCOS','dwCOSP','dwCOSS','dCOS','ddeltaCOS',
                  'du','ddeltau','duw','dv','ddeltav','dvw','dT2m','dthetamh','dthetamh2','dthetamh3','dthetamh4','dthetamh5','dthetamh6','dthetamh7','dTmh','dTmh2','dTmh3','dTmh4','dTmh5','dTmh6','dTmh7',
-             'dq2m','dqmh','dqmh2','dqmh3','dqmh4','dqmh5','dqmh6','dqmh7','du2m','dv2m','de2m','desat2m','dCOSmh','dCOSmh2','dCOSmh3','dCO2mh','dCO2mh2','dCO2mh3','dCO2mh4','dCOS2m','dCO22m','dCOSsurf','dCO2surf','dTsurf','dthetasurf','dthetavsurf','dqsurf','dustar','dCs','dSwin','dSwout','dLwin',
+             'dq2m','dqmh','dqmh2','dqmh3','dqmh4','dqmh5','dqmh6','dqmh7','du2m','dv2m','de2m','desat2m','dCOSmh','dCOSmh2','dCOSmh3','dCOSmh4','dCO2mh','dCO2mh2','dCO2mh3','dCO2mh4','dCOS2m','dCO22m','dCOSsurf','dCO2surf','dTsurf','dthetasurf','dthetavsurf','dqsurf','dustar','dCs','dSwin','dSwout','dLwin',
              'dLwout','dQ','dra','drs','dH','dLE','dLEliq','dLEveg','dLEsoil','dLEpot','dLEref','dG','dlcl','dRH_h','dM','ddz_h','dCm','dRib','dL','dTs','de']
     testHTy_sto = (['a'+item for item in testx_sto])
     testx_rc = ['dwqe','dwqM','dwCO2e','dwCO2M','dwCOSe','dwCOSM','ddeltaq','ddeltaCO2','ddeltaCOS','dh','ddz_h','dwstar','dT_h','dP_h','dq']
@@ -2020,6 +2027,7 @@ if adjointtest:
         adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dzeta_dL_COSmh',y_variable='adzeta_dL_COSmh',HTy_variables=testHTy,Hx_dict='Output_tl_rsl')
         adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dzeta_dL_COSmh2',y_variable='adzeta_dL_COSmh2',HTy_variables=testHTy,Hx_dict='Output_tl_rsl')
         adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dzeta_dL_COSmh3',y_variable='adzeta_dL_COSmh3',HTy_variables=testHTy,Hx_dict='Output_tl_rsl')
+        adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dzeta_dL_COSmh4',y_variable='adzeta_dL_COSmh4',HTy_variables=testHTy,Hx_dict='Output_tl_rsl')
         adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dzeta_dL_CO2mh',y_variable='adzeta_dL_CO2mh',HTy_variables=testHTy,Hx_dict='Output_tl_rsl')
         adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dzeta_dL_CO2mh2',y_variable='adzeta_dL_CO2mh2',HTy_variables=testHTy,Hx_dict='Output_tl_rsl')
         adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dzeta_dL_CO2mh3',y_variable='adzeta_dL_CO2mh3',HTy_variables=testHTy,Hx_dict='Output_tl_rsl')
@@ -2098,6 +2106,12 @@ if adjointtest:
         adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dpsih_COSmh3_L',y_variable='adpsih_COSmh3_L',HTy_variables=testHTy,Hx_dict='Output_tl_rsl')
         adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dCOSmh3_dL',y_variable='adCOSmh3_dL',HTy_variables=testHTy,Hx_dict='Output_tl_rsl')
         adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dCOSmh3',y_variable='adCOSmh3',HTy_variables=testHTy,Hx_dict='Output_tl_rsl')
+        adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dCOSmh4_dCOSsurf',y_variable='adCOSmh4_dCOSsurf',HTy_variables=testHTy,Hx_dict='Output_tl_rsl')
+        adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dCOSmh4_dwCOS',y_variable='adCOSmh4_dwCOS',HTy_variables=testHTy,Hx_dict='Output_tl_rsl')
+        adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dCOSmh4_dustar',y_variable='adCOSmh4_dustar',HTy_variables=testHTy,Hx_dict='Output_tl_rsl')
+        adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dpsih_COSmh4_L',y_variable='adpsih_COSmh4_L',HTy_variables=testHTy,Hx_dict='Output_tl_rsl')
+        adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dCOSmh4_dL',y_variable='adCOSmh4_dL',HTy_variables=testHTy,Hx_dict='Output_tl_rsl')
+        adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dCOSmh4',y_variable='adCOSmh4',HTy_variables=testHTy,Hx_dict='Output_tl_rsl')
         adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dCO2mh_dCO2surf',y_variable='adCO2mh_dCO2surf',HTy_variables=testHTy,Hx_dict='Output_tl_rsl')
         adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dCO2mh_dwCO2',y_variable='adCO2mh_dwCO2',HTy_variables=testHTy,Hx_dict='Output_tl_rsl')
         adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dCO2mh_dustar',y_variable='adCO2mh_dustar',HTy_variables=testHTy,Hx_dict='Output_tl_rsl')
@@ -2658,6 +2672,7 @@ if gradtest:
         adjoint_modelling.grad_test(testinput,testlist,'COSmh',testdstate,'dCOSmh','rsl',printmode)
         adjoint_modelling.grad_test(testinput,testlist,'COSmh2',testdstate,'dCOSmh2','rsl',printmode)
         adjoint_modelling.grad_test(testinput,testlist,'COSmh3',testdstate,'dCOSmh3','rsl',printmode)
+        adjoint_modelling.grad_test(testinput,testlist,'COSmh4',testdstate,'dCOSmh4','rsl',printmode)
         adjoint_modelling.grad_test(testinput,testlist,'CO22m',testdstate,'dCO22m','rsl',printmode)
         adjoint_modelling.grad_test(testinput,testlist,'CO2mh',testdstate,'dCO2mh','rsl',printmode)
         adjoint_modelling.grad_test(testinput,testlist,'CO2mh2',testdstate,'dCO2mh2','rsl',printmode)

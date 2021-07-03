@@ -106,15 +106,17 @@ class model:
             if not os.path.isfile('pho_sib4.py'):
                 raise Exception('sib4 ls_type selected, but cannot find pho_sib4.py')
         self.sw_cu      = self.input.sw_cu      # cumulus parameterization switch
-        self.soilCOSmodel = None                #an instance of the soilCOSmodel
-        self.soilCOSmodeltype = self.input.soilCOSmodeltype # soil COS model switch
+        self.soilCOSmodel = None                #an instance of the soilCOSmodel. Always define this var, even if no soilCOSmodel used, for use with the inverse modelling framework (gradient test)
+        self.soilCOSmodeltype = None
+        if hasattr(self.input,'soilCOSmodeltype'):
+            self.soilCOSmodeltype = self.input.soilCOSmodeltype # soil COS model switch
         if self.soilCOSmodeltype == 'Sun_Ogee':
             if not os.path.isfile('soilCOSmodel.py'):
                 raise Exception('Sun_Ogee model selected, but cannot find soilCOSmodel.py')
-        self.sw_dynamicsl_border = False
+        self.sw_dynamicsl_border = True
         if hasattr(self.input,'sw_dynamicsl_border'):
             self.sw_dynamicsl_border = self.input.sw_dynamicsl_border
-        self.sw_use_ribtol = False #use ribtol, the more complex way of surface layer calculations
+        self.sw_use_ribtol = True #use ribtol, the more complex way of surface layer calculations
         if hasattr(self.input,'sw_use_ribtol'):
             self.sw_use_ribtol = self.input.sw_use_ribtol
 #        self.use_rsl = False #use roughness sublayer
@@ -126,9 +128,12 @@ class model:
         self.sw_printwarnings = True #print or hide warnings
         if hasattr(self.input,'sw_printwarnings'):
             self.sw_printwarnings = self.input.sw_printwarnings
-        self.sw_dyn_beta = False
-        if hasattr(self.input,'sw_dyn_beta'):
-            self.sw_dyn_beta = self.input.sw_dyn_beta
+        self.sw_useWilson = False
+        if hasattr(self.input,'sw_useWilson'):
+            self.sw_useWilson  = self.input.sw_useWilson  #switch to use Wilson or Businger Dyer for flux gradient relationships
+        self.sw_model_stable_con = True
+        if hasattr(self.input,'sw_model_stable_con'):
+            self.sw_model_stable_con = self.input.sw_model_stable_con #switch to use Businger Dyer or return nan for flux gradient relationships in stable conditions
 
         # A-Gs constants and settings
         # Plant type:       -C3-     -C4-
@@ -238,8 +243,7 @@ class model:
             self.gammatheta2 = self.gammatheta #if gammatheta2 not given, take equal to gammatheta
             self.htrans = 1000000. #the value does not matter, we just need a value for it
         self.advtheta   = self.input.advtheta   # advection of heat [K s-1]
-        if not self.sw_dyn_beta:
-            self.beta       = self.input.beta       # entrainment ratio for virtual heat [-]
+        self.beta       = self.input.beta       # entrainment ratio for virtual heat [-]
         self.wtheta     = self.input.wtheta     # surface kinematic heat flux [K m s-1]
         self.wthetae    = None                  # entrainment kinematic heat flux [K m s-1]
  
@@ -329,13 +333,7 @@ class model:
         self.L          = None                  # Obukhov length [m]
         self.Rib        = None                  # bulk Richardson number [-]
         self.ra         = None                  # aerodynamic resistance [s m-1]
-        self.sw_useWilson = False
-        if hasattr(self.input,'sw_useWilson'):
-            self.sw_useWilson  = self.input.sw_useWilson  #switch to use Wilson or Businger Dyer for flux gradient relationships
-        self.sw_model_stable_con = True
-        if hasattr(self.input,'sw_model_stable_con'):
-            self.sw_model_stable_con = self.input.sw_model_stable_con #switch to use Businger Dyer or nothing for flux gradient relationships in stable conditions
-  
+          
         # initialize radiation
         self.lat        = self.input.lat        # latitude [deg]
         self.lon        = self.input.lon        # longitude [deg]
@@ -445,6 +443,11 @@ class model:
             self.COSmeasuring_height3 = self.input.COSmeasuring_height3        # height COS mixing rat measurements [m]  , in case of a third set of obs 
         if self.COSmeasuring_height3 < self.z0h:
             raise Exception('measuring height below z0h')
+        self.COSmeasuring_height4 = 10.
+        if hasattr(self.input,'COSmeasuring_height4'):
+            self.COSmeasuring_height4 = self.input.COSmeasuring_height4        # height COS mixing rat measurements [m]  , in case of a fourth set of obs 
+        if self.COSmeasuring_height4 < self.z0h:
+            raise Exception('measuring height below z0h')
         self.CO2measuring_height = 10.
         if hasattr(self.input,'CO2measuring_height'):
             self.CO2measuring_height = self.input.CO2measuring_height        # height CO2 mixing rat measurements [m]
@@ -550,8 +553,8 @@ class model:
         self.wCO2e      = None                  # entrainment CO2 flux [ppm m s-1]
         self.wCO2M      = 0                     # CO2 mass flux [ppm m s-1]
         self.wCOSM      = 0                     # COS mass flux [ppb m s-1]
-        if hasattr(self.input,'gciCOS'):
-            self.gciCOS     = self.input.gciCOS     # COS canopy scale internal conductance m/s
+        if self.ls_type == 'ags':
+            self.gciCOS     = self.input.gciCOS     # COS canopy scale internal conductance [m/s]
         if self.ls_type == 'canopy_model':
             self.incl_H2Ocan = True
             if hasattr(self.input,'incl_H2O'):
@@ -881,6 +884,7 @@ class model:
                 self.cpx_init[0]['rml_divU']    = self.divU
                 self.cpx_init[0]['rml_fc']    = self.fc
                 self.cpx_init[0]['rml_dFz']    = self.dFz
+                self.cpx_init[0]['rml_beta']    = self.beta
             else:
                 self.cpx[self.t]['rml_h']    = self.h #subscript rml from run_mixed_layer
                 self.cpx[self.t]['rml_ustar']    = self.ustar
@@ -916,6 +920,7 @@ class model:
                 self.cpx[self.t]['rml_divU']    = self.divU
                 self.cpx[self.t]['rml_fc']    = self.fc
                 self.cpx[self.t]['rml_dFz']    = self.dFz
+                self.cpx[self.t]['rml_beta']    = self.beta
         if(not self.sw_sl):
             # decompose ustar along the wind components
             self.uw = - np.sign(self.u) * (self.ustar ** 4. / (self.v ** 2. / self.u ** 2. + 1.)) ** (0.5)
@@ -948,23 +953,14 @@ class model:
         else:
             self.wstar  = 1e-6;
       
-        # Virtual heat entrainment flux 
-        if self.sw_dyn_beta:
-            self.beta = 0.2 + 5 * (self.ustar/self.wstar)**3. #see p11 of supplementary material of Vila et al 2012 (Nature paper)
+        # Virtual heat entrainment flux  
         self.wthetave    = -self.beta * self.wthetav
         
         # compute mixed-layer tendencies
         if(self.sw_shearwe):
-            self.we    = (-self.wthetave + 5. * self.ustar ** 3. * self.thetav / (self.g * self.h)) / self.deltathetav
+            self.we    = (-self.wthetave + 5. * self.ustar ** 3. * self.thetav / (self.g * self.h)) / self.deltathetav #see p11 of supplementary material of Vila et al 2012 (Nature paper), beta equation is part of this. See also paper notes 5, calculation we in CLASS
         else:
             self.we    = -self.wthetave / self.deltathetav
-#            time.sleep(0.1)
-#            print('deltathetav')
-#            print(self.deltathetav)
-#            print('wthetave')
-#            print(self.wthetave)
-#            print('we')
-#            print(self.we)
 
         # Don't allow boundary layer shrinking if wtheta < 0 
         if self.checkpoint:
@@ -1030,7 +1026,6 @@ class model:
                 self.cpx_init[0]['rml_ws_end']    = self.ws
                 self.cpx_init[0]['rml_wf_end']    = self.wf
                 self.cpx_init[0]['rml_wstar_end']    = self.wstar
-                self.cpx_init[0]['rml_beta_end']    = self.beta
             else:
                 self.cpx[self.t]['rml_we_end']    = self.we
                 self.cpx[self.t]['rml_uw_end']    = self.uw
@@ -1043,8 +1038,6 @@ class model:
                 self.cpx[self.t]['rml_ws_end']    = self.ws
                 self.cpx[self.t]['rml_wf_end']    = self.wf
                 self.cpx[self.t]['rml_wstar_end']    = self.wstar
-                self.cpx[self.t]['rml_beta_end']    = self.beta #it depends on a switch wether beta is calculated in this module, or obtained from input, 
-                #than the use of end in the name is somewhat inconsistent, but not important...
             
         if self.save_vars_indict:
             the_locals = cp.deepcopy(locals()) #to prevent error 'dictionary changed size during iteration'
@@ -1221,10 +1214,6 @@ class model:
             if self.sw_printwarnings:
                 print('ueff < 0.01!')
         self.COSsurf = self.COS + self.wCOS / (self.Cs * ueff) #3.45,3.43 rewritten using COS (wCOS = (COSsurf - COS)/ra rewritten) and self.ra = (self.Cs * ueff)**-1., see land surface module 
-#        print('forwm cossurf')
-#        print(self.COSsurf )
-#        print('forwm cosML')
-#        print(self.COS )
         self.CO2surf = self.CO2 + self.wCO2 / (self.Cs * ueff) #3.45,3.43 rewritten using CO2
         self.thetasurf = self.theta + self.wtheta / (self.Cs * ueff) #3.45,3.43 rewritten
         self.Tsurf = self.thetasurf * (100000/self.Ps)**(-self.Rd/self.cp) #convert pot temp to temp
@@ -1291,6 +1280,7 @@ class model:
         self.COSmh =     self.COSsurf - self.wCOS / ustar / self.k * (np.log(self.COSmeasuring_height / self.z0h) - self.psih(self.COSmeasuring_height / self.L) + self.psih(self.z0h / self.L))
         self.COSmh2 =     self.COSsurf - self.wCOS / ustar / self.k * (np.log(self.COSmeasuring_height2 / self.z0h) - self.psih(self.COSmeasuring_height2 / self.L) + self.psih(self.z0h / self.L))
         self.COSmh3 =     self.COSsurf - self.wCOS / ustar / self.k * (np.log(self.COSmeasuring_height3 / self.z0h) - self.psih(self.COSmeasuring_height3 / self.L) + self.psih(self.z0h / self.L))
+        self.COSmh4 =     self.COSsurf - self.wCOS / ustar / self.k * (np.log(self.COSmeasuring_height4 / self.z0h) - self.psih(self.COSmeasuring_height4 / self.L) + self.psih(self.z0h / self.L))
         self.CO22m =      self.CO2surf - self.wCO2 / ustar / self.k * (np.log(2. / self.z0h) - self.psih(2. / self.L) + self.psih(self.z0h / self.L))
         self.CO2mh =     self.CO2surf - self.wCO2 / ustar / self.k * (np.log(self.CO2measuring_height / self.z0h) - self.psih(self.CO2measuring_height / self.L) + self.psih(self.z0h / self.L))
         self.CO2mh2 =     self.CO2surf - self.wCO2 / ustar / self.k * (np.log(self.CO2measuring_height2 / self.z0h) - self.psih(self.CO2measuring_height2 / self.L) + self.psih(self.z0h / self.L))
@@ -1345,6 +1335,8 @@ class model:
                 self.COSmh2 = self.COS
             if self.COSmeasuring_height3 > self.zsl:
                 self.COSmh3 = self.COS
+            if self.COSmeasuring_height4 > self.zsl:
+                self.COSmh4 = self.COS
             if self.CO2measuring_height > self.zsl:
                 self.CO2mh = self.CO2
             if self.CO2measuring_height2 > self.zsl:
@@ -1474,8 +1466,8 @@ class model:
     def psim(self, zeta):
         if(zeta <= 0):
             if self.sw_useWilson:
-                x     = (1. + 3.6 * (-1*zeta) ** (2./3.)) ** (-0.5)
-                psim = 3. * np.log( (1. + 1. / x) / 2.)
+                x     = (1. + 3.6 * (-1*zeta) ** (2./3.)) ** (-0.5) #see text below eq 10 in Wilson 2001
+                psim = 3. * np.log( (1. + 1. / x) / 2.) #eq 10 Wilson 2001 with a = 3 and gamma = 3.6
             else: #businger-Dyer
                 x     = (1. - 16. * zeta)**(0.25)
                 psim  = 3.14159265 / 2. - 2. * np.arctan(x) + np.log((1. + x)**2. * (1. + x**2.) / 8.)
@@ -1492,8 +1484,8 @@ class model:
     def psih(self, zeta):
         if(zeta <= 0):
             if self.sw_useWilson:
-                x     = (1. + 7.9 * (-1*zeta) ** (2./3.)) ** (-0.5)
-                psih  = 3. * np.log( (1. + 1. / x) / 2.)
+                x     = (1. + 7.9 * (-1*zeta) ** (2./3.)) ** (-0.5) #see text below eq 10 in Wilson 2001
+                psih  = 3. * np.log( (1. + 1. / x) / 2.) #eq 10 Wilson 2001 with a = 3 and gamma = 7.9
             else:
                 x     = (1. - 16. * zeta)**(0.25)
                 psih  = 2. * np.log( (1. + x*x) / 2.)
@@ -1727,7 +1719,7 @@ class model:
 #        glsCOS       = glco2/1.21 #stomatal conductance at leaf level for COS
 #        gliCOS        = 0.2 /(self.rho*1000) * self.mair #m s−1, 0.2 mol_air m−2 s−1 from Seibt et al. The units of the eq: m s−1 = mol_air m−2 s−1*m3/g_air* g_air/mol_air
 #        gltcos        = 1/(1/glsCOS + 1/gliCOS) #m s−1, see appendix C book Jordi and Seibt et al.
-#        ideally, I would integrate the above suantity over the canopy. But it leads to a complicated integral. So I approximate:
+#        ideally, I would integrate the above quantity over the canopy. But it leads to a complicated integral. So I approximate:
         gctCOS = 1/(1/self.gciCOS + 1.21/gcco2) #1.21 from Seibt et al, but now for canopy stomatal conductance
         # calculate surface resistance for moisture and carbon dioxide
             
@@ -1761,7 +1753,6 @@ class model:
             self.wCOSS = self.wCOSS_molm2s / self.rho * self.mair * 1.e-3 * 1.e9 #ppb m/s; mol_COS/(m2*s) * m3_air / kg_air * g_air / mol_air * kg_air / g_air * nmol_COS / mol_COS 
         elif self.soilCOSmodeltype == None:
             self.wCOSS   = 0.0 #
-            self.soilCOSmodel = None
         else:
             raise Exception('problem with soilCOSmodeltype')
         self.wCOS    = self.wCOSP + self.wCOSS
@@ -2068,9 +2059,6 @@ class model:
             p4_denominator_Ts = self.cliq * self.rho * self.Lv / self.ra * self.dqsatdT
             denominator_Ts = p1_denominator_Ts + p2_denominator_Ts + (1. - self.cveg) * p3_denominator_Ts + self.cveg * p4_denominator_Ts + self.Lambda
             self.Ts   = numerator_Ts / denominator_Ts
-    #        print('Ts and theta')
-    #        print(self.Ts)
-    #        print(self.theta)
     
             esatsurf      = esat(self.Ts)
             self.qsatsurf = qsat(self.Ts, self.Ps)
@@ -2115,22 +2103,8 @@ class model:
             self.LEref  = None #just because we do not calculate
             self.LEpot  = None #just because we do not calculate
             self.G      = self.Lambda * (self.Ts - self.Tsoil)
-#            print('Ts - theta')
-#            print(self.Ts - self.theta)
-#            print('ra')
-#            print(self.ra)
             self.H      = self.rho * self.cp / self.ra * (self.Ts - self.theta)
             self.enbalerr = self.Q - self.G - self.LEliq - self.LEsoil - self.LEveg - self.H
-#            print('Q')
-#            print(self.Q)
-#            print('G')
-#            print(self.G)
-#            print('H')
-#            print(self.H)
-#            print('LE')
-#            print(self.LEliq+ self.LEsoil + self.LEveg)
-#            print('enbal')
-#            print(self.Q - self.G - self.LEliq - self.LEsoil - self.LEveg - self.H)
         
         CG          = self.CGsat * (self.wsat / self.w2)**(self.b / (2. * np.log(10.)))
   
@@ -2345,6 +2319,7 @@ class model:
             self.out.COSmh[t]      = self.COSmh
             self.out.COSmh2[t]     = self.COSmh2
             self.out.COSmh3[t]     = self.COSmh3
+            self.out.COSmh4[t]     = self.COSmh4
             self.out.CO22m[t]      = self.CO22m
             self.out.CO2mh[t]      = self.CO2mh
             self.out.CO2mh2[t]     = self.CO2mh2
@@ -2649,6 +2624,7 @@ class model_output:
             self.COSmh      = np.zeros(tsteps)    # COS at measuring height [ppb]
             self.COSmh2     = np.zeros(tsteps)    # COS at measuring height2 [ppb]
             self.COSmh3     = np.zeros(tsteps)    # COS at measuring height3 [ppb]
+            self.COSmh4     = np.zeros(tsteps)    # COS at measuring height4 [ppb]
             self.CO2mh      = np.zeros(tsteps)    # CO2 at measuring height [ppb]
             self.CO2mh2     = np.zeros(tsteps)    # CO2 at measuring height2 [ppb]
             self.CO2mh3     = np.zeros(tsteps)    # CO2 at measuring height3 [ppb]

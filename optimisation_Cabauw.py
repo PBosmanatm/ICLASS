@@ -25,7 +25,7 @@ style.use('classic')
 ana_deriv = True #use analytical or numerical derivative
 use_backgr_in_cost = True #include the background (prior) part of the cost function
 write_to_f = True #write output and figures to files
-use_ensemble = False #use an ensemble of optimisations
+use_ensemble = True #use an ensemble of optimisations
 if use_ensemble:
     nr_of_members = 175
     use_covar_to_pert = False #whether to take prior covariance (if specified) into account when perturbing the ensemble 
@@ -527,7 +527,7 @@ priormodinput.dt         = 60       # time step [s]
 priormodinput.tstart     = starthour   # time of the day [h UTC]
 priormodinput.runtime    = (endhour-priormodinput.tstart)*3600 + priormodinput.dt   # total run time [s]
 priormodinput.sw_ml      = True      # mixed-layer model switch
-priormodinput.sw_shearwe = False     # shear growth mixed-layer switch
+priormodinput.sw_shearwe = True     # shear growth mixed-layer switch
 priormodinput.sw_fixft   = False     # Fix the free-troposphere switch
 priormodinput.h          = np.array(BLH_selected)[0]      # initial ABL height [m]
 if use_mean:
@@ -544,7 +544,7 @@ priormodinput.gammatheta = 0.0036     # free atmosphere potential temperature la
 priormodinput.gammatheta2 = 0.015     # free atmosphere potential temperature lapse rate for h > htrans [K m-1]
 priormodinput.htrans = 95000 #height of BL above which to use gammatheta2 instead of gammatheta
 priormodinput.advtheta   = 0        # advection of heat [K s-1]
-#priormodinput.beta       = 0.2       # entrainment ratio for virtual heat [-]
+priormodinput.beta       = 0.2       # entrainment ratio for virtual heat [-]
 if use_mean:
     priormodinput.q          = 0.0049     # initial mixed-layer specific humidity [kg kg-1]
 else:
@@ -617,7 +617,6 @@ priormodinput.sw_model_stable_con = True
 priormodinput.sw_printwarnings = False
 priormodinput.sw_use_ribtol = True
 priormodinput.sw_advfp = True #prescribed advection to take place over full profile (also in Free troposphere), only in ML if FALSE
-priormodinput.sw_dyn_beta = True
 priormodinput.R10 = 0.23
 #tsteps = int(np.floor(priormodinput.runtime / priormodinput.dt)) #the number of timesteps, used below
 #priormodinput.wtheta_input = np.zeros(tsteps)
@@ -712,7 +711,7 @@ if use_backgr_in_cost or use_ensemble:
     priorvar = {}
     priorcovar={}
 ###########################################################
-###### user input: prior information (if used) ############
+###### user input: prior variance/covar (if used) #########
 ###########################################################
     #if not optim.use_backgr_in_cost, than these are only used for perturbing the ensemble (when use_ensemble = True)
     #prior variances of the items in the state:
@@ -759,7 +758,7 @@ if use_backgr_in_cost or use_ensemble:
     #below we can specify covariances as well, for the background information matrix. If covariances are not specified, they are taken as 0
     #e.g. priorcovar['gammatheta,gammaq'] = 5.
 ###########################################################
-###### end user input: prior information (if used) ########
+###### end user input: prior variance/covar (if used) #####
 ###########################################################                  
     for thing in priorvar:
         if thing not in priorinput.__dict__:
@@ -1242,8 +1241,22 @@ if 'EnBalDiffObsHFrac' in state:
             if len(optim.__dict__['EnBalDiffObs_at'+item+'times']) != len(optim.__dict__['obs_'+item]):
                 raise Exception('When including EnBalDiffObsHFrac in state and '+ item + ' in obsvarlist, an EnBalDiffObs_at' +item+'times value should correspond to every obs of ' + item)
             if type(optim.__dict__['EnBalDiffObs_at'+item+'times']) not in [np.ndarray,list]: #a check to see whether data is of a correct type
-                raise Exception('Please convert EnBalDiffObs_at'+item+'times data into type \'numpy.ndarray\' or list!')    
-    
+                raise Exception('Please convert EnBalDiffObs_at'+item+'times data into type \'numpy.ndarray\' or list!')
+            #below some checks that happen later for the other observations, but we need to do the ones below here already since we use them earlier
+            if (not hasattr(optim,'obs_'+item) or item not in measurement_error): #a check to see wether all info is specified
+                raise Exception('Incomplete or no information on obs of ' + item)
+            if item not in obs_times:
+                raise Exception('Please specify the observation times of '+item+'.')
+            if type(measurement_error[item]) not in [np.ndarray,list]: #a check to see whether data is of a correct type
+                raise Exception('Please convert measurement_error data of '+item+' into type \'numpy.ndarray\' or list!')
+            if type(optim.__dict__['obs_'+item]) not in [np.ndarray,list]: #a check to see whether data is of a correct type
+                raise Exception('Please convert observation data of '+item+' into type \'numpy.ndarray\' or list!')
+            if type(obs_times[item]) not in [np.ndarray,list]:
+                raise Exception('Please convert observation time data of '+item+' into type \'numpy.ndarray\' or list!')
+            if use_weights and item in obs_weights:
+                if type(obs_weights[item]) not in [np.ndarray,list]:
+                    raise Exception('Please convert observation weight data of '+item+' into type \'numpy.ndarray\' or list!')
+            
     for item in ['H','LE']:
         if item in obsvarlist:
             if not hasattr(optim,'EnBalDiffObs_at'+item+'times'):
@@ -1519,7 +1532,7 @@ if estimate_model_err:
         open('Modelerrorfile.txt','a').write('{0:>36s}'.format(str(nr_of_members_moderr)))
         open('Modelerrorfile.txt','a').write('{0:>49s}'.format(str(nr_of_members_moderr-nan_members)))
         open('Modelerrorfile.txt','a').write('\n')
-        open('Modelerrorfile.txt','a').write('{0:>30s}'.format('time mean model errors on obs:\n'))
+        open('Modelerrorfile.txt','a').write('{0:>30s}'.format('Time-mean model errors on obs:\n'))
         open('Modelerrorfile.txt','a').write('     ')
         for item in obsvarlist:
             open('Modelerrorfile.txt','a').write('{0:>25s}'.format(str(item)))
@@ -2105,14 +2118,15 @@ if use_ensemble:
                     nonstparamlist.append(param)
                 post_cov_matr_incl_nonst = np.cov(matr_incl_nonst,ddof=1) 
                 post_cor_matr_incl_nonst = np.corrcoef(matr_incl_nonst) #no ddof for np.corrcoef, gives DeprecationWarning
-            
+
+if use_ensemble:
+    optimalstate = cp.deepcopy(state_opt)
+else:
+    optimalstate = cp.deepcopy(state_opt0)            
 optimalinput = cp.deepcopy(priorinput)
 i = 0
 for item in state:
-    if use_ensemble:
-        optimalinput.__dict__[item] = state_opt[i]
-    else:
-        optimalinput.__dict__[item] = state_opt0[i]
+    optimalinput.__dict__[item] = optimalstate[i]
     i += 1
 optimalmodel = fwdm.model(optimalinput) #Note that this does not account for non-state parameters possibly changed in the ensemble
 optimalmodel.run(checkpoint=False,updatevals_surf_lay=True,delete_at_end=False)
@@ -2224,6 +2238,19 @@ if write_to_f:
             open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(CPdictio[obsvar] / len(optim.__dict__['obs_'+obsvar]))))
     if use_backgr_in_cost:
         open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(CPdictio['backgr'] / number_of_params)))
+    if use_ensemble or use_backgr_in_cost:
+        open('Optstatsfile.txt','a').write('\n')
+        open('Optstatsfile.txt','a').write('{0:>32s}'.format('normalised deviation to unper-'))
+        open('Optstatsfile.txt','a').write('{0:>32s}'.format('\n    turbed prior for best state:'))
+        reldev = np.zeros(len(state))
+        for i in range(len(state)):
+            reldev[i] = (optimalstate[i]-priorinput.__dict__[state[i]])/np.sqrt(priorvar[state[i]])
+        open('Optstatsfile.txt','a').write('\n      ')
+        for item in state:
+            open('Optstatsfile.txt','a').write('{0:>25s}'.format(item))
+        open('Optstatsfile.txt','a').write('\n      ')
+        for item in reldev:
+            open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(item)))
     if use_ensemble:
         if est_post_pdf_covmatr:
             open('Optstatsfile.txt','a').write('\n\n')
@@ -2363,8 +2390,9 @@ if write_to_f:
                 open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(param)))
             open('Optstatsfile.txt','a').write('\n')
             i += 1
-            
-for i in range(len(obsvarlist)):
+
+           
+for i in range(len(obsvarlist)): #Note that only the obs of member 0 (the real obs) are plotted here 
     unsca = 1 #a scale for plotting the obs with different units
     if (disp_units[obsvarlist[i]] == 'g/kg' or disp_units[obsvarlist[i]] == 'g kg$^{-1}$') and (obsvarlist[i] == 'q' or obsvarlist[i].startswith('qmh')): #q can be plotted differently for clarity
         unsca = 1000
@@ -2403,8 +2431,8 @@ if 'EnBalDiffObsHFrac' in state:
         if use_ensemble:
             if pert_non_state_param and opt_sim_nr != 0:
                 plt.plot(optimalmodel.out.t,optimalmodel_onsp.out.H, linestyle='dashdot', marker='None',color='magenta',linewidth = 2.0,label = 'post onsp')
-        plt.plot(obs_times['H']/3600,optim.__dict__['obs_'+'H'], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs orig')
-        plt.plot(obs_times['H']/3600,enbal_corr_H, linestyle=' ', marker='o',color = 'red',ms=10,label = 'obs corr')
+        plt.plot(obs_times['H']/3600,optim.__dict__['obs_'+'H'], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs ori')
+        plt.plot(obs_times['H']/3600,enbal_corr_H, linestyle=' ', marker='o',color = 'red',ms=10,label = 'obs cor')
         plt.ylabel('H (' + disp_units['H']+')')
         plt.xlabel('time (h)')
         plt.legend(prop={'size':legendsize},loc=0)
@@ -2421,8 +2449,8 @@ if 'EnBalDiffObsHFrac' in state:
         if use_ensemble:
             if pert_non_state_param and opt_sim_nr != 0:
                 plt.plot(optimalmodel.out.t,optimalmodel_onsp.out.LE, linestyle='dashdot', marker='None',color='magenta',linewidth = 2.0,label = 'post onsp')
-        plt.plot(obs_times['LE']/3600,optim.__dict__['obs_'+'LE'], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs orig')
-        plt.plot(obs_times['LE']/3600,enbal_corr_LE, linestyle=' ', marker='o',color = 'red',ms=10,label = 'obs corr')
+        plt.plot(obs_times['LE']/3600,optim.__dict__['obs_'+'LE'], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs ori')
+        plt.plot(obs_times['LE']/3600,enbal_corr_LE, linestyle=' ', marker='o',color = 'red',ms=10,label = 'obs cor')
         plt.ylabel('LE (' + disp_units['LE']+')')
         plt.xlabel('time (h)')
         plt.legend(prop={'size':legendsize},loc=0)
