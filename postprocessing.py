@@ -30,7 +30,8 @@ plot_2d_pdfs = False
 plot_colored_corr_matr = True
 plot_co2profiles = False
 plot_manual_fitpanels = False
-plot_auto_fitpanel = True
+plot_auto_fitpanel = False
+plot_enbal_panel = True
 plotfontsize = 12 #plot font size, except for legend
 legendsize = plotfontsize - 1
 figformat = 'eps'#the format in which you want figure output, e.g. 'png'
@@ -488,7 +489,7 @@ if plot_manual_fitpanels:
                 xycoords=('axes fraction', 'axes fraction'),
                 textcoords='offset points',
                 size=20, fontweight='bold',ha='left', va='top')
-    plt.savefig('fig_fitpanelsimple.eps', format='eps')
+    plt.savefig('pp_fig_fitpanelsimple.eps', format='eps')
     
     plt.rc('font', size=17)       
     plotvars = ['h','qmh','wCO2','Tmh']  #first the var for 0,0 than 0,1 than 1,0 than 1,1
@@ -556,9 +557,50 @@ if plot_manual_fitpanels:
                 xycoords=('axes fraction', 'axes fraction'),
                 textcoords='offset points',
                 size=16, fontweight='bold',ha='left', va='top')
-    plt.savefig('fig_fitpanel.eps', format='eps')
+    plt.savefig('pp_fig_fitpanel.eps', format='eps')
     plt.rc('font', size=plotfontsize) #reset plot font size
     
+if plot_enbal_panel:
+    plt.rc('font', size=19)
+    fig, ax = plt.subplots(1,2,figsize=(24,8))
+    enbal_corr_H = optim.obs_H + optimalinput.EnBalDiffObsHFrac * optim.EnBalDiffObs_atHtimes
+    ax[0].errorbar(obs_times['H']/3600,enbal_corr_H,yerr=optim.__dict__['error_obs_H'],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
+    ax[0].errorbar(obs_times['H']/3600,enbal_corr_H,yerr=measurement_error['H'],ecolor='black',fmt='None',label = '$\sigma_{I}$')
+    ax[0].plot(priormodel.out.t,priormodel.out.H, ls='dashed', marker='None',color='gold',linewidth = 2.0,label = 'prior')
+    ax[0].plot(optimalmodel.out.t,optimalmodel.out.H, linestyle='-', marker='None',color='red',linewidth = 2.0,label = 'post')
+    if use_ensemble:
+        if pert_non_state_param and opt_sim_nr != 0:
+            ax[0].plot(optimalmodel.out.t,optimalmodel_onsp.out.H, linestyle='dashdot', marker='None',color='magenta',linewidth = 2.0,label = 'post onsp')
+    ax[0].plot(obs_times['H']/3600,optim.__dict__['obs_'+'H'], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs ori')
+    ax[0].plot(obs_times['H']/3600,enbal_corr_H, linestyle=' ', marker='o',color = 'red',ms=10,label = 'obs cor')
+    ax[0].set_ylabel('H (' + disp_units['H']+')')
+    ax[0].set_xlabel('time (h)')   
+    enbal_corr_LE = optim.obs_LE + (1 - optimalinput.EnBalDiffObsHFrac) * optim.EnBalDiffObs_atLEtimes
+    ax[1].errorbar(obs_times['LE']/3600,enbal_corr_LE,yerr=optim.__dict__['error_obs_LE'],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
+    ax[1].errorbar(obs_times['LE']/3600,enbal_corr_LE,yerr=measurement_error['LE'],ecolor='black',fmt='None',label = '$\sigma_{I}$')
+    ax[1].plot(priormodel.out.t,priormodel.out.LE, ls='dashed', marker='None',color='gold',linewidth = 2.0,label = 'prior')
+    ax[1].plot(optimalmodel.out.t,optimalmodel.out.LE, linestyle='-', marker='None',color='red',linewidth = 2.0,label = 'post')
+    if use_ensemble:
+        if pert_non_state_param and opt_sim_nr != 0:
+            ax[1].plot(optimalmodel.out.t,optimalmodel_onsp.out.LE, linestyle='dashdot', marker='None',color='magenta',linewidth = 2.0,label = 'post onsp')
+    ax[1].plot(obs_times['LE']/3600,optim.__dict__['obs_'+'LE'], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs ori')
+    ax[1].plot(obs_times['LE']/3600,enbal_corr_LE, linestyle=' ', marker='o',color = 'red',ms=10,label = 'obs cor')
+    ax[1].set_ylabel('LE (' + disp_units['LE']+')')
+    ax[1].set_xlabel('time (h)')
+    ax[1].legend(prop={'size':18},loc=0)
+    plt.subplots_adjust(left=0.10, right=0.94, top=0.94, bottom=0.15,wspace=0.1)
+    ax[0].annotate('(a)',
+                xy=(0.00, 1.07), xytext=(0,0),
+                xycoords=('axes fraction', 'axes fraction'),
+                textcoords='offset points',
+                size=20, fontweight='bold', ha='left', va='top')
+    ax[1].annotate('(b)',
+                xy=(0.00, 1.07), xytext=(0,0),
+                xycoords=('axes fraction', 'axes fraction'),
+                textcoords='offset points',
+                size=20, fontweight='bold',ha='left', va='top')
+    plt.savefig('pp_fig_enbalpanel.eps', format='eps')
+    plt.rc('font', size=plotfontsize) #reset plot font size
 
 if plot_auto_fitpanel:    
     #Below is a more automatised panel plot:
@@ -590,7 +632,38 @@ if plot_auto_fitpanel:
             size=16, fontweight='bold', ha='left', va='top')
             k += 1
     ax[1,1].legend(loc=0, frameon=False,prop={'size':19})
-    plt.savefig('fig_fitpanel_auto.eps', format='eps')
+    plt.savefig('pp_fig_fitpanel_auto.eps', format='eps')
+    
+    #And another one
+    plt.rc('font', size=17)
+    plotvars = ['Tmh2','Tmh7','CO2mh','CO2mh2']  #first the var for 0,0 than 0,1 than 1,0 than 1,1
+    annotatelist = ['a','b','c','d']
+    unsca = np.ones(len(plotvars)) #a scale for plotting the obs with different units
+    for i in range(len(plotvars)):
+        if (disp_units[plotvars[i]] == 'g/kg' or disp_units[plotvars[i]] == 'g kg$^{-1}$') and (plotvars[i] == 'q' or plotvars[i].startswith('qmh')): #q can be plotted differently for clarity
+            unsca[i] = 1000
+    nr_rows,nr_cols = 2,2
+    fig, ax = plt.subplots(nr_rows,nr_cols,figsize=(16,12))
+    k = 0
+    for i in range(nr_rows):
+        for j in range(nr_cols):
+            ax[i,j].errorbar(obs_times[plotvars[k]]/3600,unsca[k]*optim.__dict__['obs_'+plotvars[k]],yerr=unsca[k]*optim.__dict__['error_obs_'+plotvars[k]],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
+            ax[i,j].errorbar(obs_times[plotvars[k]]/3600,unsca[k]*optim.__dict__['obs_'+plotvars[k]],yerr=unsca[k]*measurement_error[plotvars[k]],ecolor='black',fmt='None',label = '$\sigma_{I}$')
+            ax[i,j].plot(priormodel.out.t,unsca[k]*priormodel.out.__dict__[plotvars[k]], ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+            ax[i,j].plot(optimalmodel.out.t,unsca[k]*optimalmodel.out.__dict__[plotvars[k]], linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+            ax[i,j].plot(obs_times[plotvars[k]]/3600,unsca[k]*optim.__dict__['obs_'+plotvars[k]], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs')
+            if 'obs_sca_cf_'+plotvars[k] in state: #plot the obs scaled with the scaling factors (if applicable)
+                ax[i,j].plot(obs_times[plotvars[k]]/3600,optimalinput.__dict__['obs_sca_cf_'+plotvars[k]]*unsca[k]*optim.__dict__['obs_'+plotvars[k]], linestyle=' ', marker='o',color = 'red',ms=10,label = 'obs sca')
+            ax[i,j].set_ylabel(display_names[plotvars[k]] +' ('+ disp_units[plotvars[k]] + ')')
+            ax[i,j].set_xlabel('time (h)')
+            ax[i,j].annotate(annotatelist[k],
+            xy=(0.00, 1.07), xytext=(0,0),
+            xycoords=('axes fraction', 'axes fraction'),
+            textcoords='offset points',
+            size=16, fontweight='bold', ha='left', va='top')
+            k += 1
+    ax[1,1].legend(loc=0, frameon=False,prop={'size':19})
+    plt.savefig('pp_fig_fitpanel_auto2.eps', format='eps')
     
     
     
