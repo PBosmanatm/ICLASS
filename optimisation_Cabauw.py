@@ -32,9 +32,9 @@ if use_ensemble:
     pert_non_state_param = False #perturb parameters that are not in the state
     est_post_pdf_covmatr = True #estimate the posterior pdf and covariance matrix of the state (and more)
     if est_post_pdf_covmatr:
-        plot_perturbed_obs = False #perturb the observations of each member (except 0) in the ensemble
+        plot_perturbed_obs = False #Plot the perturbed observations of the ensemble members
         nr_bins = int(nr_of_members/10) #nr of bins for the pdfs
-        succes_opt_crit = 1.7 #the chi squared (obs only part) at which an optimisation is considered successful (lower or equal to is succesfull)
+        succes_opt_crit = 1.7 #the chi squared at which an optimisation is considered successful (lower or equal to is succesfull)
     print_status_dur_ens = False #whether to print state etc info during ensemble of optimisations (during member 0 printing will always take place)
 estimate_model_err = False #estimate the model error by perturbing specified non-state parameters
 if estimate_model_err:
@@ -63,8 +63,8 @@ discard_nan_minims = False #if False, if in a minimisation nan is encountered, i
 use_mean = False #switch for using mean of obs over several days
 use_weights = True #weights for the cost function, to enlarge or reduce the importance of certain obs
 if use_weights:
-    weight_morninghrs = 1 # to change weight of obs in the morning before 10, when everything less well mixed. 1 means equal weights
-    end_morninghrs = 10 #At all times smaller than this time (UTC, decimal hour), weight_morninghrs is longer applied
+    weight_morninghrs = 1 #to change weights of obs in the morning (the hour at which the morning ends is specified in variable 'end_morninghrs'), when everything less well mixed. 1 means equal weights
+    end_morninghrs = 10 #At all times smaller than this time (UTC, decimal hour), weight_morninghrs is applied
 if (use_backgr_in_cost and use_weights):
     obs_vs_backgr_weight = 1.0 # a scaling factor for the importance of all the observations in the cost function
 if write_to_f:
@@ -133,45 +133,27 @@ endhour = 15 #(use an integer!)
 
 directory = 'Cabauw_obs'
 data_Temp = pd.read_csv(directory+'/'+'caboper_air_temperature_200309-24-25-26.lot', skiprows=[0,1,3],delim_whitespace=True)
-data_Temp.loc[data_Temp['TA200'] <= -9999 ,'TA200'] = np.nan #set -9999 to nan
-data_Temp.loc[data_Temp['TA140'] <= -9999 ,'TA140'] = np.nan
-data_Temp.loc[data_Temp['TA080'] <= -9999 ,'TA080'] = np.nan
-data_Temp.loc[data_Temp['TA040'] <= -9999 ,'TA040'] = np.nan
-data_Temp.loc[data_Temp['TA020'] <= -9999 ,'TA020'] = np.nan
-data_Temp.loc[data_Temp['TA010'] <= -9999 ,'TA010'] = np.nan
-data_Temp.loc[data_Temp['TA002'] <= -9999 ,'TA002'] = np.nan
+#data_Temp.loc[data_Temp['TA200'] == -9999 ,'TA200'] = np.nan #set -9999 to nan
+for column in data_Temp.drop(columns=['day','btime','etime']): #We leave these three columns out using the drop function, otherwise they would be converted to floats. They remain in the dataframe itself using this statement.
+    data_Temp.loc[data_Temp[column] == -9999 ,column] = np.nan
 data_Press = pd.read_csv(directory+'/'+'caboper_surface_pressure_200309-24-25-26.lot', skiprows=[0,1,3],delim_whitespace=True)
+for column in data_Press.drop(columns=['day','btime','etime']):
+    data_Press.loc[data_Press[column] == -9999 ,column] = np.nan
 data_DewP = pd.read_csv(directory+'/'+'caboper_dew_point_200309-24-25-26.lot', skiprows=[0,1,3],delim_whitespace=True)
-data_DewP.loc[data_DewP['TD200'] <= -9999 ,'TD200'] = np.nan
-data_DewP.loc[data_DewP['TD140'] <= -9999 ,'TD140'] = np.nan
-data_DewP.loc[data_DewP['TD080'] <= -9999 ,'TD080'] = np.nan
-data_DewP.loc[data_DewP['TD040'] <= -9999 ,'TD040'] = np.nan
-data_DewP.loc[data_DewP['TD020'] <= -9999 ,'TD020'] = np.nan
-data_DewP.loc[data_DewP['TD010'] <= -9999 ,'TD010'] = np.nan
-data_DewP.loc[data_DewP['TD002'] <= -9999 ,'TD002'] = np.nan
+for column in data_DewP.drop(columns=['day','btime','etime']):
+    data_DewP.loc[data_DewP[column] == -9999 ,column] = np.nan
 data_Flux = pd.read_csv(directory+'/'+'cabsurf_surface_flux_200309-24-25-26.lot', skiprows=[0,1,3],delim_whitespace=True)
-data_Flux.loc[data_Flux['HSON'] <= -9999 ,'HSON'] = np.nan
-data_Flux.loc[data_Flux['LEED'] <= -9999 ,'LEED'] = np.nan
-data_Flux.loc[data_Flux['FG0'] <= -9999 ,'FG0'] = np.nan
-data_Flux.loc[data_Flux['G05'] <= -9999 ,'G05'] = np.nan
-data_Flux.loc[data_Flux['G10'] <= -9999 ,'G10'] = np.nan
-data_Flux.loc[data_Flux['FCED'] <= -9999 ,'FCED'] = np.nan
-data_Flux.loc[data_Flux['USTED'] <= -9999 ,'USTED'] = np.nan
+for column in data_Flux.drop(columns=['day','btime','etime']):
+    data_Flux.loc[data_Flux[column] == -9999 ,column] = np.nan
 data_Rad = pd.read_csv(directory+'/'+'caboper_radiation_200309-24-25-26.lot', skiprows=[0,1,3],delim_whitespace=True)
-data_Rad.loc[data_Rad['SWU'] <= -9999 ,'SWU'] = np.nan
-data_Rad.loc[data_Rad['SWD'] <= -9999 ,'SWD'] = np.nan
-data_Rad.loc[data_Rad['LWU'] <= -9999 ,'LWU'] = np.nan
-data_Rad.loc[data_Rad['LWD'] <= -9999 ,'LWD'] = np.nan
+for column in data_Rad.drop(columns=['day','btime','etime']):
+    data_Rad.loc[data_Rad[column] == -9999 ,column] = np.nan
 data_Windsp = pd.read_csv(directory+'/'+'caboper_wind_speed_200309-24-25-26.lot', skiprows=[0,1,3],delim_whitespace=True) 
-data_Windsp.loc[data_Windsp['F200'] <= -9999 ,'F200'] = np.nan
-data_Windsp.loc[data_Windsp['SF200'] <= -9999 ,'SF200'] = np.nan #standard dev 200m, see Cabauw_TR.pdf
-data_Windsp.loc[data_Windsp['F010'] <= -9999 ,'F010'] = np.nan
-data_Windsp.loc[data_Windsp['SF010'] <= -9999 ,'SF010'] = np.nan
+for column in data_Windsp.drop(columns=['day','btime','etime']):
+    data_Windsp.loc[data_Windsp[column] == -9999 ,column] = np.nan
 data_Winddir = pd.read_csv(directory+'/'+'caboper_wind_direction_200309-24-25-26.lot', skiprows=[0,1,3],delim_whitespace=True) 
-data_Winddir.loc[data_Winddir['D200'] <= -9999 ,'D200'] = np.nan
-data_Winddir.loc[data_Winddir['SD200'] <= -9999 ,'SD200'] = np.nan #see Cabauw_TR.pdf
-data_Winddir.loc[data_Winddir['D010'] <= -9999 ,'D010'] = np.nan
-data_Winddir.loc[data_Winddir['SD010'] <= -9999 ,'SD010'] = np.nan
+for column in data_Winddir.drop(columns=['day','btime','etime']):
+    data_Winddir.loc[data_Winddir[column] == -9999 ,column] = np.nan
 date = data_Temp['day'] #
 btime = data_Temp['btime']#begintime
 etime = data_Temp['etime']#endtime
@@ -262,11 +244,11 @@ if use_mean != True:
     LWD_selected = data_Rad[timeselection]['LWD'] #W m-2
     Windsp200_selected =  data_Windsp[timeselection]['F200'] #m s-1
     Windsp10_selected =  data_Windsp[timeselection]['F010'] #m s-1
-    stdevWindsp200_selected = data_Windsp[timeselection]['SF200'] #m s-1
+    stdevWindsp200_selected = data_Windsp[timeselection]['SF200'] #m s-1 #standard dev 200m, see Cabauw_TR.pdf
     stdevWindsp10_selected = data_Windsp[timeselection]['SF010'] #m s-1
     Winddir200_selected =  data_Winddir[timeselection]['D200'] #deg
     Winddir10_selected =  data_Winddir[timeselection]['D010'] #deg
-    stdevWinddir200_selected = data_Winddir[timeselection]['SD200'] #deg
+    stdevWinddir200_selected = data_Winddir[timeselection]['SD200'] #deg  #see Cabauw_TR.pdf
     stdevWinddir10_selected = data_Winddir[timeselection]['SD010'] #deg
     u200_selected = Windsp200_selected * np.cos((270. - Winddir200_selected)*2*np.pi/360) #2*np.pi/360 for conversion to rad. Make drawing to see the 270 minus wind dir
     v200_selected = Windsp200_selected * np.sin((270. - Winddir200_selected)*2*np.pi/360)
@@ -632,12 +614,12 @@ priormodinput.R10 = 0.23
 #        priormodinput.wCO2_input[t] = -0.1*np.sin(np.pi*(t*priormodinput.dt-7200)/27000)
 #    else:
 #        priormodinput.wCO2_input[t] = 0.
-#priormodinput.wCO2       = priormodinput.wCO2_input[0]        # surface kinematic CO2 flux [ppm m s-1]
+#priormodinput.wCO2       = priormodinput.wCO2_input[0]        # surface total CO2 flux [mgCO2 m-2 s-1]
 #priormodinput.wq         = priormodinput.wq_input[0]     # surface kinematic moisture flux [kg kg-1 m s-1]
 #priormodinput.wtheta     = priormodinput.wtheta_input[0]       # surface kinematic heat flux [K m s-1]
-priormodinput.wCO2       = 0.0000001
-priormodinput.wq       = 0.0000001
-priormodinput.wtheta       = 0.0000001
+priormodinput.wCO2       = 0.0000001 # surface total CO2 flux [mgCO2 m-2 s-1]
+priormodinput.wq       = 0.0000001 # surface kinematic moisture flux [kg kg-1 m s-1]
+priormodinput.wtheta       = 0.0000001 # surface kinematic heat flux [K m s-1]
 
 #soil COS model
 priormodinput.soilCOSmodeltype   = None #can be set to None or 'Sun_Ogee'
@@ -1978,6 +1960,14 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
         open('Optimfile'+str(counter)+'.txt','a').write('{0:>25s}'.format('\n finished'))
     return min_costf_mem,state_opt_mem,optim_mem.pstate,non_state_pparamvals,CostParts
    
+#chi squared denominator to be used later
+if use_weights:
+    denom_chisq = tot_sum_of_weights
+else:
+    denom_chisq = number_of_obs
+if use_backgr_in_cost:
+    denom_chisq += number_of_params
+
 if use_ensemble:
     ensemble = []
     for i in range(0,nr_of_members): #the zeroth is the one done before
@@ -2022,15 +2012,12 @@ if use_ensemble:
     if est_post_pdf_covmatr:
         mean_state_post = np.zeros(len(state))
         mean_state_prior = np.zeros(len(state))
-        chi_sq_obs = np.zeros(len(ensemble))
+        chi_sq = np.zeros(len(ensemble))
         success_ens = np.zeros(len(ensemble), dtype=bool) #True or False wether optimisation successful
         for i in range(len(ensemble)):
             if not np.isnan(seq_costf[i]):
-                if use_weights:
-                    chi_sq_obs[i] = seq_costf[i]/(tot_sum_of_weights)
-                else:
-                    chi_sq_obs[i] = seq_costf[i]/(number_of_obs)
-                if chi_sq_obs[i] <= succes_opt_crit:
+                chi_sq[i] = seq_costf[i]/denom_chisq
+                if chi_sq[i] <= succes_opt_crit:
                     success_ens[i] = True
         if np.sum(success_ens[1:]) > 1:
             for i in range(len(state)):
@@ -2056,8 +2043,8 @@ if use_ensemble:
                 for k in range(n_p.size):
                     pdfx[k] = 0.5*(bins_p[k]+bins_p[k+1])
                     pdfy[k] = n_p[k]
-                plt.plot(pdfx,pdfy, linestyle='-', linewidth=2,color='gold',label='prior')
-                plt.axvline(mean_state_post[i], linestyle='dashed',linewidth=2,color='red',label = 'mean post')
+                plt.plot(pdfx,pdfy, linestyle='dashed', linewidth=2,color='gold',label='prior')
+                plt.axvline(mean_state_post[i], linestyle='-',linewidth=2,color='red',label = 'mean post')
                 plt.axvline(mean_state_prior[i], linestyle='dashed',linewidth=2,color='gold',label = 'mean prior')
                 plt.xlabel(state[i] + ' ('+ disp_units_par[state[i]] +')')
                 plt.ylabel('Probability density (-)')  
@@ -2142,13 +2129,7 @@ if use_ensemble:
 ############################
 #stats file
 ############################
-if use_weights:
-    denom_chisq = tot_sum_of_weights
-else:
-    denom_chisq = number_of_obs
-if use_backgr_in_cost:
-    denom_chisq += number_of_params
-chi_sq = min_costf0 / denom_chisq #calculation of chi squared statistic
+chi_sq0 = min_costf0 / denom_chisq #calculation of chi squared statistic
 if use_ensemble:
     chi_sq_ens = min_costf_ensemble / denom_chisq
     
@@ -2169,7 +2150,7 @@ if write_to_f:
     if use_weights:
         open('Optstatsfile.txt','a').write('{0:>40s}'.format(str(tot_sum_of_weights)))
     open('Optstatsfile.txt','a').write('{0:>35s}'.format(str(number_of_params)))
-    open('Optstatsfile.txt','a').write('{0:>35s}'.format(str(chi_sq)))
+    open('Optstatsfile.txt','a').write('{0:>35s}'.format(str(chi_sq0)))
     prior_costf = optim.cost_func(optim.pstate,inputcopy,state,obs_times,obs_weights)
     post_costf = optim.cost_func(state_opt0,inputcopy,state,obs_times,obs_weights)
     open('Optstatsfile.txt','a').write('{0:>35s}'.format(str(prior_costf)))
@@ -2240,7 +2221,7 @@ if write_to_f:
         open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(CPdictio['backgr'] / number_of_params)))
     if use_ensemble or use_backgr_in_cost:
         open('Optstatsfile.txt','a').write('\n')
-        open('Optstatsfile.txt','a').write('{0:>32s}'.format('normalised deviation to unper-'))
+        open('Optstatsfile.txt','a').write('{0:>32s}'.format('Normalised deviation to unper-'))
         open('Optstatsfile.txt','a').write('{0:>32s}'.format('\n    turbed prior for best state:'))
         reldev = np.zeros(len(state))
         for i in range(len(state)):
@@ -2251,6 +2232,94 @@ if write_to_f:
         open('Optstatsfile.txt','a').write('\n      ')
         for item in reldev:
             open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(item)))
+    open('Optstatsfile.txt','a').write('\n')
+    open('Optstatsfile.txt','a').write('{0:>32s}'.format('model_variance/obs_variance'))
+    open('Optstatsfile.txt','a').write('{0:>32s}'.format('\n                 for best state:'))
+    open('Optstatsfile.txt','a').write('\n      ')
+    for obsvar in obsvarlist:
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(obsvar))
+    open('Optstatsfile.txt','a').write('\n      ')
+    outp_at_obstimes = {}
+    obs_to_use = {}
+    outp_at_obstimes_pr = {}
+    obs_to_use_pr = {}
+    var_ratio_pr = {}#different system since written later, so we need to store it
+    for obsvar in obsvarlist:
+        outp_at_obstimes[obsvar] = []
+        outp_at_obstimes_pr[obsvar] = []
+        for ti in range(priormodel.tsteps):
+            if round(optimalmodel.out.t[ti] * 3600,10) in [round(num, 10) for num in obs_times[obsvar]]:
+                outp_at_obstimes[obsvar] += [optimalmodel.out.__dict__[obsvar][ti]]
+                outp_at_obstimes_pr[obsvar] += [priormodel.out.__dict__[obsvar][ti]]
+        numerator = np.var(outp_at_obstimes[obsvar])
+        numerator_pr = np.var(outp_at_obstimes_pr[obsvar])
+        obs_to_use[obsvar] = cp.deepcopy(optim.__dict__['obs_'+obsvar])
+        obs_to_use_pr[obsvar] = cp.deepcopy(optim.__dict__['obs_'+obsvar])
+        if 'obs_sca_cf_'+obsvar in state:
+            obs_to_use[obsvar] *= optimalinput.__dict__['obs_sca_cf_'+obsvar]
+            obs_to_use_pr[obsvar] *= priorinput.__dict__['obs_sca_cf_'+obsvar]
+        elif 'EnBalDiffObsHFrac' in state:
+            if obsvar == 'H':
+                obs_to_use[obsvar] = cp.deepcopy(optim.__dict__['obs_H']) + optimalstate[state.index('EnBalDiffObsHFrac')] * optim.EnBalDiffObs_atHtimes
+                obs_to_use_pr[obsvar] = cp.deepcopy(optim.__dict__['obs_H']) + optim.pstate[state.index('EnBalDiffObsHFrac')] * optim.EnBalDiffObs_atHtimes
+            elif obsvar == 'LE':
+                obs_to_use[obsvar] = cp.deepcopy(optim.__dict__['obs_LE']) + (1 - optimalstate[state.index('EnBalDiffObsHFrac')]) * optim.EnBalDiffObs_atLEtimes
+                obs_to_use_pr[obsvar] = cp.deepcopy(optim.__dict__['obs_LE']) + (1 - optim.pstate[state.index('EnBalDiffObsHFrac')]) * optim.EnBalDiffObs_atLEtimes
+        denominator = np.var(obs_to_use[obsvar])
+        denominator_pr = np.var(obs_to_use_pr[obsvar])
+        var_ratio = numerator/denominator
+        var_ratio_pr[obsvar] = numerator_pr/denominator_pr
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(var_ratio)))
+    open('Optstatsfile.txt','a').write('\n')
+    open('Optstatsfile.txt','a').write('{0:>32s}'.format('model_variance/obs_variance'))
+    open('Optstatsfile.txt','a').write('\n')
+    open('Optstatsfile.txt','a').write('{0:>32s}'.format('for prior:'))
+    open('Optstatsfile.txt','a').write('\n      ')
+    for obsvar in obsvarlist:
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(obsvar))
+    open('Optstatsfile.txt','a').write('\n      ')
+    for obsvar in obsvarlist:
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(var_ratio_pr[obsvar])))
+    open('Optstatsfile.txt','a').write('\n')
+    open('Optstatsfile.txt','a').write('{0:>32s}'.format('Mean bias error(mod-obs)'))
+    open('Optstatsfile.txt','a').write('{0:>32s}'.format('\n                 for best state:'))
+    open('Optstatsfile.txt','a').write('\n      ')
+    for obsvar in obsvarlist:
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(obsvar))
+    open('Optstatsfile.txt','a').write('\n      ')
+    for obsvar in obsvarlist:
+        mbe = np.mean(outp_at_obstimes[obsvar]-obs_to_use[obsvar])
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(mbe)))        
+    open('Optstatsfile.txt','a').write('\n')
+    open('Optstatsfile.txt','a').write('{0:>32s}'.format('Mean bias error prior(mod-obs):'))
+    open('Optstatsfile.txt','a').write('\n      ')
+    for obsvar in obsvarlist:
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(obsvar))
+    open('Optstatsfile.txt','a').write('\n      ')
+    for obsvar in obsvarlist:
+        mbe_pr = np.mean(outp_at_obstimes_pr[obsvar]-obs_to_use_pr[obsvar])
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(mbe_pr)))
+    open('Optstatsfile.txt','a').write('\n')
+    open('Optstatsfile.txt','a').write('{0:>32s}'.format('Root mean squared error'))
+    open('Optstatsfile.txt','a').write('{0:>32s}'.format('\n                 for best state:'))
+    open('Optstatsfile.txt','a').write('\n      ')
+    for obsvar in obsvarlist:
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(obsvar))
+    open('Optstatsfile.txt','a').write('\n      ')
+    for obsvar in obsvarlist:
+        rmse = np.sqrt(np.mean((outp_at_obstimes[obsvar]-obs_to_use[obsvar])**2))
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(rmse)))  
+    open('Optstatsfile.txt','a').write('\n')
+    open('Optstatsfile.txt','a').write('{0:>32s}'.format('Root mean squared error'))
+    open('Optstatsfile.txt','a').write('\n')
+    open('Optstatsfile.txt','a').write('{0:>32s}'.format('for prior:'))
+    open('Optstatsfile.txt','a').write('\n      ')
+    for obsvar in obsvarlist:
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(obsvar))
+    open('Optstatsfile.txt','a').write('\n      ')
+    for obsvar in obsvarlist:
+        rmse_pr = np.sqrt(np.mean((outp_at_obstimes_pr[obsvar]-obs_to_use_pr[obsvar])**2))
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(rmse_pr)))
     if use_ensemble:
         if est_post_pdf_covmatr:
             open('Optstatsfile.txt','a').write('\n\n')
@@ -2338,7 +2407,7 @@ if write_to_f:
                     ratio = post_cov_matr[i][i]/priorvar_state_i
                     open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(ratio))) 
             else:
-                open('Optstatsfile.txt','a').write('Not enough successful optimisations (selected criterion obs only chi squared <= '+str(succes_opt_crit)+') to estimate posterior error covariance matrix \n')
+                open('Optstatsfile.txt','a').write('Not enough successful optimisations (selected criterion chi squared <= '+str(succes_opt_crit)+') to estimate posterior error covariance matrix \n')
             open('Optstatsfile.txt','a').write('{0:>32s}'.format('\n\nNr of success mems (excl mem 0):\n'))
             open('Optstatsfile.txt','a').write('{0:>31s}'.format(str(np.sum(success_ens[1:]))))
         open('Optstatsfile.txt','a').write('\n\n')

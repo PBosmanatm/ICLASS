@@ -27,6 +27,7 @@ remove_prev = True
 plot_obsfit = False
 plot_1d_pdfs = False
 plot_2d_pdfs = False
+plot_pdf_panels = True
 plot_colored_corr_matr = True
 plot_co2profiles = False
 plot_manual_fitpanels = False
@@ -270,8 +271,8 @@ if use_ensemble:
                 for k in range(n_p.size):
                     pdfx[k] = 0.5*(bins_p[k]+bins_p[k+1])
                     pdfy[k] = n_p[k]
-                plt.plot(pdfx,pdfy, linestyle='-', linewidth=2,color='gold',label='prior')
-                plt.axvline(mean_state_post[i], linestyle='dashed',linewidth=2,color='red',label = 'mean post')
+                plt.plot(pdfx,pdfy, linestyle='dashed', linewidth=2,color='gold',label='prior')
+                plt.axvline(mean_state_post[i], linestyle='-',linewidth=2,color='red',label = 'mean post')
                 plt.axvline(mean_state_prior[i], linestyle='dashed',linewidth=2,color='gold',label = 'mean prior')
                 plt.xlabel(state[i] + ' ('+ disp_units_par[state[i]] +')')
                 plt.ylabel('Probability density (-)')  
@@ -284,6 +285,78 @@ if use_ensemble:
                     while ('pp_pdf_posterior_'+itemname+'.'+figformat).lower() in [x.lower() for x in os.listdir()]: 
                         itemname += '_'
                     plt.savefig('pp_pdf_posterior_'+itemname+'.'+figformat, format=figformat)
+        if plot_pdf_panels:
+            plt.rc('font', size=22)
+            plotvars = ['R10','gammaq']
+            fig, ax = plt.subplots(1,2,figsize=(24,8))
+            seq = np.array([x[plotvars[0]] for x in ensemble[1:]]) #iterate over the dictionaries,gives array. We exclude the first optimisation, since it biases the sampling as we choose it ourselves.
+            succes_state_ens = np.array([seq[x] for x in range(len(seq)) if success_ens[1:][x]])
+            mean_state_post = np.mean(succes_state_ens) #np.nanmean not necessary since we filter already for successful optimisations
+            nbins = np.linspace(np.min(succes_state_ens), np.max(succes_state_ens), nr_bins + 1)
+            n, bins = np.histogram(succes_state_ens, nbins, density=1)
+            pdfx = np.zeros(n.size)
+            pdfy = np.zeros(n.size)
+            for k in range(n.size):
+                pdfx[k] = 0.5*(bins[k]+bins[k+1])
+                pdfy[k] = n[k]
+            ax[0].plot(pdfx,pdfy, linestyle='-', linewidth=2,color='red',label='post')
+            seq_p = np.array([x[plotvars[0]] for x in ensemble_p[1:]]) #iterate over the dictionaries,gives array . We exclude the first optimisation, since it biases the sampling as we choose it ourselves.
+            seq_suc_p = np.array([seq_p[x] for x in range(len(seq_p)) if success_ens[1:][x]])
+            mean_state_prior = np.mean(seq_suc_p)
+            nbins_p = np.linspace(np.min(seq_suc_p), np.max(seq_suc_p), nr_bins + 1)
+            n_p, bins_p = np.histogram(seq_suc_p, nbins_p, density=1)
+            pdfx = np.zeros(n_p.size)
+            pdfy = np.zeros(n_p.size)
+            for k in range(n_p.size):
+                pdfx[k] = 0.5*(bins_p[k]+bins_p[k+1])
+                pdfy[k] = n_p[k]
+            ax[0].plot(pdfx,pdfy, linestyle='dashed', linewidth=2,color='gold',label='prior')
+            ax[0].axvline(mean_state_post, linestyle='-',linewidth=2,color='red',label = 'mean post')
+            ax[0].axvline(mean_state_prior, linestyle='dashed',linewidth=2,color='gold',label = 'mean prior')
+            ax[0].set_xlabel(plotvars[0] + ' ('+ disp_units_par[plotvars[0]] +')')
+            ax[0].set_ylabel('Probability density (-)')  
+            
+            seq = np.array([x[plotvars[1]] for x in ensemble[1:]]) #iterate over the dictionaries,gives array. We exclude the first optimisation, since it biases the sampling as we choose it ourselves.
+            succes_state_ens = np.array([seq[x] for x in range(len(seq)) if success_ens[1:][x]])
+            mean_state_post = np.mean(succes_state_ens) #np.nanmean not necessary since we filter already for successful optimisations
+            nbins = np.linspace(np.min(succes_state_ens), np.max(succes_state_ens), nr_bins + 1)
+            n, bins = np.histogram(succes_state_ens, nbins, density=1)
+            pdfx = np.zeros(n.size)
+            pdfy = np.zeros(n.size)
+            for k in range(n.size):
+                pdfx[k] = 0.5*(bins[k]+bins[k+1])
+                pdfy[k] = n[k]
+            ax[1].plot(pdfx,pdfy, linestyle='-', linewidth=2,color='red',label='post')
+            seq_p = np.array([x[plotvars[1]] for x in ensemble_p[1:]]) #iterate over the dictionaries,gives array . We exclude the first optimisation, since it biases the sampling as we choose it ourselves.
+            seq_suc_p = np.array([seq_p[x] for x in range(len(seq_p)) if success_ens[1:][x]])
+            mean_state_prior = np.mean(seq_suc_p)
+            nbins_p = np.linspace(np.min(seq_suc_p), np.max(seq_suc_p), nr_bins + 1)
+            n_p, bins_p = np.histogram(seq_suc_p, nbins_p, density=1)
+            pdfx = np.zeros(n_p.size)
+            pdfy = np.zeros(n_p.size)
+            for k in range(n_p.size):
+                pdfx[k] = 0.5*(bins_p[k]+bins_p[k+1])
+                pdfy[k] = n_p[k]
+            ax[1].ticklabel_format(axis="both", style="sci", scilimits=(0,0))
+            ax[1].plot(pdfx,pdfy, linestyle='-', linewidth=2,color='gold',label='prior')
+            ax[1].axvline(mean_state_post, linestyle='dashed',linewidth=2,color='red',label = 'mean post')
+            ax[1].axvline(mean_state_prior, linestyle='dashed',linewidth=2,color='gold',label = 'mean prior')
+            ax[1].set_xlabel(plotvars[1] + ' ('+ disp_units_par[plotvars[1]] +')')
+            #ax[1].set_ylabel('Probability density (-)')             
+            ax[1].legend(loc=0, frameon=True,prop={'size':21}) 
+            ax[0].annotate('(a)',
+            xy=(0.00, 1.082), xytext=(0,0),
+            xycoords=('axes fraction', 'axes fraction'),
+            textcoords='offset points',
+            size=20, fontweight='bold', ha='left', va='top')
+            ax[1].annotate('(b)',
+            xy=(0.00, 1.082), xytext=(0,0),
+            xycoords=('axes fraction', 'axes fraction'),
+            textcoords='offset points',
+            size=20, fontweight='bold',ha='left', va='top')
+            plt.subplots_adjust(left=0.04, right=0.96, top=0.93, bottom=0.10,wspace=0.1)
+            plt.savefig('pp_pdfpanel_posterior.'+figformat, format=figformat)
+            plt.rc('font', size=plotfontsize) #plot font size
         if plot_2d_pdfs:
             nbins = [nr_bins2d,nr_bins2d]
             for i in range(len(state)):
@@ -637,7 +710,7 @@ if plot_auto_fitpanel:
     #And another one
     plt.rc('font', size=17)
     plotvars = ['Tmh2','Tmh7','CO2mh','CO2mh2']  #first the var for 0,0 than 0,1 than 1,0 than 1,1
-    annotatelist = ['a','b','c','d']
+    annotatelist = ['(a)','(b)','(c)','(d)']
     unsca = np.ones(len(plotvars)) #a scale for plotting the obs with different units
     for i in range(len(plotvars)):
         if (disp_units[plotvars[i]] == 'g/kg' or disp_units[plotvars[i]] == 'g kg$^{-1}$') and (plotvars[i] == 'q' or plotvars[i].startswith('qmh')): #q can be plotted differently for clarity

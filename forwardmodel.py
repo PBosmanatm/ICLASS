@@ -2719,7 +2719,7 @@ class model_input:
         self.gammaCO2   = None  # free atmosphere potential temperature lapse rate [K m-1]
         self.gammaCOS   = None
         self.advCO2     = None  # advection of heat [K s-1]
-        self.wCO2       = None  # surface kinematic CO2 flux [ppm m s-1]
+        self.wCO2       = None  # surface total CO2 flux [mgCO2 m-2 s-1]
         self.wCOS       = None  # surface kinematic COS flux [ppb m s-1]
         
         self.sw_wind    = None  # prognostic wind switch
