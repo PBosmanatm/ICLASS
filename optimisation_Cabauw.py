@@ -32,9 +32,13 @@ if use_ensemble:
     pert_non_state_param = False #perturb parameters that are not in the state
     est_post_pdf_covmatr = True #estimate the posterior pdf and covariance matrix of the state (and more)
     if est_post_pdf_covmatr:
-        plot_perturbed_obs = False #Plot the perturbed observations of the ensemble members
         nr_bins = int(nr_of_members/10) #nr of bins for the pdfs
         succes_opt_crit = 1.7 #the chi squared at which an optimisation is considered successful (lower or equal to is succesfull)
+    pert_obs_ens = True #Perturb observations of every ensemble member
+    if pert_obs_ens:
+        use_sigma_O = False #If True, the total observational error is used to perturb the obs, if False only the measurement error is used
+        plot_perturbed_obs = False #Plot the perturbed observations of the ensemble members
+    pert_Hx_min_sy_ens = True #Perturb the data part of the cost function, by perturbing H(x) - sy with a random number from a distribution with standard deviation sigma_O
     print_status_dur_ens = False #whether to print state etc info during ensemble of optimisations (during member 0 printing will always take place)
 estimate_model_err = False #estimate the model error by perturbing specified non-state parameters
 if estimate_model_err:
@@ -80,6 +84,10 @@ plt.rc('font', size=plotfontsize)
 if use_ensemble:
     if (nr_of_members < 2 or type(nr_of_members) != int):
         raise Exception('When use_ensemble is True, nr_of_members should be an integer and > 1')
+    if est_post_pdf_covmatr and not (pert_obs_ens or pert_Hx_min_sy_ens):
+        raise Exception('est_post_pdf_covmatr is set to True, but both switches pert_obs_ens and pert_Hx_min_sy_ens are set to False')
+    if pert_Hx_min_sy_ens and pert_obs_ens:
+        raise Exception('pert_Hx_min_sy_ens and pert_obs_ens should not both be set to True')
 if type(figformat) != str:
     raise Exception('figformat should be of type str, e.g. \'png\'')
 if use_ensemble or estimate_model_err:
@@ -92,7 +100,7 @@ if use_ensemble or estimate_model_err:
 
 if write_to_f:
     if wr_obj_to_pickle_files:
-        vars_to_pickle = ['priormodel','priorinput','obsvarlist','disp_units','disp_units_par','optim','obs_times','measurement_error','display_names','optimalinput','optimalinput_onsp','optimalmodel','optimalmodel_onsp'] #list of strings      
+        vars_to_pickle = ['priormodel','priorinput','obsvarlist','disp_units','disp_units_par','optim','obs_times','measurement_error','display_names','optimalinput','optimalinput_onsp','optimalmodel','optimalmodel_onsp','PertData_mems'] #list of strings      
         for item in vars_to_pickle:
             if item in vars(): #check if variable exists, if so, delete so we do not write anything from a previous script/run to files
                 del(vars()[item])
@@ -501,7 +509,7 @@ priormodinput.qmeasuring_height4 = 40. - canopy_height
 priormodinput.qmeasuring_height5 = 20. - canopy_height
 priormodinput.qmeasuring_height6 = 10. - canopy_height
 priormodinput.qmeasuring_height7 = 2. - canopy_height
-priormodinput.alfa_sto = 1
+priormodinput.sca_sto = 1
 priormodinput.gciCOS = 0.2 /(1.2*1000) * 28.9
 priormodinput.ags_C_mode = 'MXL' 
 priormodinput.sw_useWilson  = False
@@ -651,11 +659,11 @@ priorinput = cp.deepcopy(priormodinput)
 ###### user input: state, list of used obs and non-model priorinput ######
 ##########################################################################
 #e.g. state=['h','q','theta','gammatheta','deltatheta','deltaq','alpha','gammaq','wg','wtheta','z0h','z0m','ustar','wq','divU']
-state=['advtheta','advq','advCO2','deltatheta','gammatheta','deltaq','gammaq','deltaCO2','gammaCO2','alfa_sto','alpha','EnBalDiffObsHFrac','wg','R10']
+state=['advtheta','advq','advCO2','deltatheta','gammatheta','deltaq','gammaq','deltaCO2','gammaCO2','sca_sto','alpha','FracH','wg','R10']
 obsvarlist =['Tmh','Tmh2','Tmh3','Tmh4','Tmh5','Tmh6','Tmh7','qmh','qmh2','qmh3','qmh4','qmh5','qmh6','qmh7','CO2mh','CO2mh2','CO2mh3','CO2mh4','h','LE','H','wCO2','Swout']
-#below we can add some input necessary for the state in the optimisation, that is not part of the model input (a scale for some of the observations in the costfunction if desired). Or EnBalDiffObsHFrac
-if 'EnBalDiffObsHFrac' in state:
-    priorinput.EnBalDiffObsHFrac = 0.6
+#below we can add some input necessary for the state in the optimisation, that is not part of the model input (a scale for some of the observations in the costfunction if desired). Or FracH
+if 'FracH' in state:
+    priorinput.FracH = 0.6
 #priorinput.obs_sca_cf_H = 1.0 #Always use this format, 'obs_sca_cf_' plus the observation type you want to scale
 ##e.g. priorinput.obs_sca_cf_H = 1.5 means that in the cost function all obs of H will be multiplied with 1.5. But only if obs_sca_cf_H also in the state!
 #priorinput.obs_sca_cf_LE = 1.0
@@ -667,8 +675,8 @@ if len(set(state)) != len(state):
     raise Exception('Mulitiple occurences of same item in state')
 if len(set(obsvarlist)) != len(obsvarlist):
     raise Exception('Mulitiple occurences of same item in obsvarlist')
-if ('EnBalDiffObsHFrac' in state and ('obs_sca_cf_H' in state or 'obs_sca_cf_LE' in state)):
-    raise Exception('When EnBalDiffObsHFrac in state, you cannot include obs_sca_cf_H or obs_sca_cf_LE in state as well')
+if ('FracH' in state and ('obs_sca_cf_H' in state or 'obs_sca_cf_LE' in state)):
+    raise Exception('When FracH in state, you cannot include obs_sca_cf_H or obs_sca_cf_LE in state as well')
 for item in state:
     if item.startswith('obs_sca_cf_'):
         obsname = item.split("obs_sca_cf_",1)[1]
@@ -679,7 +687,7 @@ for item in state:
 for item in priorinput.__dict__: #just a check
     if item.startswith('obs_sca_cf') and (item not in state):
         raise Exception(item +' given in priorinput, but not part of state. Remove from priorinput or add '+item+' to the state')
-    elif item == 'EnBalDiffObsHFrac' and (item not in state):
+    elif item == 'FracH' and (item not in state):
         raise Exception(item +' given in priorinput, but not part of state. Remove from priorinput or add '+item+' to the state')
 for item in obsvarlist:
     if not hasattr(priormodel.out,item):
@@ -707,7 +715,7 @@ if use_backgr_in_cost or use_ensemble:
     priorvar['theta'] = 1**2
     priorvar['deltaCO2'] = 40**2
     priorvar['CO2'] = 30**2
-    priorvar['alfa_sto'] = 0.25**2
+    priorvar['sca_sto'] = 0.25**2
     priorvar['z0m'] = 0.1**2
     priorvar['z0h'] = 0.1**2
     priorvar['advtheta'] = (2/3600)**2 
@@ -716,7 +724,7 @@ if use_backgr_in_cost or use_ensemble:
     priorvar['wg'] = (0.2)**2
 #    priorvar['obs_sca_cf_H'] = 0.4**2 
 #    priorvar['obs_sca_cf_LE'] = 0.4**2 
-    priorvar['EnBalDiffObsHFrac'] = 0.4**2 
+    priorvar['FracH'] = 0.4**2 
     priorvar['cc'] = 0.2**2 
     priorvar['R10'] = 0.4**2 
 #    priorvar['wtheta'] = (150/1.1/1005)**2
@@ -791,7 +799,7 @@ if imposeparambounds or paramboundspenalty:
     boundedvars['deltaCO2'] = [-200,200]
     boundedvars['deltaq'] = [-0.009,0.009]
     boundedvars['alpha'] = [0.05,0.8] 
-    boundedvars['alfa_sto'] = [0.1,5]
+    boundedvars['sca_sto'] = [0.1,5]
     boundedvars['wg'] = [priorinput.wwilt+0.001,priorinput.wsat-0.001]
     boundedvars['theta'] = [274,310]
     boundedvars['h'] = [50,3200]
@@ -807,7 +815,7 @@ if imposeparambounds or paramboundspenalty:
     boundedvars['CO2'] = [100,1000]
     boundedvars['ustar'] = [0.01,50]
     boundedvars['wq'] = [0,0.1] #negative flux seems problematic because L going to very small values
-    boundedvars['EnBalDiffObsHFrac'] = [0,1]
+    boundedvars['FracH'] = [0,1]
     boundedvars['cc'] = [0,1]
     boundedvars['R10'] = [0,15]
 #############################################################
@@ -1196,9 +1204,9 @@ if use_ensemble:
         disp_units_par['gammaq'] = 'kg kg$^{-1}$m$^{-1}$'
         disp_units_par['deltaCO2'] = 'ppm'
         disp_units_par['gammaCO2'] = 'ppm m$^{-1}$'
-        disp_units_par['alfa_sto'] = '-'
+        disp_units_par['sca_sto'] = '-'
         disp_units_par['alpha'] = '-'
-        disp_units_par['EnBalDiffObsHFrac'] = '-'
+        disp_units_par['FracH'] = '-'
         disp_units_par['wg'] = '-'
         disp_units_par['cc'] = '-'
         disp_units_par['R10'] = 'mg CO2 m$^{-2}$s$^{-1}$'
@@ -1206,7 +1214,7 @@ if use_ensemble:
 ##############################################################################
 ###### end user input: units of parameters for pdf figures (optional) ########
 ##############################################################################                
-if 'EnBalDiffObsHFrac' in state:             
+if 'FracH' in state:             
 ##################################################################
 ###### user input: energy balance information (if used) ##########
 ##################################################################
@@ -1221,7 +1229,7 @@ if 'EnBalDiffObsHFrac' in state:
     for item in ['H','LE']:
         if item in obsvarlist:
             if len(optim.__dict__['EnBalDiffObs_at'+item+'times']) != len(optim.__dict__['obs_'+item]):
-                raise Exception('When including EnBalDiffObsHFrac in state and '+ item + ' in obsvarlist, an EnBalDiffObs_at' +item+'times value should correspond to every obs of ' + item)
+                raise Exception('When including FracH in state and '+ item + ' in obsvarlist, an EnBalDiffObs_at' +item+'times value should correspond to every obs of ' + item)
             if type(optim.__dict__['EnBalDiffObs_at'+item+'times']) not in [np.ndarray,list]: #a check to see whether data is of a correct type
                 raise Exception('Please convert EnBalDiffObs_at'+item+'times data into type \'numpy.ndarray\' or list!')
             #below some checks that happen later for the other observations, but we need to do the ones below here already since we use them earlier
@@ -1242,7 +1250,7 @@ if 'EnBalDiffObsHFrac' in state:
     for item in ['H','LE']:
         if item in obsvarlist:
             if not hasattr(optim,'EnBalDiffObs_at'+item+'times'):
-                raise Exception('When including EnBalDiffObsHFrac in state and '+ item + ' in obsvarlist, \'optim.EnBalDiffObs_at'+item+'times\' should be specified!')
+                raise Exception('When including FracH in state and '+ item + ' in obsvarlist, \'optim.EnBalDiffObs_at'+item+'times\' should be specified!')
             itoremove = []
             for i in range(len(optim.__dict__['EnBalDiffObs_at'+item+'times'])):
                 if np.isnan(optim.__dict__['EnBalDiffObs_at'+item+'times'][i]):
@@ -1400,7 +1408,7 @@ for item in obsvarlist:
     obs_times[item] = np.delete(obs_times[item],itoremove)#exclude the times,errors and weights as well (of the nan obs)
     if item in obs_weights:
         obs_weights[item] = np.delete(obs_weights[item],itoremove)
-    if 'EnBalDiffObsHFrac' in state and item in ['H','LE']: #This is in case of a nan in e.g. H that is not a nan in EnBalDiffObs_atHtimes yet!
+    if 'FracH' in state and item in ['H','LE']: #This is in case of a nan in e.g. H that is not a nan in EnBalDiffObs_atHtimes yet!
         optim.__dict__['EnBalDiffObs_at'+item+'times'] = np.delete(optim.__dict__['EnBalDiffObs_at'+item+'times'],itoremove) #exclude the nan obs 
         
     if use_weights and item in obs_weights:
@@ -1587,13 +1595,13 @@ if ana_deriv:
     optim.checkpoint = cp.deepcopy(priormodel.cpx) #needed, as first thing optimizer does is calculating the gradient (when using bfgs it seems)
     optim.checkpoint_init = cp.deepcopy(priormodel.cpx_init) #needed, as first thing optimizer does is calculating the gradient (when using bfgs it seems)
     for item in obsvarlist:
-        if 'EnBalDiffObsHFrac' in state:
+        if 'FracH' in state:
             if item not in ['H','LE']:
                 observations_item = optim.__dict__['obs_'+item]
             elif item == 'H':
-                observations_item = cp.deepcopy(optim.__dict__['obs_H']) + optim.pstate[state.index('EnBalDiffObsHFrac')] * optim.EnBalDiffObs_atHtimes
+                observations_item = cp.deepcopy(optim.__dict__['obs_H']) + optim.pstate[state.index('FracH')] * optim.EnBalDiffObs_atHtimes
             elif item == 'LE':
-                observations_item = cp.deepcopy(optim.__dict__['obs_LE']) + (1 - optim.pstate[state.index('EnBalDiffObsHFrac')]) * optim.EnBalDiffObs_atLEtimes  
+                observations_item = cp.deepcopy(optim.__dict__['obs_LE']) + (1 - optim.pstate[state.index('FracH')]) * optim.EnBalDiffObs_atLEtimes  
         else:
             observations_item = optim.__dict__['obs_'+item]
         if item in obs_sca_cf:
@@ -1724,7 +1732,8 @@ elif optim_method == 'tnc':
 else:
     raise Exception('Unavailable optim_method \'' + str(optim_method) + '\' specified')
 print('optimal state without ensemble='+str(state_opt0))
-CostParts0 = optim.cost_func(state_opt0,inputcopy,state,obs_times,obs_weights,True)
+CostParts0 = optim.cost_func(state_opt0,inputcopy,state,obs_times,obs_weights,RetCFParts=True)
+CPdictiopr = optim.cost_func(optim.pstate,inputcopy,state,obs_times,obs_weights,RetCFParts=True)
 
 def run_ensemble_member(counter,seed,non_state_paramdict={}):
     priorinput_mem = cp.deepcopy(priorinput)
@@ -1791,12 +1800,21 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
                                      Gradfile='Gradfile'+str(counter)+'.txt',pri_err_cov_matr=b_cov,paramboundspenalty=paramboundspenalty,boundedvars=boundedvars)
     optim_mem.print = print_status_dur_ens
     Hx_prior_mem = {}
+    PertData = {}
+    PertDict = {} #same as PertData, but to be passed as argument to min_func etc.
     for item in obsvarlist:
         Hx_prior_mem[item] = priormodel_mem.out.__dict__[item]
         optim_mem.__dict__['obs_'+item] = cp.deepcopy(optim.__dict__['obs_'+item])
         optim_mem.__dict__['error_obs_' + item] = cp.deepcopy(optim.__dict__['error_obs_' + item])
-        if est_post_pdf_covmatr: 
-            rand_nr_list = ([np.random.normal(0,measurement_error[item][i]) for i in range(len(measurement_error[item]))])
+        if pert_Hx_min_sy_ens: #add a perturbation to H(x) - sy in the cost function, using sigma_O
+            rand_nr_list = ([np.random.normal(0,optim_mem.__dict__['error_obs_' + item][i]) for i in range(len(measurement_error[item]))])
+            PertData[item] = rand_nr_list
+        elif pert_obs_ens: 
+            if use_sigma_O:
+                rand_nr_list = ([np.random.normal(0,optim_mem.__dict__['error_obs_' + item][i]) for i in range(len(measurement_error[item]))])
+            else:
+                rand_nr_list = ([np.random.normal(0,measurement_error[item][i]) for i in range(len(measurement_error[item]))])            
+            PertData[item] = rand_nr_list
             optim_mem.__dict__['obs_'+item] += rand_nr_list
             if plot_perturbed_obs:
                 unsca = 1 #a scale for plotting the obs with different units
@@ -1828,8 +1846,8 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
             obs_sca_cf_mem[obsname] = cp.deepcopy(priorinput_mem.__dict__[item])
     optim_mem.pstate = np.array(optim_mem.pstate)
     inputcopy_mem = cp.deepcopy(priorinput_mem) #deepcopy!
-    params = tuple([inputcopy_mem,state,obs_times,obs_weights]) 
-    if 'EnBalDiffObsHFrac' in state:
+    params_mem = tuple([inputcopy_mem,state,obs_times,obs_weights,PertDict]) 
+    if 'FracH' in state:
         if 'H' in obsvarlist:
             optim_mem.EnBalDiffObs_atHtimes = optim.EnBalDiffObs_atHtimes
         if 'LE' in obsvarlist:
@@ -1838,13 +1856,13 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
         optim_mem.checkpoint = cp.deepcopy(priormodel_mem.cpx) 
         optim_mem.checkpoint_init = cp.deepcopy(priormodel_mem.cpx_init)
         for item in obsvarlist:
-            if 'EnBalDiffObsHFrac' in state:
+            if 'FracH' in state:
                 if item not in ['H','LE']:
                     observations_item = optim_mem.__dict__['obs_'+item]
                 elif item == 'H':
-                    observations_item = cp.deepcopy(optim_mem.__dict__['obs_H']) + optim_mem.pstate[state.index('EnBalDiffObsHFrac')] * optim_mem.EnBalDiffObs_atHtimes
+                    observations_item = cp.deepcopy(optim_mem.__dict__['obs_H']) + optim_mem.pstate[state.index('FracH')] * optim_mem.EnBalDiffObs_atHtimes
                 elif item == 'LE':
-                    observations_item = cp.deepcopy(optim_mem.__dict__['obs_LE']) + (1 - optim_mem.pstate[state.index('EnBalDiffObsHFrac')]) * optim_mem.EnBalDiffObs_atLEtimes 
+                    observations_item = cp.deepcopy(optim_mem.__dict__['obs_LE']) + (1 - optim_mem.pstate[state.index('FracH')]) * optim_mem.EnBalDiffObs_atLEtimes 
             else:
                 observations_item = optim_mem.__dict__['obs_'+item]
             if item in obs_sca_cf_mem:
@@ -1852,12 +1870,15 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
             else:
                 obs_scale = 1.0 
             weight = 1.0 # a weight for the observations in the cost function, modified below if weights are specified. For each variable in the obs, provide either no weights or a weight for every time there is an observation for that variable 
+            pert = 0.0
             k = 0 #counter for the observations (specific for each type of obs) 
             for ti in range(priormodel_mem.tsteps):
                 if round(priormodel_mem.out.t[ti] * 3600,10) in [round(num, 10) for num in obs_times[item]]: #so if we are at a time where we have an obs
                     if item in obs_weights:
                         weight = obs_weights[item][k]
-                    forcing = weight * (Hx_prior_mem[item][ti] - obs_scale * observations_item[k])/(optim_mem.__dict__['error_obs_' + item][k]**2) #don't include the background term of the cost function in the forcing!
+                    if item in PertDict:
+                        pert = PertDict[item][k]
+                    forcing = weight * (Hx_prior_mem[item][ti] - obs_scale * observations_item[k] + pert)/(optim_mem.__dict__['error_obs_' + item][k]**2) #don't include the background term of the cost function in the forcing!
                     optim_mem.forcing[ti][item] = forcing
                     k += 1
     if paramboundspenalty:
@@ -1866,9 +1887,9 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
     if optim_method == 'bfgs':
         try:
             if ana_deriv:
-                minimisation_mem = optimize.fmin_bfgs(optim_mem.min_func,optim_mem.pstate,fprime=optim_mem.ana_deriv,args=params,gtol=gtol,full_output=True)
+                minimisation_mem = optimize.fmin_bfgs(optim_mem.min_func,optim_mem.pstate,fprime=optim_mem.ana_deriv,args=params_mem,gtol=gtol,full_output=True)
             else:
-                minimisation_mem = optimize.fmin_bfgs(optim_mem.min_func,optim_mem.pstate,fprime=optim_mem.num_deriv,args=params,gtol=gtol,full_output=True)
+                minimisation_mem = optimize.fmin_bfgs(optim_mem.min_func,optim_mem.pstate,fprime=optim_mem.num_deriv,args=params_mem,gtol=gtol,full_output=True)
             state_opt_mem = minimisation_mem[0]
             min_costf_mem = minimisation_mem[1]
         except (im.nan_incostfError):
@@ -1894,11 +1915,11 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
     elif optim_method == 'tnc':
         try:
             if ana_deriv:
-                minimisation_mem = optimize.fmin_tnc(optim_mem.min_func,optim_mem.pstate,fprime=optim_mem.ana_deriv,args=params,bounds=bounds,maxfun=None)
+                minimisation_mem = optimize.fmin_tnc(optim_mem.min_func,optim_mem.pstate,fprime=optim_mem.ana_deriv,args=params_mem,bounds=bounds,maxfun=None)
             else:
-                minimisation_mem = optimize.fmin_tnc(optim_mem.min_func,optim_mem.pstate,fprime=optim_mem.num_deriv,args=params,bounds=bounds,maxfun=None)
+                minimisation_mem = optimize.fmin_tnc(optim_mem.min_func,optim_mem.pstate,fprime=optim_mem.num_deriv,args=params_mem,bounds=bounds,maxfun=None)
             state_opt_mem = minimisation_mem[0]
-            min_costf_mem = optim_mem.cost_func(state_opt_mem,inputcopy_mem,state,obs_times,obs_weights) #within cost_func, the values of the variables in inputcopy_mem that are also state variables will be overwritten by the values of the variables in state_opt_mem
+            min_costf_mem = optim_mem.cost_func(state_opt_mem,inputcopy_mem,state,obs_times,obs_weights,PertDict) #within cost_func, the values of the variables in inputcopy_mem that are also state variables will be overwritten by the values of the variables in state_opt_mem
         except (im.nan_incostfError):
             print('Minimisation aborted due to nan') #discard_nan_minims == False allows to use last non-nan result in the optimisation, otherwise we throw away the optimisation
             if write_to_f:
@@ -1929,9 +1950,9 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
                         open('Gradfile'+str(counter)+'.txt','a').write('{0:>25s}'.format('\n restart'))
                     try:
                         if ana_deriv:
-                            minimisation_mem = optimize.fmin_tnc(optim_mem.min_func,state_opt_mem,fprime=optim_mem.ana_deriv,args=params,bounds=bounds,maxfun=None) #restart from best sim so far to make it better if costf still too large
+                            minimisation_mem = optimize.fmin_tnc(optim_mem.min_func,state_opt_mem,fprime=optim_mem.ana_deriv,args=params_mem,bounds=bounds,maxfun=None) #restart from best sim so far to make it better if costf still too large
                         else:
-                            minimisation_mem = optimize.fmin_tnc(optim_mem.min_func,state_opt_mem,fprime=optim_mem.num_deriv,args=params,bounds=bounds,maxfun=None) #restart from best sim so far to make it better if costf still too large
+                            minimisation_mem = optimize.fmin_tnc(optim_mem.min_func,state_opt_mem,fprime=optim_mem.num_deriv,args=params_mem,bounds=bounds,maxfun=None) #restart from best sim so far to make it better if costf still too large
                         state_opt_mem = minimisation_mem[0]
                     except (im.nan_incostfError):
                         print('Minimisation aborted due to nan, no restart for this member')
@@ -1954,11 +1975,11 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
                         min_costf_mem = np.min(optim_mem.Costflist)
                         min_costf_mem_ind = optim_mem.Costflist.index(min(optim_mem.Costflist)) #find the index number of the simulation where costf was minimal
                         state_opt_mem = optim_mem.Statelist[min_costf_mem_ind]
-                    min_costf_mem = optim_mem.cost_func(state_opt_mem,inputcopy_mem,state,obs_times,obs_weights)
-    CostParts = optim_mem.cost_func(state_opt_mem,inputcopy_mem,state,obs_times,obs_weights,True)
+                    min_costf_mem = optim_mem.cost_func(state_opt_mem,inputcopy_mem,state,obs_times,obs_weights,PertDict)
+    CostParts = optim_mem.cost_func(state_opt_mem,inputcopy_mem,state,obs_times,obs_weights,PertDict,True)
     if write_to_f:
         open('Optimfile'+str(counter)+'.txt','a').write('{0:>25s}'.format('\n finished'))
-    return min_costf_mem,state_opt_mem,optim_mem.pstate,non_state_pparamvals,CostParts
+    return min_costf_mem,state_opt_mem,optim_mem.pstate,non_state_pparamvals,CostParts,PertData
    
 #chi squared denominator to be used later
 if use_weights:
@@ -1970,8 +1991,10 @@ if use_backgr_in_cost:
 
 if use_ensemble:
     ensemble = []
+    PertData_mems = []
     for i in range(0,nr_of_members): #the zeroth is the one done before
         ensemble.append({})
+        PertData_mems.append({})
     ensemble[0]['min_costf'] = min_costf0
     ensemble[0]['state_opt'] = state_opt0   
     ensemble[0]['pstate'] = optim.pstate 
@@ -1994,9 +2017,10 @@ if use_ensemble:
             ensemble[j]['pstate'] = result_array[j-1][2]
             ensemble[j]['nonstateppars'] = result_array[j-1][3] #an empty dictionary if not pert_non_state_param=True
             ensemble[j]['CostParts'] = result_array[j-1][4]
+            PertData_mems[j] = result_array[j-1][5] #we want to store this info seperately for writing as a pickle object
     else:
         for i in range(1,nr_of_members):
-            ensemble[i]['min_costf'],ensemble[i]['state_opt'],ensemble[i]['pstate'],ensemble[i]['nonstateppars'],ensemble[i]['CostParts'] =  run_ensemble_member(i,seedvalue,non_state_paramdict)
+            ensemble[i]['min_costf'],ensemble[i]['state_opt'],ensemble[i]['pstate'],ensemble[i]['nonstateppars'],ensemble[i]['CostParts'],PertData_mems[i] =  run_ensemble_member(i,seedvalue,non_state_paramdict)
     print('whole ensemble:')
     print(ensemble)
     seq_costf = np.array([x['min_costf'] for x in ensemble]) #iterate over the dictionaries
@@ -2138,11 +2162,11 @@ if write_to_f:
     if use_weights:
         open('Optstatsfile.txt','a').write('{0:>40s}'.format('total nr obs, corrected for weights'))
     open('Optstatsfile.txt','a').write('{0:>35s}'.format('number of params to optimise'))
-    open('Optstatsfile.txt','a').write('{0:>35s}'.format('chi squared without ensemble'))
+    open('Optstatsfile.txt','a').write('{0:>35s}'.format('post chi squared without ensemble'))
     open('Optstatsfile.txt','a').write('{0:>35s}'.format('prior costf without ensemble'))
     open('Optstatsfile.txt','a').write('{0:>35s}'.format('post costf without ensemble'))
     if use_ensemble:
-        open('Optstatsfile.txt','a').write('{0:>50s}'.format('chi squared of member with lowest post costf'))
+        open('Optstatsfile.txt','a').write('{0:>51s}'.format('post chi squared of member with lowest post costf'))
         open('Optstatsfile.txt','a').write('{0:>50s}'.format('prior costf of member with lowest post costf'))
         open('Optstatsfile.txt','a').write('{0:>50s}'.format('post costf of member with lowest post costf'))
     open('Optstatsfile.txt','a').write('\n')
@@ -2156,7 +2180,7 @@ if write_to_f:
     open('Optstatsfile.txt','a').write('{0:>35s}'.format(str(prior_costf)))
     open('Optstatsfile.txt','a').write('{0:>35s}'.format(str(post_costf)))
     if use_ensemble:
-        open('Optstatsfile.txt','a').write('{0:>50s}'.format(str(chi_sq_ens)))
+        open('Optstatsfile.txt','a').write('{0:>51s}'.format(str(chi_sq_ens)))
         if opt_sim_nr != 0:
             filename = 'Optimfile'+str(opt_sim_nr)+'.txt'
         else:
@@ -2190,7 +2214,9 @@ if write_to_f:
         open('Optstatsfile.txt','a').write('\n')
         open('Optstatsfile.txt','a').write('{0:>31s}'.format(str(opt_sim_nr)))
         open('Optstatsfile.txt','a').write('\n')
-    open('Optstatsfile.txt','a').write('{0:>32s}'.format('costf parts best state:'))
+    open('Optstatsfile.txt','a').write('{0:>32s}'.format('post costf parts of member'))
+    open('Optstatsfile.txt','a').write('\n')
+    open('Optstatsfile.txt','a').write('{0:>32s}'.format('with lowest post costf:'))
     open('Optstatsfile.txt','a').write('\n      ')
     for obsvar in obsvarlist:
         open('Optstatsfile.txt','a').write('{0:>25s}'.format(obsvar))
@@ -2219,6 +2245,43 @@ if write_to_f:
             open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(CPdictio[obsvar] / len(optim.__dict__['obs_'+obsvar]))))
     if use_backgr_in_cost:
         open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(CPdictio['backgr'] / number_of_params)))
+    open('Optstatsfile.txt','a').write('\n')
+    open('Optstatsfile.txt','a').write('{0:>32s}'.format('costf parts prior member 0:'))
+    open('Optstatsfile.txt','a').write('\n      ')
+    for obsvar in obsvarlist:
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(obsvar))
+    if use_backgr_in_cost:
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format('Background'))
+    if paramboundspenalty:
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format('Penalty'))
+    open('Optstatsfile.txt','a').write('\n      ')
+    for obsvar in obsvarlist:
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(CPdictiopr[obsvar])))
+    if use_backgr_in_cost:
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(CPdictiopr['backgr'])))
+    if paramboundspenalty:
+        open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(CPdictiopr['penalty'])))
+    open('Optstatsfile.txt','a').write('\n')
+    if use_ensemble and opt_sim_nr != 0:
+        CP_best_st_obsmem0 = optim.cost_func(state_opt,inputcopy,state,obs_times,obs_weights,RetCFParts=True)
+        open('Optstatsfile.txt','a').write('{0:>32s}'.format('costf parts best state with obs'))
+        open('Optstatsfile.txt','a').write('\n')
+        open('Optstatsfile.txt','a').write('{0:>32s}'.format('and non-state pars of member 0:'))
+        open('Optstatsfile.txt','a').write('\n      ')
+        for obsvar in obsvarlist:
+            open('Optstatsfile.txt','a').write('{0:>25s}'.format(obsvar))
+        if use_backgr_in_cost:
+            open('Optstatsfile.txt','a').write('{0:>25s}'.format('Background'))
+        if paramboundspenalty:
+            open('Optstatsfile.txt','a').write('{0:>25s}'.format('Penalty'))
+        open('Optstatsfile.txt','a').write('\n      ')
+        for obsvar in obsvarlist:
+            open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(CP_best_st_obsmem0[obsvar])))
+        if use_backgr_in_cost:
+            open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(CP_best_st_obsmem0['backgr'])))
+        if paramboundspenalty:
+            open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(CP_best_st_obsmem0['penalty'])))
+        open('Optstatsfile.txt','a').write('\n') 
     if use_ensemble or use_backgr_in_cost:
         open('Optstatsfile.txt','a').write('\n')
         open('Optstatsfile.txt','a').write('{0:>32s}'.format('Normalised deviation to unper-'))
@@ -2258,13 +2321,13 @@ if write_to_f:
         if 'obs_sca_cf_'+obsvar in state:
             obs_to_use[obsvar] *= optimalinput.__dict__['obs_sca_cf_'+obsvar]
             obs_to_use_pr[obsvar] *= priorinput.__dict__['obs_sca_cf_'+obsvar]
-        elif 'EnBalDiffObsHFrac' in state:
+        elif 'FracH' in state:
             if obsvar == 'H':
-                obs_to_use[obsvar] = cp.deepcopy(optim.__dict__['obs_H']) + optimalstate[state.index('EnBalDiffObsHFrac')] * optim.EnBalDiffObs_atHtimes
-                obs_to_use_pr[obsvar] = cp.deepcopy(optim.__dict__['obs_H']) + optim.pstate[state.index('EnBalDiffObsHFrac')] * optim.EnBalDiffObs_atHtimes
+                obs_to_use[obsvar] = cp.deepcopy(optim.__dict__['obs_H']) + optimalstate[state.index('FracH')] * optim.EnBalDiffObs_atHtimes
+                obs_to_use_pr[obsvar] = cp.deepcopy(optim.__dict__['obs_H']) + optim.pstate[state.index('FracH')] * optim.EnBalDiffObs_atHtimes
             elif obsvar == 'LE':
-                obs_to_use[obsvar] = cp.deepcopy(optim.__dict__['obs_LE']) + (1 - optimalstate[state.index('EnBalDiffObsHFrac')]) * optim.EnBalDiffObs_atLEtimes
-                obs_to_use_pr[obsvar] = cp.deepcopy(optim.__dict__['obs_LE']) + (1 - optim.pstate[state.index('EnBalDiffObsHFrac')]) * optim.EnBalDiffObs_atLEtimes
+                obs_to_use[obsvar] = cp.deepcopy(optim.__dict__['obs_LE']) + (1 - optimalstate[state.index('FracH')]) * optim.EnBalDiffObs_atLEtimes
+                obs_to_use_pr[obsvar] = cp.deepcopy(optim.__dict__['obs_LE']) + (1 - optim.pstate[state.index('FracH')]) * optim.EnBalDiffObs_atLEtimes
         denominator = np.var(obs_to_use[obsvar])
         denominator_pr = np.var(obs_to_use_pr[obsvar])
         var_ratio = numerator/denominator
@@ -2489,9 +2552,9 @@ for i in range(len(obsvarlist)): #Note that only the obs of member 0 (the real o
                 itemname += '_'
             plt.savefig('fig_fit_'+itemname+'.'+figformat, format=figformat)#Windows cannnot have a file 'fig_fit_h' and 'fig_fit_H' in the same folder. The while loop can also handle e.g. the combination of variables Abc, ABC and abc   
 
-if 'EnBalDiffObsHFrac' in state:
+if 'FracH' in state:
     if 'H' in obsvarlist:
-        enbal_corr_H = optim.obs_H + optimalinput.EnBalDiffObsHFrac * optim.EnBalDiffObs_atHtimes
+        enbal_corr_H = optim.obs_H + optimalinput.FracH * optim.EnBalDiffObs_atHtimes
         fig = plt.figure()
         plt.errorbar(obs_times['H']/3600,enbal_corr_H,yerr=optim.__dict__['error_obs_H'],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
         plt.errorbar(obs_times['H']/3600,enbal_corr_H,yerr=measurement_error['H'],ecolor='black',fmt='None',label = '$\sigma_{I}$')
@@ -2509,7 +2572,7 @@ if 'EnBalDiffObsHFrac' in state:
         if write_to_f:
             plt.savefig('fig_fit_enbalcorrH.'+figformat, format=figformat)
     if 'LE' in obsvarlist:        
-        enbal_corr_LE = optim.obs_LE + (1 - optimalinput.EnBalDiffObsHFrac) * optim.EnBalDiffObs_atLEtimes
+        enbal_corr_LE = optim.obs_LE + (1 - optimalinput.FracH) * optim.EnBalDiffObs_atLEtimes
         fig = plt.figure()
         plt.errorbar(obs_times['LE']/3600,enbal_corr_LE,yerr=optim.__dict__['error_obs_LE'],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
         plt.errorbar(obs_times['LE']/3600,enbal_corr_LE,yerr=measurement_error['LE'],ecolor='black',fmt='None',label = '$\sigma_{I}$')

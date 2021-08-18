@@ -102,6 +102,9 @@ if load_stored_objects:
     if 'optimalmodel_onsp.pkl' in os.listdir(storefolder_objects):
         with open(storefolder_objects+'/optimalmodel_onsp.pkl', 'rb') as input:
             optimalmodel_onsp = pickle.load(input)
+    if 'PertData_mems.pkl' in os.listdir(storefolder_objects):
+        with open(storefolder_objects+'/PertData_mems.pkl', 'rb') as input:
+            PertData_mems = pickle.load(input)
         
 ##############################
 #### units for plots #########
@@ -432,9 +435,9 @@ if plot_obsfit:
                 itemname += '_'
             plt.savefig('pp_fig_fit_'+itemname+'.'+figformat, format=figformat)#Windows cannnot have a file 'fig_fit_h' and 'fig_fit_H' in the same folder. The while loop can also handle e.g. the combination of variables Abc, ABC and abc         
 
-    if 'EnBalDiffObsHFrac' in state:
+    if 'FracH' in state:
         if 'H' in obsvarlist:
-            enbal_corr_H = optim.obs_H + optimalinput.EnBalDiffObsHFrac * optim.EnBalDiffObs_atHtimes
+            enbal_corr_H = optim.obs_H + optimalinput.FracH * optim.EnBalDiffObs_atHtimes
             fig = plt.figure()
             plt.errorbar(obs_times['H']/3600,enbal_corr_H,yerr=optim.__dict__['error_obs_H'],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
             plt.errorbar(obs_times['H']/3600,enbal_corr_H,yerr=measurement_error['H'],ecolor='black',fmt='None',label = '$\sigma_{I}$')
@@ -451,7 +454,7 @@ if plot_obsfit:
             plt.subplots_adjust(left=0.18, right=0.92, top=0.96, bottom=0.15,wspace=0.1)
             plt.savefig('pp_fig_fit_enbalcorrH.'+figformat, format=figformat)
         if 'LE' in obsvarlist:        
-            enbal_corr_LE = optim.obs_LE + (1 - optimalinput.EnBalDiffObsHFrac) * optim.EnBalDiffObs_atLEtimes
+            enbal_corr_LE = optim.obs_LE + (1 - optimalinput.FracH) * optim.EnBalDiffObs_atLEtimes
             fig = plt.figure()
             plt.errorbar(obs_times['LE']/3600,enbal_corr_LE,yerr=optim.__dict__['error_obs_LE'],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
             plt.errorbar(obs_times['LE']/3600,enbal_corr_LE,yerr=measurement_error['LE'],ecolor='black',fmt='None',label = '$\sigma_{I}$')
@@ -636,7 +639,7 @@ if plot_manual_fitpanels:
 if plot_enbal_panel:
     plt.rc('font', size=19)
     fig, ax = plt.subplots(1,2,figsize=(24,8))
-    enbal_corr_H = optim.obs_H + optimalinput.EnBalDiffObsHFrac * optim.EnBalDiffObs_atHtimes
+    enbal_corr_H = optim.obs_H + optimalinput.FracH * optim.EnBalDiffObs_atHtimes
     ax[0].errorbar(obs_times['H']/3600,enbal_corr_H,yerr=optim.__dict__['error_obs_H'],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
     ax[0].errorbar(obs_times['H']/3600,enbal_corr_H,yerr=measurement_error['H'],ecolor='black',fmt='None',label = '$\sigma_{I}$')
     ax[0].plot(priormodel.out.t,priormodel.out.H, ls='dashed', marker='None',color='gold',linewidth = 2.0,label = 'prior')
@@ -648,7 +651,7 @@ if plot_enbal_panel:
     ax[0].plot(obs_times['H']/3600,enbal_corr_H, linestyle=' ', marker='o',color = 'red',ms=10,label = 'obs cor')
     ax[0].set_ylabel('H (' + disp_units['H']+')')
     ax[0].set_xlabel('time (h)')   
-    enbal_corr_LE = optim.obs_LE + (1 - optimalinput.EnBalDiffObsHFrac) * optim.EnBalDiffObs_atLEtimes
+    enbal_corr_LE = optim.obs_LE + (1 - optimalinput.FracH) * optim.EnBalDiffObs_atLEtimes
     ax[1].errorbar(obs_times['LE']/3600,enbal_corr_LE,yerr=optim.__dict__['error_obs_LE'],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
     ax[1].errorbar(obs_times['LE']/3600,enbal_corr_LE,yerr=measurement_error['LE'],ecolor='black',fmt='None',label = '$\sigma_{I}$')
     ax[1].plot(priormodel.out.t,priormodel.out.LE, ls='dashed', marker='None',color='gold',linewidth = 2.0,label = 'prior')

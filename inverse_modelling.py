@@ -85,7 +85,7 @@ class inverse_modelling:
             for item in StateVarNames:
                 open(self.Gradf,'a').write('{0:>30s}'.format('Costf_grad_'+item))
     
-    def min_func(self,state_to_opt,inputdata,state_var_names,obs_times,obs_weights={}): #some dummy vars as arg list of min_func and deriv_func needs to be the same
+    def min_func(self,state_to_opt,inputdata,state_var_names,obs_times,obs_weights={},PertDict={}): #some dummy vars as arg list of min_func and deriv_func needs to be the same
         cost = 0
         self.sim_nr += 1
         if self.print:
@@ -100,13 +100,13 @@ class inverse_modelling:
         model = fwdm.model(inputdata)
         model.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
         for item in self.obsvarlist:
-            if 'EnBalDiffObsHFrac' in state_var_names:
+            if 'FracH' in state_var_names:
                 if item not in ['H','LE']:
                     observations_item = self.__dict__['obs_'+item]
                 elif item == 'H':
-                    observations_item = cp.deepcopy(self.__dict__['obs_H']) + state_to_opt[state_var_names.index('EnBalDiffObsHFrac')] * self.EnBalDiffObs_atHtimes
+                    observations_item = cp.deepcopy(self.__dict__['obs_H']) + state_to_opt[state_var_names.index('FracH')] * self.EnBalDiffObs_atHtimes
                 elif item == 'LE':
-                    observations_item = cp.deepcopy(self.__dict__['obs_LE']) + (1 - state_to_opt[state_var_names.index('EnBalDiffObsHFrac')]) * self.EnBalDiffObs_atLEtimes  
+                    observations_item = cp.deepcopy(self.__dict__['obs_LE']) + (1 - state_to_opt[state_var_names.index('FracH')]) * self.EnBalDiffObs_atLEtimes  
             else:
                 observations_item = self.__dict__['obs_'+item]
             if item in obs_sca_cf:
@@ -114,13 +114,16 @@ class inverse_modelling:
             else:
                 obs_scale = 1.0 
             weight = 1.0 # a weight for the observations in the cost function, modified below if weights are specified. For each variable in the obs, provide either no weights or a weight for every time there is an observation for that variable 
+            pert = 0.0 #a perturbation to H(x) - s*y
             k = 0 #counter for the observations (specific for each type of obs)
             for i in range (model.tsteps):
                 if round(model.out.t[i] * 3600,3) in [round(num, 3) for num in obs_times[item]]: #so if we are at a time where we have an obs
                     if item in obs_weights:
                         weight = obs_weights[item][k]
-                    cost += weight * (model.out.__dict__[item][i] - obs_scale * observations_item[k])**2/(self.__dict__['error_obs_' + item][k]**2)
-                    forcing = weight * (model.out.__dict__[item][i]- obs_scale * observations_item[k])/(self.__dict__['error_obs_' + item][k]**2)
+                    if item in PertDict:
+                        pert = PertDict[item][k]
+                    cost += weight * (model.out.__dict__[item][i] - obs_scale * observations_item[k] + pert)**2/(self.__dict__['error_obs_' + item][k]**2)
+                    forcing = weight * (model.out.__dict__[item][i]- obs_scale * observations_item[k] + pert)/(self.__dict__['error_obs_' + item][k]**2)
                     self.forcing[i][item] = forcing #so here the model observation mismatch is calculated for use in the next call of the analytical derivative calculation
                     k += 1
         for i in range (model.tsteps):
@@ -168,12 +171,12 @@ class inverse_modelling:
             if too_small_diff == True:
                 if self.write_to_f:
                     open(self.Optimf,'a').write('\n')
-                    open(self.Optimf,'a').write('{0:>25s}'.format('aborted minimisation'))
+                    open(self.Optimf,'a').write('{0:<25s}'.format('aborted minimisation'))
                 self.nr_of_sim_bef_restart = self.sim_nr 
                 raise static_costfError('too slow progress in costf')
         return cost
     
-    def cost_func(self,state_to_opt,inputdata,state_var_names,obs_times,obs_weights={},RetCFParts=False): #Similar to min func, but without file writing and changing forcings etc, so it can be called safely without altering an optimisation
+    def cost_func(self,state_to_opt,inputdata,state_var_names,obs_times,obs_weights={},PertDict={},RetCFParts=False): #Similar to min func, but without file writing and changing forcings etc, so it can be called safely without altering an optimisation
         cost = 0
         obs_sca_cf = {}
         for i in range(len(state_var_names)):
@@ -187,13 +190,13 @@ class inverse_modelling:
         for item in self.obsvarlist: #do not provide obs at a time that is not modelled, this will lead to false results! (make a check for this in the optimisation file!)
             if RetCFParts: #means return cost function parts
                 CostParts[item] = 0
-            if 'EnBalDiffObsHFrac' in state_var_names:
+            if 'FracH' in state_var_names:
                 if item not in ['H','LE']:
                     observations_item = self.__dict__['obs_'+item]
                 elif item == 'H':
-                    observations_item = cp.deepcopy(self.__dict__['obs_H']) + state_to_opt[state_var_names.index('EnBalDiffObsHFrac')] * self.EnBalDiffObs_atHtimes
+                    observations_item = cp.deepcopy(self.__dict__['obs_H']) + state_to_opt[state_var_names.index('FracH')] * self.EnBalDiffObs_atHtimes
                 elif item == 'LE':
-                    observations_item = cp.deepcopy(self.__dict__['obs_LE']) + (1 - state_to_opt[state_var_names.index('EnBalDiffObsHFrac')]) * self.EnBalDiffObs_atLEtimes  
+                    observations_item = cp.deepcopy(self.__dict__['obs_LE']) + (1 - state_to_opt[state_var_names.index('FracH')]) * self.EnBalDiffObs_atLEtimes  
             else:
                 observations_item = self.__dict__['obs_'+item]
             if item in obs_sca_cf:
@@ -201,12 +204,15 @@ class inverse_modelling:
             else:
                 obs_scale = 1.0 
             weight = 1.0 # a weight for the observations in the cost function, modified below if weights are specified. For each variable in the obs, provide either no weights or a weight for every time there is an observation for that variable 
+            pert = 0.0 #a perturbation to H(x) - s*y
             k = 0 #counter for the observations (specific for each type of obs)
             for i in range (model.tsteps):
                 if round(model.out.t[i] * 3600,3) in [round(num, 3) for num in obs_times[item]]: #so if we are at a time where we have an obs
                     if item in obs_weights:
                         weight = obs_weights[item][k]
-                    increment = weight * (model.out.__dict__[item][i]- obs_scale * observations_item[k])**2/(self.__dict__['error_obs_' + item][k]**2)
+                    if item in PertDict:
+                        pert = PertDict[item][k]
+                    increment = weight * (model.out.__dict__[item][i]- obs_scale * observations_item[k] + pert)**2/(self.__dict__['error_obs_' + item][k]**2)
                     cost += increment
                     k += 1
                     if RetCFParts:
@@ -249,7 +255,7 @@ class inverse_modelling:
         else:
             return cost
     
-    def ana_deriv(self,state_to_opt,inputdata,state_var_names,obs_times,obs_weights={}): #some dummy vars as arg list of min_func and deriv_func needs to be the same
+    def ana_deriv(self,state_to_opt,inputdata,state_var_names,obs_times,obs_weights={},PertDict={}): #some dummy vars as arg list of min_func and deriv_func needs to be the same
         model = self.model #just to ease notation later on
         if self.print:
             print('accessing deriv_func')
@@ -262,14 +268,14 @@ class inverse_modelling:
         gradient = np.zeros(len(state_to_opt))
         returnvariables = []
         for item in state_var_names:
-            if not (item.startswith('obs_sca_cf_') or item == 'EnBalDiffObsHFrac'):
+            if not (item.startswith('obs_sca_cf_') or item == 'FracH'):
                 returnvariables.append('ad'+item)
         checkpoint_init = self.checkpoint_init
         self.initialise_adjoint()
         HTy = self.adjoint(self.forcing,self.checkpoint,checkpoint_init,model,returnvariables=returnvariables)
         HTy_counter = 0
         for i in range(len(state_var_names)):
-            if not (state_var_names[i].startswith('obs_sca_cf_') or state_var_names[i] == 'EnBalDiffObsHFrac'):
+            if not (state_var_names[i].startswith('obs_sca_cf_') or state_var_names[i] == 'FracH'):
                 gradient[i] += 2*HTy[HTy_counter] #see second part of 11.77 in chapter inverse modelling Brasseur and Jacob 2017, where adjoint is K^T, and the forcing is SO^-1*(F(x) - y)? 
                 HTy_counter += 1
             #now add the gradients for the obs scaling that is possibly included in the state
@@ -281,9 +287,9 @@ class inverse_modelling:
                         forcinglist.append(dictio[obsname])           
                 gradient[i] += np.sum(np.array(forcinglist) * -2 * self.__dict__['obs_'+obsname][:]) #this is the derivative of the cost function to the obs scale parameter. 
                 #Note that forcing is a part of this derivative (obs part of cost function for one obs = w*(Hx - obs_scale*y)²/sigma_y², derivative to obs_scale = 2w * -y * (Hx - obs_scale*y)/sigma_y² = -2y* forcing, total observation part of cost function is sum of cost functions for individual obs)
-            elif state_var_names[i] == 'EnBalDiffObsHFrac':
-                deriv_H_obs_to_EnBalDiffObsHFrac = []
-                deriv_LE_obs_to_EnBalDiffObsHFrac = []
+            elif state_var_names[i] == 'FracH':
+                deriv_H_obs_to_FracH = []
+                deriv_LE_obs_to_FracH = []
                 forcinglist_H = []
                 forcinglist_LE = []
                 ti = 0
@@ -291,15 +297,15 @@ class inverse_modelling:
                 for dictio in self.forcing: #one dictionary for every timestep
                     if 'H' in dictio: #               
                         forcinglist_H.append(dictio['H'])
-                        deriv_H_obs_to_EnBalDiffObsHFrac.append(self.EnBalDiffObs_atHtimes[ti]) #only add to deriv_to_H_obs_EnBalDiffObsHFrac if an obs of H is used at that timestep 
+                        deriv_H_obs_to_FracH.append(self.EnBalDiffObs_atHtimes[ti]) #only add to deriv_to_H_obs_FracH if an obs of H is used at that timestep 
                         ti += 1 #EnBalDiffObs_atHtimes should be available at (and only at) the times of H. It is also allowed to use only H or LE instead of both
                     if 'LE' in dictio:
                         forcinglist_LE.append(dictio['LE'])
-                        deriv_LE_obs_to_EnBalDiffObsHFrac.append(-1 * self.EnBalDiffObs_atLEtimes[ti2])
+                        deriv_LE_obs_to_FracH.append(-1 * self.EnBalDiffObs_atLEtimes[ti2])
                         ti2 += 1
-                gradient[i] += np.sum(np.array(forcinglist_H) * -2 * np.array(deriv_H_obs_to_EnBalDiffObsHFrac)) #derivative to EnBalDiffObsHFrac (via observations_item, called y here) is 
-                #2w * (Hx - obs_scale*y)/sigma_y² * -obs_scale * d_y/d_EnBalDiffObsHFrac = -2*obsscale* forcing * d_y/d_EnBalDiffObsHFrac. obsscale always 1 for H and LE obs if EnBalDiffObsHFrac in state
-                gradient[i] += np.sum(np.array(forcinglist_LE) * -2 * np.array(deriv_LE_obs_to_EnBalDiffObsHFrac))
+                gradient[i] += np.sum(np.array(forcinglist_H) * -2 * np.array(deriv_H_obs_to_FracH)) #derivative to FracH (via observations_item, called y here) is 
+                #2w * (Hx - obs_scale*y)/sigma_y² * -obs_scale * d_y/d_FracH = -2*obsscale* forcing * d_y/d_FracH. obsscale always 1 for H and LE obs if FracH in state
+                gradient[i] += np.sum(np.array(forcinglist_LE) * -2 * np.array(deriv_LE_obs_to_FracH))
             if self.paramboundspenalty: #note that the code under this if statement will not perform any action if tnc method is used, since in case of tnc with parameter bounds, the state variables are always within the specified bounds. 
                 if state_var_names[i] in self.boundedvars:
                     if state_to_opt[i] < self.boundedvars[state_var_names[i]][0]: #lower than lower bound
@@ -327,7 +333,7 @@ class inverse_modelling:
             print('end deriv_func')
         return np.array(gradient) #!!!!must return an array!!
     
-    def num_deriv(self,state_to_opt,inputdata,state_var_names,obs_times,obs_weights={}): #some dummy vars as arg list of min_func and deriv_func needs to be the same
+    def num_deriv(self,state_to_opt,inputdata,state_var_names,obs_times,obs_weights={},PertDict={}): #some dummy vars as arg list of min_func and deriv_func needs to be the same
         if self.print:
             print('accessing num_deriv')
         if self.write_to_f:
@@ -349,20 +355,20 @@ class inverse_modelling:
             if state_var_names[i].startswith('obs_sca_cf_'):
                 item = state_var_names[i].split("obs_sca_cf_",1)[1] #split so we get the part after obs_sca_cf_
                 obs_sca_cf[item] = state_to_opt[i] + delta 
-            if state_var_names[i] == 'EnBalDiffObsHFrac': #no elif here
-                EnBalDiffObsHFrac = state_to_opt[i] + delta
-            elif 'EnBalDiffObsHFrac' in state_var_names:
-                EnBalDiffObsHFrac = state_to_opt[state_var_names.index('EnBalDiffObsHFrac')]
+            if state_var_names[i] == 'FracH': #no elif here
+                FracH = state_to_opt[i] + delta
+            elif 'FracH' in state_var_names:
+                FracH = state_to_opt[state_var_names.index('FracH')]
             model = fwdm.model(inputdata)
             model.run(checkpoint=False,updatevals_surf_lay=True,delete_at_end=False)
             for item in self.obsvarlist:
-                if 'EnBalDiffObsHFrac' in state_var_names:
+                if 'FracH' in state_var_names:
                     if item not in ['H','LE']:
                         observations_item = self.__dict__['obs_'+item]
                     elif item == 'H':
-                        observations_item = cp.deepcopy(self.__dict__['obs_H']) + EnBalDiffObsHFrac * self.EnBalDiffObs_atHtimes
+                        observations_item = cp.deepcopy(self.__dict__['obs_H']) + FracH * self.EnBalDiffObs_atHtimes
                     elif item == 'LE':
-                        observations_item = cp.deepcopy(self.__dict__['obs_LE']) + (1 - EnBalDiffObsHFrac) * self.EnBalDiffObs_atLEtimes  
+                        observations_item = cp.deepcopy(self.__dict__['obs_LE']) + (1 - FracH) * self.EnBalDiffObs_atLEtimes  
                 else:
                     observations_item = self.__dict__['obs_'+item]
                 if item in obs_sca_cf:
@@ -370,29 +376,32 @@ class inverse_modelling:
                 else:
                     obs_scale = 1.0 
                 weight = 1.0 # a weight for the observations in the cost function, modified below if weights are specified. For each variable in the obs, provide either no weights or a weight for every time there is an observation for that variable 
+                pert = 0.0 #a perturbation to H(x) - s*y
                 r = 0 #counter for the observations (specific for each type of obs)
                 for j in range (model.tsteps):
                     if round(model.out.t[j] * 3600,3) in [round(num, 3) for num in obs_times[item]]: #so if we are at a time where we have an obs
                         if item in obs_weights:
                             weight = obs_weights[item][r]
-                        cost_forw += weight * (model.out.__dict__[item][j]- obs_scale * observations_item[r])**2/(self.__dict__['error_obs_' + item][r]**2)
+                        if item in PertDict:
+                            pert = PertDict[item][r]
+                        cost_forw += weight * (model.out.__dict__[item][j]- obs_scale * observations_item[r] + pert)**2/(self.__dict__['error_obs_' + item][r]**2)
                         r += 1
             inputdata.__dict__[state_var_names[i]] = state_to_opt[i] - delta
             if state_var_names[i].startswith('obs_sca_cf_'):
                 item = state_var_names[i].split("obs_sca_cf_",1)[1] #split so we get the part after obs_sca_cf_
                 obs_sca_cf[item] = state_to_opt[i] - delta
-            elif state_var_names[i] == 'EnBalDiffObsHFrac': 
-                EnBalDiffObsHFrac = state_to_opt[i] - delta
+            elif state_var_names[i] == 'FracH': 
+                FracH = state_to_opt[i] - delta
             model = fwdm.model(inputdata)
             model.run(checkpoint=False,updatevals_surf_lay=True,delete_at_end=False)
             for item in self.obsvarlist:
-                if 'EnBalDiffObsHFrac' in state_var_names:
+                if 'FracH' in state_var_names:
                     if item not in ['H','LE']:
                         observations_item = self.__dict__['obs_'+item]
                     elif item == 'H':
-                        observations_item = cp.deepcopy(self.__dict__['obs_H']) + EnBalDiffObsHFrac * self.EnBalDiffObs_atHtimes
+                        observations_item = cp.deepcopy(self.__dict__['obs_H']) + FracH * self.EnBalDiffObs_atHtimes
                     elif item == 'LE':
-                        observations_item = cp.deepcopy(self.__dict__['obs_LE']) + (1 - EnBalDiffObsHFrac) * self.EnBalDiffObs_atLEtimes  
+                        observations_item = cp.deepcopy(self.__dict__['obs_LE']) + (1 - FracH) * self.EnBalDiffObs_atLEtimes  
                 else:
                     observations_item = self.__dict__['obs_'+item]
                 if item in obs_sca_cf:
@@ -400,12 +409,15 @@ class inverse_modelling:
                 else:
                     obs_scale = 1.0 
                 weight = 1.0 # a weight for the observations in the cost function, modified below if weights are specified. For each variable in the obs, provide either no weights or a weight for every time there is an observation for that variable 
+                pert = 0.0 #a perturbation to H(x) - s*y
                 r = 0 #counter for the observations (specific for each type of obs)
                 for k in range (model.tsteps):
                     if round(model.out.t[k] * 3600,3) in [round(num, 3) for num in obs_times[item]]: #so if we are at a time where we have an obs
                         if item in obs_weights:
                             weight = obs_weights[item][r]
-                        cost_backw += weight * (model.out.__dict__[item][k]- obs_scale * observations_item[r])**2/(self.__dict__['error_obs_' + item][r]**2)
+                        if item in PertDict:
+                            pert = PertDict[item][r]
+                        cost_backw += weight * (model.out.__dict__[item][k]- obs_scale * observations_item[r] + pert)**2/(self.__dict__['error_obs_' + item][r]**2)
                         r += 1
             if state_var_names[i].startswith('obs_sca_cf_'):
                 item = state_var_names[i].split("obs_sca_cf_",1)[1] #split so we get the part after obs_sca_cf_
@@ -505,7 +517,7 @@ class inverse_modelling:
         #ribtol
         self.dzsl, self.dRib = 0,0
         #ags
-        self.dalfa_sto,self.dthetasurf,self.dTs,self.devap,self.dCO2,self.dwg,self.dw2,self.dSwin,self.dra,self.dTsoil,self.dcveg,self.de,self.dwwilt,self.dwfc,self.dCOSsurf = 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+        self.dsca_sto,self.dthetasurf,self.dTs,self.devap,self.dCO2,self.dwg,self.dw2,self.dSwin,self.dra,self.dTsoil,self.dcveg,self.de,self.dwwilt,self.dwfc,self.dCOSsurf = 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
         self.dCO2surf,self.dgciCOS,self.dE0,self.dR10,self.dPARfract = 0,0,0,0,0 #
         #run mixed layer
         self.ddeltatheta,self.ddeltathetav,self.ddeltaq,self.ddeltaCO2,self.ddeltaCOS,self.dM,self.dadvtheta,self.dwqM,self.dadvq = 0,0,0,0,0,0,0,0,0
@@ -1530,7 +1542,7 @@ class inverse_modelling:
         COS  = checkpoint['ags_COS']
         cveg = checkpoint['ags_cveg']
         LAI  = checkpoint['ags_LAI']
-        alfa_sto  = checkpoint['ags_alfa_sto']
+        sca_sto  = checkpoint['ags_sca_sto']
         thetasurf, Ts, CO2, wg, Swin, ra, Tsoil = checkpoint['ags_thetasurf'],checkpoint['ags_Ts'],checkpoint['ags_CO2'],checkpoint['ags_wg'],checkpoint['ags_Swin'],checkpoint['ags_ra'],checkpoint['ags_Tsoil']
         texp, fw, Ds, D0, Dstar, co2abs, CO2comp, rsCO2, ci, PAR, alphac, cfrac = checkpoint['ags_texp_end'],checkpoint['ags_fw_end'],checkpoint['ags_Ds_end'],checkpoint['ags_D0_end'],checkpoint['ags_Dstar_end'],checkpoint['ags_co2abs_end'],checkpoint['ags_CO2comp_end'],checkpoint['ags_rsCO2_end'],checkpoint['ags_ci_end'],checkpoint['ags_PAR_end'],checkpoint['ags_alphac_end'],checkpoint['ags_cfrac_end']
         gm, gm1,gm2,gm3,sqrtf,sqterm,fmin0 = checkpoint['ags_gm_end'],checkpoint['ags_gm1_end'],checkpoint['ags_gm2_end'],checkpoint['ags_gm3_end'],checkpoint['ags_sqrtf_end'],checkpoint['ags_sqterm_end'],checkpoint['ags_fmin0_end']
@@ -1742,19 +1754,19 @@ class inverse_modelling:
         dpart1_dwwilt  = a1 * dfstr_dwwilt * An_temporary / div2
         dpart1_dLAI  = a1 * fstr * dAn_temporary_dLAI / div2
         
-        dgcco2_dthetasurf       = alfa_sto * LAI * dpart1_dthetasurf
-        dgcco2_dTs   = alfa_sto * LAI * dpart1_dTs
-        dgcco2_de    = alfa_sto * LAI * dpart1_de
-        dgcco2_dCO2  = alfa_sto * LAI * dpart1_dCO2
-        dgcco2_dPARfract = alfa_sto * LAI * dpart1_dPARfract
-        dgcco2_dSwin = alfa_sto * LAI * dpart1_dSwin
-        dgcco2_dcveg = alfa_sto * LAI * dpart1_dcveg
-        dgcco2_dw2   = alfa_sto * LAI * dpart1_dw2
-        dgcco2_dwfc   = alfa_sto * LAI * dpart1_dwfc
-        dgcco2_dwwilt   = alfa_sto * LAI * dpart1_dwwilt
-        dgcco2_dalfa_sto = LAI * (model.gmin[c] / model.nuco2q + part1) * self.dalfa_sto
-        dgcco2_dLAI = alfa_sto * (model.gmin[c] / model.nuco2q + part1) * self.dLAI + alfa_sto * LAI * dpart1_dLAI
-        dgcco2 = dgcco2_dthetasurf + dgcco2_dTs + dgcco2_de + dgcco2_dCO2 + dgcco2_dPARfract + dgcco2_dSwin + dgcco2_dcveg + dgcco2_dw2 + dgcco2_dwfc + dgcco2_dwwilt + dgcco2_dalfa_sto + dgcco2_dLAI
+        dgcco2_dthetasurf       = sca_sto * LAI * dpart1_dthetasurf
+        dgcco2_dTs   = sca_sto * LAI * dpart1_dTs
+        dgcco2_de    = sca_sto * LAI * dpart1_de
+        dgcco2_dCO2  = sca_sto * LAI * dpart1_dCO2
+        dgcco2_dPARfract = sca_sto * LAI * dpart1_dPARfract
+        dgcco2_dSwin = sca_sto * LAI * dpart1_dSwin
+        dgcco2_dcveg = sca_sto * LAI * dpart1_dcveg
+        dgcco2_dw2   = sca_sto * LAI * dpart1_dw2
+        dgcco2_dwfc   = sca_sto * LAI * dpart1_dwfc
+        dgcco2_dwwilt   = sca_sto * LAI * dpart1_dwwilt
+        dgcco2_dsca_sto = LAI * (model.gmin[c] / model.nuco2q + part1) * self.dsca_sto
+        dgcco2_dLAI = sca_sto * (model.gmin[c] / model.nuco2q + part1) * self.dLAI + sca_sto * LAI * dpart1_dLAI
+        dgcco2 = dgcco2_dthetasurf + dgcco2_dTs + dgcco2_de + dgcco2_dCO2 + dgcco2_dPARfract + dgcco2_dSwin + dgcco2_dcveg + dgcco2_dw2 + dgcco2_dwfc + dgcco2_dwwilt + dgcco2_dsca_sto + dgcco2_dLAI
         
         dgctCOS_dthetasurf = - (1/gciCOS + 1.21/gcco2)**(-2) * 1.21 * -1 * gcco2**(-2)*dgcco2_dthetasurf
         dgctCOS_dTs = - (1/gciCOS + 1.21/gcco2)**(-2) * 1.21 * -1 * gcco2**(-2)*dgcco2_dTs
@@ -1766,13 +1778,13 @@ class inverse_modelling:
         dgctCOS_dw2 = - (1/gciCOS + 1.21/gcco2)**(-2) * 1.21 * -1 * gcco2**(-2)*dgcco2_dw2
         dgctCOS_dwfc = - (1/gciCOS + 1.21/gcco2)**(-2) * 1.21 * -1 * gcco2**(-2)*dgcco2_dwfc
         dgctCOS_dwwilt = - (1/gciCOS + 1.21/gcco2)**(-2) * 1.21 * -1 * gcco2**(-2)*dgcco2_dwwilt
-        dgctCOS_dalfa_sto = - (1/gciCOS + 1.21/gcco2)**(-2) * 1.21 * -1 * gcco2**(-2)*dgcco2_dalfa_sto
+        dgctCOS_dsca_sto = - (1/gciCOS + 1.21/gcco2)**(-2) * 1.21 * -1 * gcco2**(-2)*dgcco2_dsca_sto
         dgctCOS_dLAI = - (1/gciCOS + 1.21/gcco2)**(-2) * 1.21 * -1 * gcco2**(-2)*dgcco2_dLAI
         dgctCOS_dgciCOS = -1 * (1 / gciCOS + 1.21/gcco2)**-2 * -1 * gciCOS**-2 * self.dgciCOS
-        dgctCOS = dgctCOS_dthetasurf + dgctCOS_dTs + dgctCOS_de + dgctCOS_dCO2 + dgctCOS_dPARfract + dgctCOS_dSwin + dgctCOS_dcveg + dgctCOS_dw2 + dgctCOS_dwfc + dgctCOS_dwwilt + dgctCOS_dalfa_sto + dgctCOS_dLAI + dgctCOS_dgciCOS
+        dgctCOS = dgctCOS_dthetasurf + dgctCOS_dTs + dgctCOS_de + dgctCOS_dCO2 + dgctCOS_dPARfract + dgctCOS_dSwin + dgctCOS_dcveg + dgctCOS_dw2 + dgctCOS_dwfc + dgctCOS_dwwilt + dgctCOS_dsca_sto + dgctCOS_dLAI + dgctCOS_dgciCOS
         # calculate surface resistance for moisture and carbon dioxide
         
-        drs     = - ( dgcco2_dthetasurf + dgcco2_dTs + dgcco2_de + dgcco2_dCO2 + dgcco2_dPARfract + dgcco2_dSwin + dgcco2_dcveg + dgcco2_dw2 + dgcco2_dwfc + dgcco2_dwwilt + dgcco2_dalfa_sto + dgcco2_dLAI) / (1.6 * gcco2**2)
+        drs     = - ( dgcco2_dthetasurf + dgcco2_dTs + dgcco2_de + dgcco2_dCO2 + dgcco2_dPARfract + dgcco2_dSwin + dgcco2_dcveg + dgcco2_dw2 + dgcco2_dwfc + dgcco2_dwwilt + dgcco2_dsca_sto + dgcco2_dLAI) / (1.6 * gcco2**2)
         rsCO2   = 1. / gcco2
         drsCO2_dthetasurf       = - dgcco2_dthetasurf       / (gcco2**2)
         drsCO2_dTs   = - dgcco2_dTs   / (gcco2**2)
@@ -1784,7 +1796,7 @@ class inverse_modelling:
         drsCO2_dw2   = - dgcco2_dw2   / (gcco2**2)
         drsCO2_dwfc   = - dgcco2_dwfc   / (gcco2**2)
         drsCO2_dwwilt   = - dgcco2_dwwilt   / (gcco2**2)
-        drsCO2_dalfa_sto   = - dgcco2_dalfa_sto   / (gcco2**2)
+        drsCO2_dsca_sto   = - dgcco2_dsca_sto   / (gcco2**2)
         drsCO2_dLAI   = - dgcco2_dLAI   / (gcco2**2)
         
         An           = -(co2abs - ci) / (ra + rsCO2)
@@ -1799,7 +1811,7 @@ class inverse_modelling:
         dAn_dw2      = drsCO2_dw2   * (co2abs-ci)/((ra + rsCO2)**2)
         dAn_dwfc      = drsCO2_dwfc   * (co2abs-ci)/((ra + rsCO2)**2)
         dAn_dwwilt      = drsCO2_dwwilt   * (co2abs-ci)/((ra + rsCO2)**2)
-        dAn_dalfa_sto = -(co2abs - ci) * -1 * (ra + rsCO2)**(-2) * drsCO2_dalfa_sto
+        dAn_dsca_sto = -(co2abs - ci) * -1 * (ra + rsCO2)**(-2) * drsCO2_dsca_sto
         dAn_dLAI      = drsCO2_dLAI   * (co2abs-ci)/((ra + rsCO2)**2)
         dfw_dwg      = -self.dwg* model.Cw * model.wmax / ((wg + model.wmin)**2)
         #texp = E0 / (283.15 * 8.314) * (1. - 283.15 / Tsoil) = E0 / (283.15 * 8.314) \
@@ -1811,7 +1823,7 @@ class inverse_modelling:
         dResp_dTsoil = dtexp_dTsoil*R10 * (1. - fw) * np.exp(texp)
         dResp_dwg    = -dfw_dwg*R10* np.exp(texp)
         dResp_dR10    = (1. - fw) * np.exp(texp) * self.dR10
-        dwCO2A  = (dAn_dthetasurf + dAn_dTs + dAn_de + dAn_dCO2 + dAn_dra + dAn_dPARfract + dAn_dSwin + dAn_dcveg + dAn_dw2 + dAn_dwfc + dAn_dwwilt + dAn_dalfa_sto + dAn_dLAI)  * (model.mair / (model.rho * model.mco2))
+        dwCO2A  = (dAn_dthetasurf + dAn_dTs + dAn_de + dAn_dCO2 + dAn_dra + dAn_dPARfract + dAn_dSwin + dAn_dcveg + dAn_dw2 + dAn_dwfc + dAn_dwwilt + dAn_dsca_sto + dAn_dLAI)  * (model.mair / (model.rho * model.mco2))
         dwCO2R  = (dResp_dE0 + dResp_dTsoil + dResp_dwg + dResp_dR10)  * (model.mair / (model.rho * model.mco2))
         dwCO2   = dwCO2A + dwCO2R
         #self.hx = drs
@@ -2823,7 +2835,7 @@ class inverse_modelling:
         
         #ags
         self.adwCO2, self.adwCO2A,  self.adwCO2R, self.adrs = 0,0,0,0
-        self.adalfa_sto = 0
+        self.adsca_sto = 0
         self.adwCOS  = 0
         self.adwCOSP = 0
         self.adwCOSS = 0
@@ -2845,7 +2857,7 @@ class inverse_modelling:
         self.adgctCOS_dCO2 = 0
         self.adgctCOS_dSwin = 0
         self.adgctCOS_dw2 = 0
-        self.adgctCOS_dalfa_sto = 0
+        self.adgctCOS_dsca_sto = 0
         self.adgctCOS_de = 0
         self.adgctCOS_dcveg = 0
         self.adgctCOS_dwfc = 0
@@ -2859,10 +2871,10 @@ class inverse_modelling:
         self.adAn_dra = 0
         self.adAn_dSwin = 0
         self.adAn_dw2 = 0
-        self.adAn_dalfa_sto = 0
+        self.adAn_dsca_sto = 0
         self.adfw_dwg = 0
         self.adtexp_dTsoil = 0
-        self.adrsCO2_dalfa_sto = 0
+        self.adrsCO2_dsca_sto = 0
         self.adrsCO2_dw2 = 0
         self.adrsCO2_dSwin = 0
         self.adrsCO2_dCO2 = 0
@@ -2873,7 +2885,7 @@ class inverse_modelling:
         self.adci_dTs = 0
         self.adrsCO2_dthetasurf = 0
         self.adci_dthetasurf = 0
-        self.adgcco2_dalfa_sto = 0
+        self.adgcco2_dsca_sto = 0
         self.adgcco2_dw2 = 0
         self.adgcco2_dSwin = 0
         self.adgcco2_dCO2 = 0
@@ -5389,7 +5401,7 @@ class inverse_modelling:
 
         #adwCO2, adwCO2A,  adwCO2R, adrs, adAg = self.y
         thetasurf, Ts, CO2, wg, Swin, ra, Tsoil = checkpoint['ags_thetasurf'],checkpoint['ags_Ts'],checkpoint['ags_CO2'],checkpoint['ags_wg'],checkpoint['ags_Swin'],checkpoint['ags_ra'],checkpoint['ags_Tsoil']      
-        COS,LAI,alfa_sto = checkpoint['ags_COS'],checkpoint['ags_LAI'],checkpoint['ags_alfa_sto']
+        COS,LAI,sca_sto = checkpoint['ags_COS'],checkpoint['ags_LAI'],checkpoint['ags_sca_sto']
         
         texp, fw, Ds, D0, Dstar, co2abs, CO2comp, rsCO2, ci, PAR, alphac, cfrac = checkpoint['ags_texp_end'],checkpoint['ags_fw_end'],checkpoint['ags_Ds_end'],checkpoint['ags_D0_end'],checkpoint['ags_Dstar_end'],checkpoint['ags_co2abs_end'],checkpoint['ags_CO2comp_end'],checkpoint['ags_rsCO2_end'],checkpoint['ags_ci_end'],checkpoint['ags_PAR_end'],checkpoint['ags_alphac_end'],checkpoint['ags_cfrac_end']
         gm, gm1,gm2,gm3,sqrtf,sqterm,fmin0 = checkpoint['ags_gm_end'],checkpoint['ags_gm1_end'],checkpoint['ags_gm2_end'],checkpoint['ags_gm3_end'],checkpoint['ags_sqrtf_end'],checkpoint['ags_sqterm_end'],checkpoint['ags_fmin0_end']
@@ -5451,7 +5463,7 @@ class inverse_modelling:
         self.adResp_dwg     += self.adwCO2R * (model.mair / (model.rho * model.mco2))
         self.adResp_dR10    += self.adwCO2R * (model.mair / (model.rho * model.mco2))
         self.adwCO2R    = 0.0
-        #statement dwCO2A  = (dAn_dthetasurf + dAn_dTs + dAn_de + dAn_dCO2 + dAn_dra + dAn_dPARfract + dAn_dSwin + dAn_dcveg + dAn_dw2 + dAn_dwfc + dAn_dwwilt + dAn_dalfa_sto + dAn_dLAI)  * (model.mair / (model.rho * model.mco2))
+        #statement dwCO2A  = (dAn_dthetasurf + dAn_dTs + dAn_de + dAn_dCO2 + dAn_dra + dAn_dPARfract + dAn_dSwin + dAn_dcveg + dAn_dw2 + dAn_dwfc + dAn_dwwilt + dAn_dsca_sto + dAn_dLAI)  * (model.mair / (model.rho * model.mco2))
         self.adAn_dthetasurf += (model.mair / (model.rho * model.mco2)) * self.adwCO2A 
         self.adAn_dTs += (model.mair / (model.rho * model.mco2)) * self.adwCO2A 
         self.adAn_de += (model.mair / (model.rho * model.mco2)) * self.adwCO2A 
@@ -5463,7 +5475,7 @@ class inverse_modelling:
         self.adAn_dw2 += (model.mair / (model.rho * model.mco2)) * self.adwCO2A
         self.adAn_dwfc += (model.mair / (model.rho * model.mco2)) * self.adwCO2A
         self.adAn_dwwilt += (model.mair / (model.rho * model.mco2)) * self.adwCO2A
-        self.adAn_dalfa_sto += (model.mair / (model.rho * model.mco2)) * self.adwCO2A 
+        self.adAn_dsca_sto += (model.mair / (model.rho * model.mco2)) * self.adwCO2A 
         self.adAn_dLAI += (model.mair / (model.rho * model.mco2)) * self.adwCO2A
         self.adwCO2A    = 0.0
         #statement dResp_dR10    = (1. - fw) * np.exp(texp) * self.dR10
@@ -5490,9 +5502,9 @@ class inverse_modelling:
         #statement dAn_dLAI      = drsCO2_dLAI   * (co2abs-ci)/((ra + rsCO2)**2)
         self.adrsCO2_dLAI += (co2abs-ci)/((ra + rsCO2)**2) * self.adAn_dLAI
         self.adAn_dLAI = 0
-        #statement dAn_dalfa_sto = -(co2abs - ci) * -1 * (ra + rsCO2)**(-2) * drsCO2_dalfa_sto
-        self.adrsCO2_dalfa_sto += -(co2abs - ci) * -1 * (ra + rsCO2)**(-2) * self.adAn_dalfa_sto 
-        self.adAn_dalfa_sto = 0
+        #statement dAn_dsca_sto = -(co2abs - ci) * -1 * (ra + rsCO2)**(-2) * drsCO2_dsca_sto
+        self.adrsCO2_dsca_sto += -(co2abs - ci) * -1 * (ra + rsCO2)**(-2) * self.adAn_dsca_sto 
+        self.adAn_dsca_sto = 0
         #statement dAn_dwwilt      = drsCO2_dwwilt   * (co2abs-ci)/((ra + rsCO2)**2)
         self.adrsCO2_dwwilt += (co2abs-ci)/((ra + rsCO2)**2) * self.adAn_dwwilt
         self.adAn_dwwilt = 0
@@ -5534,9 +5546,9 @@ class inverse_modelling:
         #statement drsCO2_dLAI   = - dgcco2_dLAI   / (gcco2**2)
         self.adgcco2_dLAI += - 1 / (gcco2**2) * self.adrsCO2_dLAI 
         self.adrsCO2_dLAI = 0
-        #statement drsCO2_dalfa_sto   = - dgcco2_dalfa_sto   / (gcco2**2)
-        self.adgcco2_dalfa_sto += - 1 / (gcco2**2) * self.adrsCO2_dalfa_sto 
-        self.adrsCO2_dalfa_sto = 0
+        #statement drsCO2_dsca_sto   = - dgcco2_dsca_sto   / (gcco2**2)
+        self.adgcco2_dsca_sto += - 1 / (gcco2**2) * self.adrsCO2_dsca_sto 
+        self.adrsCO2_dsca_sto = 0
         #statement drsCO2_dwwilt   = - dgcco2_dwwilt   / (gcco2**2)
         self.adgcco2_dwwilt += - 1  / (gcco2**2) * self.adrsCO2_dwwilt 
         self.adrsCO2_dwwilt = 0
@@ -5567,7 +5579,7 @@ class inverse_modelling:
         #statement drsCO2_dthetasurf       = - dgcco2_dthetasurf       / (gcco2**2)
         self.adgcco2_dthetasurf += - 1 / (gcco2**2) * self.adrsCO2_dthetasurf 
         self.adrsCO2_dthetasurf = 0
-        #statement drs     = - ( dgcco2_dthetasurf + dgcco2_dTs + dgcco2_de + dgcco2_dCO2 + dgcco2_dPARfract + dgcco2_dSwin + dgcco2_dcveg + dgcco2_dw2 + dgcco2_dwfc + dgcco2_dwwilt + dgcco2_dalfa_sto + dgcco2_dLAI) / (1.6 * gcco2**2)
+        #statement drs     = - ( dgcco2_dthetasurf + dgcco2_dTs + dgcco2_de + dgcco2_dCO2 + dgcco2_dPARfract + dgcco2_dSwin + dgcco2_dcveg + dgcco2_dw2 + dgcco2_dwfc + dgcco2_dwwilt + dgcco2_dsca_sto + dgcco2_dLAI) / (1.6 * gcco2**2)
         self.adgcco2_dthetasurf += - 1 / (1.6 * gcco2**2) * self.adrs 
         self.adgcco2_dTs += - 1 / (1.6 * gcco2**2) * self.adrs
         self.adgcco2_de += - 1 / (1.6 * gcco2**2) * self.adrs
@@ -5578,10 +5590,10 @@ class inverse_modelling:
         self.adgcco2_dw2 += - 1 / (1.6 * gcco2**2) * self.adrs 
         self.adgcco2_dwfc += - 1 / (1.6 * gcco2**2) * self.adrs
         self.adgcco2_dwwilt += - 1 / (1.6 * gcco2**2) * self.adrs
-        self.adgcco2_dalfa_sto += - 1 / (1.6 * gcco2**2) * self.adrs
+        self.adgcco2_dsca_sto += - 1 / (1.6 * gcco2**2) * self.adrs
         self.adgcco2_dLAI += - 1 / (1.6 * gcco2**2) * self.adrs
         self.adrs = 0
-        #statement dgctCOS = dgctCOS_dthetasurf + dgctCOS_dTs + dgctCOS_de + dgctCOS_dCO2 + dgctCOS_dPARfract + dgctCOS_dSwin + dgctCOS_dcveg + dgctCOS_dw2 + dgctCOS_dwfc + dgctCOS_dwwilt + dgctCOS_dalfa_sto + dgctCOS_dLAI + dgctCOS_dgciCOS
+        #statement dgctCOS = dgctCOS_dthetasurf + dgctCOS_dTs + dgctCOS_de + dgctCOS_dCO2 + dgctCOS_dPARfract + dgctCOS_dSwin + dgctCOS_dcveg + dgctCOS_dw2 + dgctCOS_dwfc + dgctCOS_dwwilt + dgctCOS_dsca_sto + dgctCOS_dLAI + dgctCOS_dgciCOS
         self.adgctCOS_dthetasurf += self.adgctCOS
         self.adgctCOS_dTs += self.adgctCOS
         self.adgctCOS_de += self.adgctCOS
@@ -5592,7 +5604,7 @@ class inverse_modelling:
         self.adgctCOS_dw2 += self.adgctCOS
         self.adgctCOS_dwfc += self.adgctCOS
         self.adgctCOS_dwwilt += self.adgctCOS
-        self.adgctCOS_dalfa_sto += self.adgctCOS
+        self.adgctCOS_dsca_sto += self.adgctCOS
         self.adgctCOS_dLAI += self.adgctCOS
         self.adgctCOS_dgciCOS += self.adgctCOS
         self.adgctCOS = 0
@@ -5602,9 +5614,9 @@ class inverse_modelling:
         #statement dgctCOS_dLAI = - (1/gciCOS + 1.21/gcco2)**(-2) * 1.21 * -1 * gcco2**(-2)*dgcco2_dLAI
         self.adgcco2_dLAI += - (1/gciCOS + 1.21/gcco2)**(-2) * 1.21 * -1 * gcco2**(-2)*self.adgctCOS_dLAI
         self.adgctCOS_dLAI = 0
-        #statement dgctCOS_dalfa_sto = - (1/gciCOS + 1.21/gcco2)**(-2) * 1.21 * -1 * gcco2**(-2)*dgcco2_dalfa_sto
-        self.adgcco2_dalfa_sto += - (1/gciCOS + 1.21/gcco2)**(-2) * 1.21 * -1 * gcco2**(-2)*self.adgctCOS_dalfa_sto
-        self.adgctCOS_dalfa_sto = 0
+        #statement dgctCOS_dsca_sto = - (1/gciCOS + 1.21/gcco2)**(-2) * 1.21 * -1 * gcco2**(-2)*dgcco2_dsca_sto
+        self.adgcco2_dsca_sto += - (1/gciCOS + 1.21/gcco2)**(-2) * 1.21 * -1 * gcco2**(-2)*self.adgctCOS_dsca_sto
+        self.adgctCOS_dsca_sto = 0
         #statement dgctCOS_dwwilt = - (1/gciCOS + 1.21/gcco2)**(-2) * 1.21 * -1 * gcco2**(-2)*dgcco2_dwwilt
         self.adgcco2_dwwilt += - (1/gciCOS + 1.21/gcco2)**(-2) * 1.21 * -1 * gcco2**(-2) * self.adgctCOS_dwwilt
         self.adgctCOS_dwwilt = 0
@@ -5635,7 +5647,7 @@ class inverse_modelling:
         #statement dgctCOS_dthetasurf = - (1/gciCOS + 1.21/gcco2)**(-2) * 1.21 * -1 * gcco2**(-2)*dgcco2_dthetasurf
         self.adgcco2_dthetasurf += - (1/gciCOS + 1.21/gcco2)**(-2) * 1.21 * -1 * gcco2**(-2)*self.adgctCOS_dthetasurf
         self.adgctCOS_dthetasurf = 0
-        # statement dgcco2 = dgcco2_dthetasurf + dgcco2_dTs + dgcco2_de + dgcco2_dCO2 + dgcco2_dPARfract + dgcco2_dSwin + dgcco2_dcveg + dgcco2_dw2 + dgcco2_dwfc + dgcco2_dwwilt + dgcco2_dalfa_sto + dgcco2_dLAI
+        # statement dgcco2 = dgcco2_dthetasurf + dgcco2_dTs + dgcco2_de + dgcco2_dCO2 + dgcco2_dPARfract + dgcco2_dSwin + dgcco2_dcveg + dgcco2_dw2 + dgcco2_dwfc + dgcco2_dwwilt + dgcco2_dsca_sto + dgcco2_dLAI
         self.adgcco2_dthetasurf += self.adgcco2
         self.adgcco2_dTs += self.adgcco2
         self.adgcco2_de += self.adgcco2
@@ -5646,45 +5658,45 @@ class inverse_modelling:
         self.adgcco2_dw2 += self.adgcco2
         self.adgcco2_dwfc += self.adgcco2
         self.adgcco2_dwwilt += self.adgcco2
-        self.adgcco2_dalfa_sto += self.adgcco2
+        self.adgcco2_dsca_sto += self.adgcco2
         self.adgcco2_dLAI += self.adgcco2
         self.adgcco2 = 0
-        #statement dgcco2_dLAI = alfa_sto * (model.gmin[c] / model.nuco2q + part1) * self.dLAI + alfa_sto * LAI * dpart1_dLAI
-        self.adLAI += alfa_sto * (model.gmin[c] / model.nuco2q + part1) * self.adgcco2_dLAI
-        self.adpart1_dLAI += alfa_sto * LAI * self.adgcco2_dLAI
+        #statement dgcco2_dLAI = sca_sto * (model.gmin[c] / model.nuco2q + part1) * self.dLAI + sca_sto * LAI * dpart1_dLAI
+        self.adLAI += sca_sto * (model.gmin[c] / model.nuco2q + part1) * self.adgcco2_dLAI
+        self.adpart1_dLAI += sca_sto * LAI * self.adgcco2_dLAI
         self.adgcco2_dLAI = 0
-        #statement dgcco2_dalfa_sto = dgcco2_dalfa_sto = LAI * (model.gmin[c] / model.nuco2q + part1) * self.dalfa_sto
-        self.adalfa_sto += LAI * (model.gmin[c] / model.nuco2q + part1) * self.adgcco2_dalfa_sto
-        self.adgcco2_dalfa_sto = 0
-        #statement dgcco2_dwwilt   = alfa_sto * LAI * dpart1_dwwilt
-        self.adpart1_dwwilt += alfa_sto * LAI * self.adgcco2_dwwilt 
+        #statement dgcco2_dsca_sto = dgcco2_dsca_sto = LAI * (model.gmin[c] / model.nuco2q + part1) * self.dsca_sto
+        self.adsca_sto += LAI * (model.gmin[c] / model.nuco2q + part1) * self.adgcco2_dsca_sto
+        self.adgcco2_dsca_sto = 0
+        #statement dgcco2_dwwilt   = sca_sto * LAI * dpart1_dwwilt
+        self.adpart1_dwwilt += sca_sto * LAI * self.adgcco2_dwwilt 
         self.adgcco2_dwwilt = 0
-        #statement dgcco2_dwfc   = alfa_sto * LAI * dpart1_dwfc
-        self.adpart1_dwfc += alfa_sto * LAI * self.adgcco2_dwfc 
+        #statement dgcco2_dwfc   = sca_sto * LAI * dpart1_dwfc
+        self.adpart1_dwfc += sca_sto * LAI * self.adgcco2_dwfc 
         self.adgcco2_dwfc = 0
-        #statement dgcco2_dw2   = alfa_sto * LAI * dpart1_dw2
-        self.adpart1_dw2 += alfa_sto * LAI * self.adgcco2_dw2 
+        #statement dgcco2_dw2   = sca_sto * LAI * dpart1_dw2
+        self.adpart1_dw2 += sca_sto * LAI * self.adgcco2_dw2 
         self.adgcco2_dw2 = 0
-        #statement dgcco2_dcveg = alfa_sto * LAI * dpart1_dcveg
-        self.adpart1_dcveg += alfa_sto * LAI * self.adgcco2_dcveg 
+        #statement dgcco2_dcveg = sca_sto * LAI * dpart1_dcveg
+        self.adpart1_dcveg += sca_sto * LAI * self.adgcco2_dcveg 
         self.adgcco2_dcveg = 0
-        #statement dgcco2_dSwin = alfa_sto * LAI * dpart1_dSwin
-        self.adpart1_dSwin += alfa_sto * LAI * self.adgcco2_dSwin
+        #statement dgcco2_dSwin = sca_sto * LAI * dpart1_dSwin
+        self.adpart1_dSwin += sca_sto * LAI * self.adgcco2_dSwin
         self.adgcco2_dSwin = 0
-        #statement dgcco2_dPARfract = alfa_sto * LAI * dpart1_dPARfract
-        self.adpart1_dPARfract += alfa_sto * LAI * self.adgcco2_dPARfract
+        #statement dgcco2_dPARfract = sca_sto * LAI * dpart1_dPARfract
+        self.adpart1_dPARfract += sca_sto * LAI * self.adgcco2_dPARfract
         self.adgcco2_dPARfract = 0
-        #statement dgcco2_dCO2  = alfa_sto * LAI * dpart1_dCO2
-        self.adpart1_dCO2 += alfa_sto * LAI * self.adgcco2_dCO2 
+        #statement dgcco2_dCO2  = sca_sto * LAI * dpart1_dCO2
+        self.adpart1_dCO2 += sca_sto * LAI * self.adgcco2_dCO2 
         self.adgcco2_dCO2 = 0
-        #statement dgcco2_de   = alfa_sto * LAI * dpart1_de
-        self.adpart1_de += alfa_sto * LAI * self.adgcco2_de
+        #statement dgcco2_de   = sca_sto * LAI * dpart1_de
+        self.adpart1_de += sca_sto * LAI * self.adgcco2_de
         self.adgcco2_de = 0
-        #statement dgcco2_dTs   = alfa_sto * LAI * dpart1_dTs
-        self.adpart1_dTs += alfa_sto * LAI * self.adgcco2_dTs
+        #statement dgcco2_dTs   = sca_sto * LAI * dpart1_dTs
+        self.adpart1_dTs += sca_sto * LAI * self.adgcco2_dTs
         self.adgcco2_dTs = 0
-        #statement dgcco2_dthetasurf       = alfa_sto * LAI * dpart1_dthetasurf
-        self.adpart1_dthetasurf += alfa_sto * LAI * self.adgcco2_dthetasurf 
+        #statement dgcco2_dthetasurf       = sca_sto * LAI * dpart1_dthetasurf
+        self.adpart1_dthetasurf += sca_sto * LAI * self.adgcco2_dthetasurf 
         self.adgcco2_dthetasurf = 0
         #statement dpart1_dLAI  = a1 * fstr * dAn_temporary_dLAI / div2
         self.adAn_temporary_dLAI += a1 * fstr / div2 * self.adpart1_dLAI
@@ -8495,7 +8507,7 @@ class inverse_modelling:
                     print('GRADIENT TEST FAILURE!! '+str(returnvariable))
                 self.all_tests_pass = False
         
-    def adjoint_test(self,model,x_variables,Hx_variable,y_variable,HTy_variables,Hx_dict):
+    def adjoint_test(self,model,x_variables,Hx_variable,y_variable,HTy_variables,Hx_dict,printmode='relative'):
         #Note that the order of x and HTy should be identical, e.g. the first element of HTy should be the adjoint variable of the first element of HTy!!
         if not hasattr(self,'failed_adj_test_list'):
             self.failed_adj_test_list = [] #list of vars where this test fails
@@ -8537,7 +8549,7 @@ class inverse_modelling:
             forcing.append ({}) #it has to be a list of dictionaries
         for i in range(testmodel.tsteps-1,-1,-1):
             forcing[i][y_variable] = self.y[i] #forcing will be added to existing y_variable
-        self.adjoint(forcing,cpx,cpx_init,testmodel) #important that forcings are zero
+        self.adjoint(forcing,cpx,cpx_init,testmodel) 
         self.x =[] #x and HTy have equal size and structure
         self.HTy =[] #just like x, this is only at one instance in time
         for i in range(np.size(HTy_variables)):
@@ -8554,15 +8566,23 @@ class inverse_modelling:
         for i in range(len(self.x)):
             dotelem = np.dot(np.array(self.x[i]),np.array(self.HTy[i]))
             dotxhty += dotelem
-        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
-        if abs((dothxy-dotxhty)/dothxy) > 5e-13:
+        error = False
+        if printmode == 'relative':
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            if abs((dothxy-dotxhty)/dothxy) > 5e-13:
+                error = True
+        else:
+            print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,dothxy-dotxhty))
+            if abs(dothxy-dotxhty) > 5e-13:
+                error = True
+        if error:
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
             self.all_tests_pass = False
             self.failed_adj_test_list.append(str(Hx_variable))
         self.adjointtesting = False
         
-    def adjoint_test_surf_lay(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
+    def adjoint_test_surf_lay(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables,printmode='relative'):
         self.adjointtestingrun_surf_lay = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
         checkpoint_test = testmodel.cpx[0] #index for time step, use the same for adjoint and TL
@@ -8583,8 +8603,16 @@ class inverse_modelling:
         self.adj_run_surface_layer(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
-        if abs((dothxy-dotxhty)/dothxy) > 5e-15:
+        error = False
+        if printmode == 'relative':
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            if abs((dothxy-dotxhty)/dothxy) > 5e-13:
+                error = True
+        else:
+            print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,dothxy-dotxhty))
+            if abs(dothxy-dotxhty) > 5e-13:
+                error = True
+        if error:
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
             self.all_tests_pass = False
@@ -8615,7 +8643,7 @@ class inverse_modelling:
             self.all_tests_pass = False
         self.manualadjointtesting = False
         
-    def adjoint_test_ribtol(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
+    def adjoint_test_ribtol(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables,printmode='relative'):
         self.adjointtestingribtol = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
         checkpoint_test = testmodel.cpx[-1] #index for time step, use the same for adjoint and TL
@@ -8636,14 +8664,22 @@ class inverse_modelling:
         self.adj_ribtol(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
-        if abs((dothxy-dotxhty)/dothxy) > 5e-15:
+        error = False
+        if printmode == 'relative':
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            if abs((dothxy-dotxhty)/dothxy) > 5e-13:
+                error = True
+        else:
+            print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,dothxy-dotxhty))
+            if abs(dothxy-dotxhty) > 5e-13:
+                error = True
+        if error:
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
             self.all_tests_pass = False
         self.adjointtestingribtol = False
         
-    def adjoint_test_ags(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
+    def adjoint_test_ags(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables,printmode='relative'):
         self.adjointtestingags = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
         checkpoint_test = testmodel.cpx[0] #index for time step, use the same for adjoint and TL
@@ -8664,8 +8700,16 @@ class inverse_modelling:
         self.adj_ags(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
-        if abs((dothxy-dotxhty)/dothxy) > 5e-15:
+        error = False
+        if printmode == 'relative':
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            if abs((dothxy-dotxhty)/dothxy) > 5e-13:
+                error = True
+        else:
+            print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,dothxy-dotxhty))
+            if abs(dothxy-dotxhty) > 5e-13:
+                error = True
+        if error:
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
             self.all_tests_pass = False
@@ -8696,7 +8740,7 @@ class inverse_modelling:
             self.all_tests_pass = False
         self.manualadjointtesting = False
               
-    def adjoint_test_run_mixed_layer(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
+    def adjoint_test_run_mixed_layer(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables,printmode='relative'):
         self.adjointtestingrun_mixed_layer = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
         checkpoint_test = testmodel.cpx[0] #index for time step, use the same for adjoint and TL
@@ -8717,14 +8761,22 @@ class inverse_modelling:
         self.adj_run_mixed_layer(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
-        if abs((dothxy-dotxhty)/dothxy) > 5e-15:
+        error = False
+        if printmode == 'relative':
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            if abs((dothxy-dotxhty)/dothxy) > 5e-13:
+                error = True
+        else:
+            print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,dothxy-dotxhty))
+            if abs(dothxy-dotxhty) > 5e-13:
+                error = True
+        if error:
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
             self.all_tests_pass = False
         self.adjointtestingrun_mixed_layer = False
         
-    def adjoint_test_int_mixed_layer(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
+    def adjoint_test_int_mixed_layer(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables,printmode='relative'):
         self.adjointtestingint_mixed_layer = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
         checkpoint_test = testmodel.cpx[0] #index for time step, use the same for adjoint and TL
@@ -8745,14 +8797,22 @@ class inverse_modelling:
         self.adj_integrate_mixed_layer(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
-        if abs((dothxy-dotxhty)/dothxy) > 5e-15:
+        error = False
+        if printmode == 'relative':
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            if abs((dothxy-dotxhty)/dothxy) > 5e-13:
+                error = True
+        else:
+            print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,dothxy-dotxhty))
+            if abs(dothxy-dotxhty) > 5e-13:
+                error = True
+        if error:
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
             self.all_tests_pass = False
         self.adjointtestingint_mixed_layer = False
         
-    def adjoint_test_run_radiation(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
+    def adjoint_test_run_radiation(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables,printmode='relative'):
         self.adjointtestingrun_radiation = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
         checkpoint_test = testmodel.cpx[0] #index for time step, use the same for adjoint and TL
@@ -8773,14 +8833,22 @@ class inverse_modelling:
         self.adj_run_radiation(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
-        if abs((dothxy-dotxhty)/dothxy) > 5e-15:
+        error = False
+        if printmode == 'relative':
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            if abs((dothxy-dotxhty)/dothxy) > 5e-13:
+                error = True
+        else:
+            print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,dothxy-dotxhty))
+            if abs(dothxy-dotxhty) > 5e-13:
+                error = True
+        if error:
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
             self.all_tests_pass = False
         self.adjointtestingrun_radiation = False
         
-    def adjoint_test_run_land_surface(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
+    def adjoint_test_run_land_surface(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables,printmode='relative'):
         self.adjointtestingrun_land_surface = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
         checkpoint_test = testmodel.cpx[0] #index for time step, use the same for adjoint and TL
@@ -8801,8 +8869,16 @@ class inverse_modelling:
         self.adj_run_land_surface(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
-        if abs((dothxy-dotxhty)/dothxy) > 2e-14: #note that this is not zero at all.. 
+        error = False
+        if printmode == 'relative':
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            if abs((dothxy-dotxhty)/dothxy) > 5e-13:
+                error = True
+        else:
+            print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,dothxy-dotxhty))
+            if abs(dothxy-dotxhty) > 5e-13:
+                error = True
+        if error:
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
             self.all_tests_pass = False
@@ -8829,7 +8905,7 @@ class inverse_modelling:
             self.all_tests_pass = False
         self.manualadjointtesting = False
         
-    def adjoint_test_int_land_surface(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
+    def adjoint_test_int_land_surface(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables,printmode='relative'):
         self.adjointtestingint_land_surface = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
         checkpoint_test = testmodel.cpx[0] #index for time step, use the same for adjoint and TL
@@ -8850,14 +8926,22 @@ class inverse_modelling:
         self.adj_integrate_land_surface(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
-        if abs((dothxy-dotxhty)/dothxy) > 2e-14: #note that this is not zero at all.. 
+        error = False
+        if printmode == 'relative':
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            if abs((dothxy-dotxhty)/dothxy) > 5e-13:
+                error = True
+        else:
+            print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,dothxy-dotxhty))
+            if abs(dothxy-dotxhty) > 5e-13:
+                error = True
+        if error:
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
             self.all_tests_pass = False
         self.adjointtestingint_land_surface = False
         
-    def adjoint_test_statistics(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
+    def adjoint_test_statistics(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables,printmode='relative'):
         self.adjointtestingstatistics = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
         checkpoint_test = testmodel.cpx[-1] #index for time step, use the same for adjoint and TL
@@ -8878,14 +8962,22 @@ class inverse_modelling:
         self.adj_statistics(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
-        if abs((dothxy-dotxhty)/dothxy) > 5e-15: 
+        error = False
+        if printmode == 'relative':
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            if abs((dothxy-dotxhty)/dothxy) > 5e-13:
+                error = True
+        else:
+            print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,dothxy-dotxhty))
+            if abs(dothxy-dotxhty) > 5e-13:
+                error = True
+        if error:
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
             self.all_tests_pass = False
         self.adjointtestingstatistics = False
         
-    def adjoint_test_run_cumulus(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
+    def adjoint_test_run_cumulus(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables,printmode='relative'):
         self.adjointtestingrun_cumulus = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
         checkpoint_test = testmodel.cpx[0] #index for time step, use the same for adjoint and TL
@@ -8906,14 +8998,22 @@ class inverse_modelling:
         self.adj_run_cumulus(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
-        if abs((dothxy-dotxhty)/dothxy) > 5e-15: 
+        error = False
+        if printmode == 'relative':
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            if abs((dothxy-dotxhty)/dothxy) > 5e-13:
+                error = True
+        else:
+            print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,dothxy-dotxhty))
+            if abs(dothxy-dotxhty) > 5e-13:
+                error = True
+        if error:
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
             self.all_tests_pass = False
         self.adjointtestingrun_cumulus = False
         
-    def adjoint_test_run_soil_COS_mod(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
+    def adjoint_test_run_soil_COS_mod(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables,printmode='relative'):
         self.adjointtestingrun_soil_COS_mod = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
         checkpoint_test = testmodel.cpx[0]  #index for time step, use the same for adjoint and TL
@@ -8956,14 +9056,22 @@ class inverse_modelling:
                     self.x.append(self.x_dict[item][i])
                     self.HTy.append(self.HTy_dict['a'+item][i])
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
-        if abs((dothxy-dotxhty)/dothxy) > 5e-15: 
+        error = False
+        if printmode == 'relative':
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            if abs((dothxy-dotxhty)/dothxy) > 5e-13:
+                error = True
+        else:
+            print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,dothxy-dotxhty))
+            if abs(dothxy-dotxhty) > 5e-13:
+                error = True
+        if error:
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
             self.all_tests_pass = False
         self.adjointtestingrun_soil_COS_mod = False
         
-    def adjoint_test_store(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
+    def adjoint_test_store(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables,printmode='relative'):
         self.adjointtestingstore = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
         checkpoint_test = testmodel.cpx[0]
@@ -8984,14 +9092,22 @@ class inverse_modelling:
         self.adj_store(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
-        if abs((dothxy-dotxhty)/dothxy) > 5e-15: 
+        error = False
+        if printmode == 'relative':
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            if abs((dothxy-dotxhty)/dothxy) > 5e-13:
+                error = True
+        else:
+            print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,dothxy-dotxhty))
+            if abs(dothxy-dotxhty) > 5e-13:
+                error = True
+        if error:
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
             self.all_tests_pass = False
         self.adjointtestingstore= False
         
-    def adjoint_test_jarvis_stewart(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables):
+    def adjoint_test_jarvis_stewart(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables,printmode='relative'):
         self.adjointtestingjarvis_stewart = True
         testmodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False)
         checkpoint_test = testmodel.cpx[-1] # index for time step, use the same for adjoint and TL
@@ -9012,8 +9128,16 @@ class inverse_modelling:
         self.adj_jarvis_stewart(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
-        if abs((dothxy-dotxhty)/dothxy) > 5e-15: 
+        error = False
+        if printmode == 'relative':
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            if abs((dothxy-dotxhty)/dothxy) > 5e-13:
+                error = True
+        else:
+            print('<Hx,y>,<x,Hty>, difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,dothxy-dotxhty))
+            if abs(dothxy-dotxhty) > 5e-13:
+                error = True
+        if error:
             for i in range(5):
                 print("ADJOINT TEST FAILURE! "+str(Hx_variable))
             self.all_tests_pass = False

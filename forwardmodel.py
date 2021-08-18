@@ -424,10 +424,10 @@ class model:
         # CO2,COS and canopy
         self.CO2        = self.input.CO2        # initial mixed-layer CO2 [ppm]
         self.COS        = self.input.COS        # initial mixed-layer COS [ppb]
-        if hasattr(self.input,'alfa_sto'):
-            self.alfa_sto = self.input.alfa_sto #dimensionless coefficient for multiplying stomatal conductance with 
+        if hasattr(self.input,'sca_sto'):
+            self.sca_sto = self.input.sca_sto #dimensionless coefficient for multiplying stomatal conductance with 
         else:
-            self.alfa_sto = 1.0
+            self.sca_sto = 1.0
         self.COSmeasuring_height = 10. #assume 10 if not given
         if hasattr(self.input,'COSmeasuring_height'):
             self.COSmeasuring_height = self.input.COSmeasuring_height        # height COS mixing rat measurements [m]   
@@ -1592,7 +1592,7 @@ class model:
                 self.cpx_init[0]['ags_Swin'] = self.Swin
                 self.cpx_init[0]['ags_ra'] = self.ra
                 self.cpx_init[0]['ags_Tsoil'] = self.Tsoil
-                self.cpx_init[0]['ags_alfa_sto'] = self.alfa_sto
+                self.cpx_init[0]['ags_sca_sto'] = self.sca_sto
                 self.cpx_init[0]['ags_LAI'] = self.LAI
                 self.cpx_init[0]['ags_PARfract'] = self.PARfract
                 self.cpx_init[0]['ags_w2'] = self.w2
@@ -1612,7 +1612,7 @@ class model:
                 self.cpx[self.t]['ags_Swin'] = self.Swin
                 self.cpx[self.t]['ags_ra'] = self.ra
                 self.cpx[self.t]['ags_Tsoil'] = self.Tsoil
-                self.cpx[self.t]['ags_alfa_sto'] = self.alfa_sto
+                self.cpx[self.t]['ags_sca_sto'] = self.sca_sto
                 self.cpx[self.t]['ags_LAI'] = self.LAI
                 self.cpx[self.t]['ags_PARfract'] = self.PARfract
                 self.cpx[self.t]['ags_w2'] = self.w2
@@ -1712,7 +1712,7 @@ class model:
         div1         = 1. + Ds / Dstar
         div2         = (co2abs - CO2comp) * (div1)
         part1        = a1 * fstr * An_temporary / (div2)
-        gcco2        = self.alfa_sto * self.LAI * (self.gmin[c] / self.nuco2q + part1) #alfa_sto is a scaling factor for the stomatal conductance
+        gcco2        = self.sca_sto * self.LAI * (self.gmin[c] / self.nuco2q + part1) #sca_sto is a scaling factor for the stomatal conductance
 
 #        c stands for canopy, l for leaf scale
 #        glco2        = self.gmin[c] / self.nuco2q + a1 * fstr * Ag / ((co2abs - CO2comp) * (1. + Ds / Dstar))
