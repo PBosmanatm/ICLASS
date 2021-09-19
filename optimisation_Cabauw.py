@@ -34,11 +34,11 @@ if use_ensemble:
     if est_post_pdf_covmatr:
         nr_bins = int(nr_of_members/10) #nr of bins for the pdfs
         succes_opt_crit = 1.7 #the chi squared at which an optimisation is considered successful (lower or equal to is succesfull)
-    pert_obs_ens = True #Perturb observations of every ensemble member
+    pert_obs_ens = True #Perturb observations of every ensemble member (except member 0)
     if pert_obs_ens:
         use_sigma_O = False #If True, the total observational error is used to perturb the obs, if False only the measurement error is used
         plot_perturbed_obs = False #Plot the perturbed observations of the ensemble members
-    pert_Hx_min_sy_ens = True #Perturb the data part of the cost function, by perturbing H(x) - sy with a random number from a distribution with standard deviation sigma_O
+    pert_Hx_min_sy_ens = True #Perturb the data part of the cost function (in every ensemble member except member 0), by perturbing H(x) - sy with a random number from a distribution with standard deviation sigma_O
     print_status_dur_ens = False #whether to print state etc info during ensemble of optimisations (during member 0 printing will always take place)
 estimate_model_err = False #estimate the model error by perturbing specified non-state parameters
 if estimate_model_err:
@@ -74,6 +74,7 @@ if (use_backgr_in_cost and use_weights):
 if write_to_f:
     wr_obj_to_pickle_files = True #write certain variables to files for possible postprocessing later
     figformat = 'eps' #the format in which you want figure output, e.g. 'png'
+plot_errbars = False #plot error bars in the figures
 plotfontsize = 12 #plot font size, except for legend
 legendsize = plotfontsize - 1
 ######################################
@@ -100,7 +101,7 @@ if use_ensemble or estimate_model_err:
 
 if write_to_f:
     if wr_obj_to_pickle_files:
-        vars_to_pickle = ['priormodel','priorinput','obsvarlist','disp_units','disp_units_par','optim','obs_times','measurement_error','display_names','optimalinput','optimalinput_onsp','optimalmodel','optimalmodel_onsp','PertData_mems'] #list of strings      
+        vars_to_pickle = ['priormodel','priorinput','obsvarlist','disp_units','disp_units_par','display_names','disp_nms_par','optim','obs_times','measurement_error','optimalinput','optimalinput_onsp','optimalmodel','optimalmodel_onsp','PertData_mems'] #list of strings      
         for item in vars_to_pickle:
             if item in vars(): #check if variable exists, if so, delete so we do not write anything from a previous script/run to files
                 del(vars()[item])
@@ -1190,10 +1191,11 @@ for item in obsvarlist:
 ###########################################################
 if use_ensemble:
     if est_post_pdf_covmatr:
-        disp_units_par = {}         
-##############################################################################
-###### user input: units of parameters for pdf figures (optional) ############
-##############################################################################
+        disp_units_par = {}   
+        disp_nms_par = {}
+##################################################################################################
+###### user input: units and displayed names of parameters for pdf figures (optional) ############
+##################################################################################################
         disp_units_par['theta'] = 'K'
         disp_units_par['advtheta'] = 'Ks$^{-1}$'
         disp_units_par['advq'] = 'kg kg$^{-1}$s$^{-1}$'
@@ -1211,9 +1213,25 @@ if use_ensemble:
         disp_units_par['cc'] = '-'
         disp_units_par['R10'] = 'mg CO2 m$^{-2}$s$^{-1}$'
     
-##############################################################################
-###### end user input: units of parameters for pdf figures (optional) ########
-##############################################################################                
+        disp_nms_par['theta'] = r'$\theta$' #name for parameter theta
+        disp_nms_par['advtheta'] = r'$adv_{\theta}$'
+        disp_nms_par['advq'] = '$adv_{q}$'
+        disp_nms_par['advCO2'] = '$adv_{CO2}$'
+        disp_nms_par['deltatheta'] = r'$\Delta_{\theta}$'
+        disp_nms_par['gammatheta'] = r'$\gamma_{\theta}$'
+        disp_nms_par['deltaq'] = '$\Delta_{q}$'
+        disp_nms_par['gammaq'] = '$\gamma_{q}$'
+        disp_nms_par['deltaCO2'] = '$\Delta_{CO2}$'
+        disp_nms_par['deltaCO2'] = '$\Delta_{CO2}$'
+        disp_nms_par['gammaCO2'] = '$\gamma_{CO2}$'
+        disp_nms_par['alfa_sto'] = r'$\alpha_{sto}$'
+        disp_nms_par['alpha'] = r'$\alpha_{rad}$'
+        disp_nms_par['EnBalDiffObsHFrac'] = '$Frac_{H}$'
+        disp_nms_par['wg'] = '$w_{g}$'
+        disp_nms_par['R10'] = '$R_{10}$'
+######################################################################################################
+###### end user input: units and displayed names of parameters for pdf figures (optional) ############
+######################################################################################################                
 if 'FracH' in state:             
 ##################################################################
 ###### user input: energy balance information (if used) ##########
@@ -1441,11 +1459,15 @@ if use_ensemble:
     if est_post_pdf_covmatr:
         for item in state:
             if item not in disp_units_par:
-                disp_units_par[item] = ''   
+                disp_units_par[item] = ''
+            if item not in disp_nms_par:
+                disp_nms_par[item] = item
         if pert_non_state_param:
             for item in non_state_paramdict:
                 if item not in disp_units_par:
                     disp_units_par[item] = ''
+                if item not in disp_nms_par:
+                    disp_nms_par[item] = item
 
 if estimate_model_err:
     for param in me_paramdict:    
@@ -1822,7 +1844,8 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
                     unsca = 1000
                 plt.figure()
                 plt.plot(obs_times[item]/3600,unsca*optim.__dict__['obs_'+item], linestyle=' ', marker='*',ms=10,color = 'black',label = 'orig')
-                plt.errorbar(obs_times[item]/3600,unsca*optim.__dict__['obs_'+item],yerr=unsca*measurement_error[item],ecolor='black',fmt='None')
+                if plot_errbars:
+                    plt.errorbar(obs_times[item]/3600,unsca*optim.__dict__['obs_'+item],yerr=unsca*measurement_error[item],ecolor='black',fmt='None')
                 plt.plot(obs_times[item]/3600,unsca*optim_mem.__dict__['obs_'+item], linestyle=' ', marker='D',color = 'orange',label = 'pert')
                 plt.ylabel(display_names[item] +' ('+ disp_units[item] + ')')
                 plt.xlabel('time (h)')
@@ -2070,7 +2093,7 @@ if use_ensemble:
                 plt.plot(pdfx,pdfy, linestyle='dashed', linewidth=2,color='gold',label='prior')
                 plt.axvline(mean_state_post[i], linestyle='-',linewidth=2,color='red',label = 'mean post')
                 plt.axvline(mean_state_prior[i], linestyle='dashed',linewidth=2,color='gold',label = 'mean prior')
-                plt.xlabel(state[i] + ' ('+ disp_units_par[state[i]] +')')
+                plt.xlabel(disp_nms_par[state[i]] + ' ('+ disp_units_par[state[i]] +')')
                 plt.ylabel('Probability density (-)')  
                 plt.subplots_adjust(left=0.15, right=0.92, top=0.96, bottom=0.15,wspace=0.1)
                 plt.legend(loc=0, frameon=True,prop={'size':legendsize}) 
@@ -2113,7 +2136,7 @@ if use_ensemble:
                         pdfy[k] = n_ns[k]
                     plt.plot(pdfx,pdfy, linestyle='-', linewidth=2,color='black',label='pdf')
                     plt.axvline(mean_nonstate_p[param], linestyle='dashed',linewidth=2,color='black',label = 'mean')
-                    plt.xlabel(param + ' ('+ disp_units_par[param] +')')
+                    plt.xlabel(disp_nms_par[param] + ' ('+ disp_units_par[param] +')')
                     plt.ylabel('Probability density (-)')  
                     plt.legend(prop={'size':legendsize},loc=0)
                     plt.subplots_adjust(left=0.15, right=0.92, top=0.96, bottom=0.15,wspace=0.1)
@@ -2529,8 +2552,9 @@ for i in range(len(obsvarlist)): #Note that only the obs of member 0 (the real o
     if (disp_units[obsvarlist[i]] == 'g/kg' or disp_units[obsvarlist[i]] == 'g kg$^{-1}$') and (obsvarlist[i] == 'q' or obsvarlist[i].startswith('qmh')): #q can be plotted differently for clarity
         unsca = 1000
     fig = plt.figure()
-    plt.errorbar(obs_times[obsvarlist[i]]/3600,unsca*optim.__dict__['obs_'+obsvarlist[i]],yerr=unsca*optim.__dict__['error_obs_'+obsvarlist[i]],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
-    plt.errorbar(obs_times[obsvarlist[i]]/3600,unsca*optim.__dict__['obs_'+obsvarlist[i]],yerr=unsca*measurement_error[obsvarlist[i]],ecolor='black',fmt='None',label = '$\sigma_{I}$')
+    if plot_errbars:
+        plt.errorbar(obs_times[obsvarlist[i]]/3600,unsca*optim.__dict__['obs_'+obsvarlist[i]],yerr=unsca*optim.__dict__['error_obs_'+obsvarlist[i]],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
+        plt.errorbar(obs_times[obsvarlist[i]]/3600,unsca*optim.__dict__['obs_'+obsvarlist[i]],yerr=unsca*measurement_error[obsvarlist[i]],ecolor='black',fmt='None',label = '$\sigma_{I}$')
     plt.plot(priormodel.out.t,unsca*priormodel.out.__dict__[obsvarlist[i]], ls='dashed', marker='None',color='gold',linewidth = 2.0,label = 'prior')
     plt.plot(priormodel.out.t,unsca*optimalmodel.out.__dict__[obsvarlist[i]], linestyle='-', marker='None',color='red',linewidth = 2.0,label = 'post')
     if use_ensemble:
@@ -2556,8 +2580,9 @@ if 'FracH' in state:
     if 'H' in obsvarlist:
         enbal_corr_H = optim.obs_H + optimalinput.FracH * optim.EnBalDiffObs_atHtimes
         fig = plt.figure()
-        plt.errorbar(obs_times['H']/3600,enbal_corr_H,yerr=optim.__dict__['error_obs_H'],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
-        plt.errorbar(obs_times['H']/3600,enbal_corr_H,yerr=measurement_error['H'],ecolor='black',fmt='None',label = '$\sigma_{I}$')
+        if plot_errbars:
+            plt.errorbar(obs_times['H']/3600,enbal_corr_H,yerr=optim.__dict__['error_obs_H'],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
+            plt.errorbar(obs_times['H']/3600,enbal_corr_H,yerr=measurement_error['H'],ecolor='black',fmt='None',label = '$\sigma_{I}$')
         plt.plot(priormodel.out.t,priormodel.out.H, ls='dashed', marker='None',color='gold',linewidth = 2.0,label = 'prior')
         plt.plot(optimalmodel.out.t,optimalmodel.out.H, linestyle='-', marker='None',color='red',linewidth = 2.0,label = 'post')
         if use_ensemble:
@@ -2574,8 +2599,9 @@ if 'FracH' in state:
     if 'LE' in obsvarlist:        
         enbal_corr_LE = optim.obs_LE + (1 - optimalinput.FracH) * optim.EnBalDiffObs_atLEtimes
         fig = plt.figure()
-        plt.errorbar(obs_times['LE']/3600,enbal_corr_LE,yerr=optim.__dict__['error_obs_LE'],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
-        plt.errorbar(obs_times['LE']/3600,enbal_corr_LE,yerr=measurement_error['LE'],ecolor='black',fmt='None',label = '$\sigma_{I}$')
+        if plot_errbars:
+            plt.errorbar(obs_times['LE']/3600,enbal_corr_LE,yerr=optim.__dict__['error_obs_LE'],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
+            plt.errorbar(obs_times['LE']/3600,enbal_corr_LE,yerr=measurement_error['LE'],ecolor='black',fmt='None',label = '$\sigma_{I}$')
         plt.plot(priormodel.out.t,priormodel.out.LE, ls='dashed', marker='None',color='gold',linewidth = 2.0,label = 'prior')
         plt.plot(optimalmodel.out.t,optimalmodel.out.LE, linestyle='-', marker='None',color='red',linewidth = 2.0,label = 'post')
         if use_ensemble:

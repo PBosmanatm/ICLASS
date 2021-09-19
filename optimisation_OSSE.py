@@ -22,41 +22,41 @@ style.use('classic')
 ##################################
 ###### user input: settings ######
 ##################################
-ana_deriv = False #use analytical or numerical derivative
-use_backgr_in_cost = True #include the background (prior) part of the cost function
+ana_deriv = True #use analytical or numerical derivative
+use_backgr_in_cost = False #include the background (prior) part of the cost function
 write_to_f = True #write output and figures to files
-use_ensemble = True #use an ensemble of optimisations
+use_ensemble = False #use an ensemble of optimisations
 if use_ensemble:
-    nr_of_members = 7
+    nr_of_members = 2
     use_covar_to_pert = False #whether to take prior covariance (if specified) into account when perturbing the ensemble 
     pert_non_state_param = True #perturb parameters that are not in the state
     est_post_pdf_covmatr = True #estimate the posterior pdf and covariance matrix of the state (and more)
     if est_post_pdf_covmatr:
         nr_bins = 3 #nr of bins for the pdfs
         succes_opt_crit = 6 #the chi squared at which an optimisation is considered successfull (lower or equal to is succesfull)
-    pert_obs_ens = False #Perturb observations of every ensemble member
+    pert_obs_ens = False #Perturb observations of every ensemble member (except member 0)
     if pert_obs_ens:
         use_sigma_O = False #If True, the total observational error is used to perturb the obs, if False only the measurement error is used
         plot_perturbed_obs = True #Plot the perturbed observations of the ensemble members
-    pert_Hx_min_sy_ens = True #Perturb the data part of the cost function, by perturbing H(x) - sy with a random number from a distribution with standard deviation sigma_O
+    pert_Hx_min_sy_ens = True #Perturb the data part of the cost function (in every ensemble member except member 0), by perturbing H(x) - sy with a random number from a distribution with standard deviation sigma_O
     print_status_dur_ens = False #whether to print state etc info during ensemble of optimisations (during member 0 printing will always take place)
-estimate_model_err = True #estimate the model error by perturbing specified non-state parameters
+estimate_model_err = False #estimate the model error by perturbing specified non-state parameters
 if estimate_model_err:
     nr_of_members_moderr = 30 #number of members for the ensemble that estimates the model error
 imposeparambounds = True #force the optimisation to keep parameters within specified bounds (tnc only) and when using ensemble, keep priors within bounds (tnc and bfgs)
-paramboundspenalty = True #add a penalty to the cost function when parameter bounds exceeded in the optimisation
+paramboundspenalty = False #add a penalty to the cost function when parameter bounds exceeded in the optimisation
 if paramboundspenalty:
     setNanCostfOutBoundsTo0 = True #when cost function becomes nan when params outside specified bounds, set cost f to zero before adding penalty (nan + number gives nan)
     penalty_exp = 60 #exponent to use in the penalty function
 remove_prev = True #Use with caution, be careful for other files in working directory! Removes (non-user specified) files that might have remained from previous optimisations. See manual for a list
 optim_method = 'tnc' #bfgs or tnc, the chosen optimisation algorithm
 if optim_method == 'tnc':
-    maxnr_of_restarts = 1 #The number of times to restart the optimisation if the cost function is not as low as specified in stopcrit. Only implemented for tnc method at the moment. 
+    maxnr_of_restarts = 2 #The number of times to restart the optimisation if the cost function is not as low as specified in stopcrit. Only implemented for tnc method at the moment. 
     if maxnr_of_restarts > 0:
-        stopcrit = 1.0#If the cost function is equal or lower than this value, no restart will be attempted   
+        stopcrit = 0.0001#If the cost function is equal or lower than this value, no restart will be attempted   
 elif optim_method == 'bfgs':
     gtol = 1e-05 # A parameter for the bfgs algorithm. From scipy documentation: 'Gradient norm must be less than gtol before successful termination.'
-perturb_truth_obs = True #Perturb the 'true' observations. When using ensemble, obs of members will be perturbed twice, member 0 just once
+perturb_truth_obs = False #Perturb the 'true' observations. When using ensemble, obs of members will be perturbed twice, member 0 just once
 if use_ensemble or estimate_model_err:
     run_multicore = False  #Run part of the code on multiple cores simultaneously
     if run_multicore:
@@ -75,6 +75,7 @@ if (use_backgr_in_cost and use_weights):
 if write_to_f:
     wr_obj_to_pickle_files = True #write certain variables to files for possible postprocessing later
     figformat = 'eps' #the format in which you want figure output, e.g. 'png'
+plot_errbars = False #plot error bars in the figures
 plotfontsize = 12 #plot font size, except for legend 
 legendsize = plotfontsize - 1
 ######################################
@@ -101,7 +102,7 @@ if use_ensemble or estimate_model_err:
 
 if write_to_f:
     if wr_obj_to_pickle_files:
-        vars_to_pickle = ['priormodel','priorinput','obsvarlist','disp_units','disp_units_par','optim','obs_times','measurement_error','display_names','optimalinput','optimalinput_onsp','optimalmodel','optimalmodel_onsp','PertData_mems'] #list of strings      
+        vars_to_pickle = ['priormodel','priorinput','obsvarlist','disp_units','disp_units_par','display_names','disp_nms_par','optim','obs_times','measurement_error','optimalinput','optimalinput_onsp','optimalmodel','optimalmodel_onsp','PertData_mems'] #list of strings      
         for item in vars_to_pickle:
             if item in vars(): #check if variable exists, if so, delete so we do not write anything from a previous script/run to files
                 del(vars()[item])
@@ -135,26 +136,26 @@ priormodinput.COSmeasuring_height = 5.
 priormodinput.COSmeasuring_height2 = 8.
 priormodinput.sca_sto = 1
 priormodinput.gciCOS = 0.2 /(1.2*1000) * 28.9
-priormodinput.ags_C_mode = 'surf' 
-priormodinput.sw_useWilson  = True
+priormodinput.ags_C_mode = 'MXL' 
+priormodinput.sw_useWilson  = False
 priormodinput.dt         = 60       # time step [s]
-priormodinput.runtime    = 1*3600   # total run time [s]
+priormodinput.runtime    = 4*3600   # total run time [s]
 priormodinput.sw_ml      = True      # mixed-layer model switch
-priormodinput.sw_shearwe = False     # shear growth mixed-layer switch
+priormodinput.sw_shearwe = True     # shear growth mixed-layer switch
 priormodinput.sw_fixft   = False     # Fix the free-troposphere switch
-priormodinput.h          = 600.      # initial ABL height [m]
+priormodinput.h          = 650.      # initial ABL height [m]
 priormodinput.Ps         = 101300.   # surface pressure [Pa]
-priormodinput.divU       = 0.000001  # horizontal large-scale divergence of wind [s-1]
+priormodinput.divU       = 0.00  # horizontal large-scale divergence of wind [s-1]
 priormodinput.fc         = 1.e-4     # Coriolis parameter [m s-1]
-priormodinput.theta      = 278.      # initial mixed-layer potential temperature [K]
+priormodinput.theta      = 282.      # initial mixed-layer potential temperature [K]
 priormodinput.deltatheta = 2       # initial temperature jump at h [K]
-priormodinput.gammatheta = 0.002     # free atmosphere potential temperature lapse rate [K m-1]
+priormodinput.gammatheta = 0.003     # free atmosphere potential temperature lapse rate [K m-1]
 priormodinput.advtheta   = 0.        # advection of heat [K s-1]
 priormodinput.beta       = 0.2       # entrainment ratio for virtual heat [-]
-priormodinput.wtheta     = 0.4       # surface kinematic heat flux [K m s-1]
+priormodinput.wtheta     = 0.1       # surface kinematic heat flux [K m s-1]
 priormodinput.q          = 0.008     # initial mixed-layer specific humidity [kg kg-1]
 priormodinput.deltaq     = -0.001    # initial specific humidity jump at h [kg kg-1]
-priormodinput.gammaq     = 0.        # free atmosphere specific humidity lapse rate [kg kg-1 m-1]
+priormodinput.gammaq     = -0.001e-3        # free atmosphere specific humidity lapse rate [kg kg-1 m-1]
 priormodinput.advq       = 0.        # advection of moisture [kg kg-1 s-1]
 priormodinput.wq         = 0.1e-3    # surface kinematic moisture flux [kg kg-1 m s-1] 
 priormodinput.CO2        = 422.      # initial mixed-layer CO2 [ppm]
@@ -180,7 +181,7 @@ priormodinput.ustar      = 0.3       # surface friction velocity [m s-1]
 priormodinput.z0m        = 0.02      # roughness length for momentum [m]
 priormodinput.z0h        = 0.02     # roughness length for scalars [m]
 priormodinput.sw_rad     = True     # radiation switch
-priormodinput.lat        = 31.97     # latitude [deg]
+priormodinput.lat        = 41.97     # latitude [deg]
 priormodinput.lon        = 0     # longitude [deg]
 priormodinput.doy        = 185.      # day of the year [-]
 priormodinput.tstart     = 10   # time of the day [h UTC]
@@ -191,8 +192,8 @@ priormodinput.sw_ls      = True     # land surface switch
 priormodinput.ls_type    = 'ags'     # land-surface parameterization ('js' for Jarvis-Stewart or 'ags' for A-Gs)
 priormodinput.wg         = 0.27      # volumetric water content top soil layer [m3 m-3]
 priormodinput.w2         = 0.21      # volumetric water content deeper soil layer [m3 m-3]
-priormodinput.cveg       = 0.35      # vegetation fraction [-]
-priormodinput.Tsoil      = 290.      # temperature top soil layer [K]
+priormodinput.cveg       = 0.85      # vegetation fraction [-]
+priormodinput.Tsoil      = 282.      # temperature top soil layer [K]
 priormodinput.T2         = 285.      # temperature deeper soil layer [K]
 priormodinput.a          = 0.219     # Clapp and Hornberger retention curve parameter a
 priormodinput.b          = 4.90      # Clapp and Hornberger retention curve parameter b
@@ -208,7 +209,7 @@ priormodinput.gD         = 0.0       # correction factor transpiration for VPD [
 priormodinput.rsmin      = 110.      # minimum resistance transpiration [s m-1]
 priormodinput.rssoilmin  = 50.       # minimun resistance soil evaporation [s m-1]
 priormodinput.alpha      = 0.45     # surface albedo [-]
-priormodinput.Ts         = 290.      # initial surface temperature [K]
+priormodinput.Ts         = 282.      # initial surface temperature [K]
 priormodinput.Wmax       = 0.0002    # thickness of water layer on wet vegetation [m]
 priormodinput.Wl         = 0.0000    # equivalent water layer depth for wet vegetation [m]
 priormodinput.Lambda     = 5.9       # thermal diffusivity skin layer [-]
@@ -259,8 +260,8 @@ priorinput = cp.deepcopy(priormodinput)
 #################################################################################
 ###### user input: state, list of used pseudo-obs and non-model priorinput ######
 #################################################################################
-state=['gammaq','FracH']
-obsvarlist=['h','q','H','LE']#
+state=['h','alpha']
+obsvarlist=['h','q']#
 #below we can add some input necessary for the state in the optimisation, that is not part of the model input (a scale for some of the observations in the costfunction if desired). Or FracH
 if 'FracH' in state:
     priorinput.FracH = 0.6
@@ -406,10 +407,10 @@ truthinput = cp.deepcopy(priorinput)
 ###############################################
 #Items not specified here are taken over from priorinput
 #truthinput.alfa_plant = 1.
-truthinput.alpha = 0.25
+truthinput.alpha = 0.20
 #truthinput.deltatheta = 1
-truthinput.theta = 288
-#truthinput.h = 400
+#truthinput.theta = 288
+truthinput.h = 350
 #truthinput.advtheta = 0.0002
 #truthinput.advq = 0.0000002
 #truthinput.gammatheta = 0.006
@@ -440,11 +441,11 @@ for item in obsvarlist:
     obs_times[item] = truthmodel.out.t[::6] * 3600
     optim.__dict__['obs_'+item] = truthmodel.out.__dict__[item][::6]
     if item == 'h':
-        measurement_error[item] = [110 for number in range(len(obs_times[item]))]
+        measurement_error[item] = [100 for number in range(len(obs_times[item]))]
         if use_weights:
             obs_weights[item] = [1.0 for j in range(len(optim.__dict__['obs_'+item]))]
     if item == 'q':
-        measurement_error[item] = [0.006 for number in range(len(obs_times[item]))]
+        measurement_error[item] = [0.002 for number in range(len(obs_times[item]))]
         disp_units[item] = 'g/kg'
     if item == 'Tmh':
         measurement_error[item] = [2 for number in range(len(obs_times[item]))]
@@ -464,7 +465,8 @@ for item in obsvarlist:
 ######################################################################
 if use_ensemble:
     if est_post_pdf_covmatr:
-        disp_units_par = {}             
+        disp_units_par = {}  
+        disp_nms_par = {}           
 ##############################################################################
 ###### user input: units of parameters for pdf figures (optional) ############
 ##############################################################################
@@ -482,6 +484,23 @@ if use_ensemble:
         disp_units_par['alpha'] = '-'
         disp_units_par['FracH'] = '-'
         disp_units_par['wg'] = '-'
+        
+#        disp_nms_par['theta'] = r'$\theta$' #name for parameter theta
+#        disp_nms_par['advtheta'] = r'$adv_{\theta}$'
+#        disp_nms_par['advq'] = '$adv_{q}$'
+#        disp_nms_par['advCO2'] = '$adv_{CO2}$'
+#        disp_nms_par['deltatheta'] = r'$\Delta_{\theta}$'
+#        disp_nms_par['gammatheta'] = r'$\gamma_{\theta}$'
+#        disp_nms_par['deltaq'] = '$\Delta_{q}$'
+#        disp_nms_par['gammaq'] = '$\gamma_{q}$'
+#        disp_nms_par['deltaCO2'] = '$\Delta_{CO2}$'
+#        disp_nms_par['deltaCO2'] = '$\Delta_{CO2}$'
+#        disp_nms_par['gammaCO2'] = '$\gamma_{CO2}$'
+#        disp_nms_par['alfa_sto'] = r'$\alpha_{sto}$'
+#        disp_nms_par['alpha'] = r'$\alpha_{rad}$'
+#        disp_nms_par['EnBalDiffObsHFrac'] = '$Frac_{H}$'
+#        disp_nms_par['wg'] = '$w_{g}$'
+#        disp_nms_par['R10'] = '$R_{10}$'
     
 ##############################################################################
 ###### end user input: units of parameters for pdf figures (optional) ########
@@ -671,11 +690,15 @@ if use_ensemble:
     if est_post_pdf_covmatr:
         for item in state:
             if item not in disp_units_par:
-                disp_units_par[item] = ''   
+                disp_units_par[item] = '' 
+            if item not in disp_nms_par:
+                disp_nms_par[item] = item
         if pert_non_state_param:
             for item in non_state_paramdict:
                 if item not in disp_units_par:
                     disp_units_par[item] = ''
+                if item not in disp_nms_par:
+                    disp_nms_par[item] = item
 
 if estimate_model_err:  
     for param in me_paramdict:    
@@ -1055,7 +1078,8 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
                 plt.plot(obs_times[item]/3600,unsca*orig_obs[item], linestyle=' ', marker='*',ms=10,color = 'black',label = 'orig')
                 if perturb_truth_obs:
                     plt.plot(obs_times[item]/3600,unsca*optim.__dict__['obs_'+item], linestyle=' ', marker='o',color = 'blue',label = 'member 0')
-                plt.errorbar(obs_times[item]/3600,unsca*optim.__dict__['obs_'+item],yerr=unsca*measurement_error[item],ecolor='black',fmt='None')
+                if plot_errbars:
+                    plt.errorbar(obs_times[item]/3600,unsca*optim.__dict__['obs_'+item],yerr=unsca*measurement_error[item],ecolor='black',fmt='None')
                 plt.plot(obs_times[item]/3600,unsca*optim_mem.__dict__['obs_'+item], linestyle=' ', marker='D',color = 'orange',label = 'pert')
                 plt.ylabel(display_names[item] +' ('+ disp_units[item] + ')')
                 plt.xlabel('time (h)')
@@ -1303,7 +1327,7 @@ if use_ensemble:
                 plt.plot(pdfx,pdfy, linestyle='dashed', linewidth=2,color='gold',label='prior')
                 plt.axvline(mean_state_post[i], linestyle='-',linewidth=2,color='red',label = 'mean post')
                 plt.axvline(mean_state_prior[i], linestyle='dashed',linewidth=2,color='gold',label = 'mean prior')
-                plt.xlabel(state[i] + ' ('+ disp_units_par[state[i]] +')')
+                plt.xlabel(disp_nms_par[state[i]] + ' ('+ disp_units_par[state[i]] +')')
                 plt.ylabel('Probability density (-)')  
                 plt.subplots_adjust(left=0.15, right=0.92, top=0.96, bottom=0.15,wspace=0.1)
                 plt.legend(loc=0, frameon=True,prop={'size':legendsize}) 
@@ -1347,7 +1371,7 @@ if use_ensemble:
                         pdfy[k] = n_ns[k]
                     plt.plot(pdfx,pdfy, linestyle='-', linewidth=2,color='black',label='pdf')
                     plt.axvline(mean_nonstate_p[param], linestyle='dashed',linewidth=2,color='black',label = 'mean')
-                    plt.xlabel(param + ' ('+ disp_units_par[param] +')')
+                    plt.xlabel(disp_nms_par[param] + ' ('+ disp_units_par[param] +')')
                     plt.ylabel('Probability density (-)')  
                     plt.legend(prop={'size':legendsize},loc=0)
                     plt.subplots_adjust(left=0.15, right=0.92, top=0.96, bottom=0.15,wspace=0.1)
@@ -1763,8 +1787,9 @@ for i in range(len(obsvarlist)):
     if (disp_units[obsvarlist[i]] == 'g/kg' or disp_units[obsvarlist[i]] == 'g kg$^{-1}$') and (obsvarlist[i] == 'q' or obsvarlist[i].startswith('qmh')): #q can be plotted differently for clarity
         unsca = 1000
     fig = plt.figure()
-    plt.errorbar(obs_times[obsvarlist[i]]/3600,unsca*orig_obs[obsvarlist[i]],yerr=unsca*optim.__dict__['error_obs_'+obsvarlist[i]],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
-    plt.errorbar(obs_times[obsvarlist[i]]/3600,unsca*orig_obs[obsvarlist[i]],yerr=unsca*measurement_error[obsvarlist[i]],ecolor='black',fmt='None',label = '$\sigma_{I}$')
+    if plot_errbars:
+        plt.errorbar(obs_times[obsvarlist[i]]/3600,unsca*orig_obs[obsvarlist[i]],yerr=unsca*optim.__dict__['error_obs_'+obsvarlist[i]],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
+        plt.errorbar(obs_times[obsvarlist[i]]/3600,unsca*orig_obs[obsvarlist[i]],yerr=unsca*measurement_error[obsvarlist[i]],ecolor='black',fmt='None',label = '$\sigma_{I}$')
     plt.plot(priormodel.out.t,unsca*priormodel.out.__dict__[obsvarlist[i]], ls='dashed', marker='None',color='gold',linewidth = 2.0,label = 'prior')
     plt.plot(priormodel.out.t,unsca*optimalmodel.out.__dict__[obsvarlist[i]], linestyle='-', marker='None',color='red',linewidth = 2.0,label = 'post')
     if use_ensemble:
@@ -1792,8 +1817,9 @@ if 'FracH' in state:
     if 'H' in obsvarlist:
         enbal_corr_H = optim.obs_H + optimalinput.FracH * optim.EnBalDiffObs_atHtimes
         fig = plt.figure()
-        plt.errorbar(obs_times['H']/3600,enbal_corr_H,yerr=optim.__dict__['error_obs_H'],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
-        plt.errorbar(obs_times['H']/3600,enbal_corr_H,yerr=measurement_error['H'],ecolor='black',fmt='None',label = '$\sigma_{I}$')
+        if plot_errbars:
+            plt.errorbar(obs_times['H']/3600,enbal_corr_H,yerr=optim.__dict__['error_obs_H'],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
+            plt.errorbar(obs_times['H']/3600,enbal_corr_H,yerr=measurement_error['H'],ecolor='black',fmt='None',label = '$\sigma_{I}$')
         plt.plot(priormodel.out.t,priormodel.out.H, ls='dashed', marker='None',color='gold',linewidth = 2.0,label = 'prior')
         plt.plot(optimalmodel.out.t,optimalmodel.out.H, linestyle='-', marker='None',color='red',linewidth = 2.0,label = 'post')
         if use_ensemble:
@@ -1810,8 +1836,9 @@ if 'FracH' in state:
     if 'LE' in obsvarlist:
         enbal_corr_LE = optim.obs_LE + (1 - optimalinput.FracH) * optim.EnBalDiffObs_atLEtimes
         fig = plt.figure()
-        plt.errorbar(obs_times['LE']/3600,enbal_corr_LE,yerr=optim.__dict__['error_obs_LE'],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
-        plt.errorbar(obs_times['LE']/3600,enbal_corr_LE,yerr=measurement_error['LE'],ecolor='black',fmt='None',label = '$\sigma_{I}$')
+        if plot_errbars:
+            plt.errorbar(obs_times['LE']/3600,enbal_corr_LE,yerr=optim.__dict__['error_obs_LE'],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
+            plt.errorbar(obs_times['LE']/3600,enbal_corr_LE,yerr=measurement_error['LE'],ecolor='black',fmt='None',label = '$\sigma_{I}$')
         plt.plot(priormodel.out.t,priormodel.out.LE, ls='dashed', marker='None',color='gold',linewidth = 2.0,label = 'prior')
         plt.plot(optimalmodel.out.t,optimalmodel.out.LE, linestyle='-', marker='None',color='red',linewidth = 2.0,label = 'post')
         if use_ensemble:

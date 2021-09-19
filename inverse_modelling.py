@@ -3462,23 +3462,23 @@ class inverse_modelling:
                     self.__dict__[item] += forcing[i][item] 
                 else:
                     self.__dict__['adout_'+item] += forcing[i][item] #takes the storing into account by looking at the adout variables
-            #the forcing in the argument list of the adjoint parts functions is not used, the statement avove takes care of the forcings
+            #The statement avove takes care of the forcings
             if(model.sw_ml):
-                self.adj_integrate_mixed_layer(forcing[i],checkpoint[i],model)
+                self.adj_integrate_mixed_layer(checkpoint[i],model)
             if(model.sw_ls):
-                self.adj_integrate_land_surface(forcing[i],checkpoint[i],model)
-            self.adj_store(forcing[i],checkpoint[i],model)
+                self.adj_integrate_land_surface(checkpoint[i],model)
+            self.adj_store(checkpoint[i],model)
             if(model.sw_ml):
-                self.adj_run_mixed_layer(forcing[i],checkpoint[i],model)
+                self.adj_run_mixed_layer(checkpoint[i],model)
             if model.sw_cu:
-                self.adj_run_cumulus(forcing[i],checkpoint[i],model)
+                self.adj_run_cumulus(checkpoint[i],model)
             if(model.sw_ls):
-                self.adj_run_land_surface(forcing[i],checkpoint[i],model)
+                self.adj_run_land_surface(checkpoint[i],model)
             if(model.sw_sl):
-                self.adj_run_surface_layer(forcing[i],checkpoint[i],model)
+                self.adj_run_surface_layer(checkpoint[i],model)
             if(model.sw_rad):
-                self.adj_run_radiation(forcing[i],checkpoint[i],model)
-            self.adj_statistics(forcing[i],checkpoint[i],model)
+                self.adj_run_radiation(checkpoint[i],model)
+            self.adj_statistics(checkpoint[i],model)
             if not model.sw_ls: #
                 if hasattr(model.input,'wCOS_input'):
                     #statement self.dwCOS = self.dwCOS_input[i]
@@ -3504,29 +3504,28 @@ class inverse_modelling:
             return returnlist
         
     def adj_init(self,checkpoint_init,model,returnvariables=None): #this is the adjoint of the initialiation of the model run (in forwardmodel initialisation is called once in run)
-        forcing={} #just a dummy
         if(model.sw_ml):
             #statement self.tl_run_mixed_layer(model,checkpoint)
-            self.adj_run_mixed_layer(forcing,checkpoint_init[0],model)
+            self.adj_run_mixed_layer(checkpoint_init[0],model)
         if(model.sw_cu):
             #statement self.tl_run_cumulus(model,checkpoint)
-            self.adj_run_cumulus(forcing,checkpoint_init[0],model)
+            self.adj_run_cumulus(checkpoint_init[0],model)
             #statement self.tl_run_mixed_layer(model,checkpoint)
-            self.adj_run_mixed_layer(forcing,checkpoint_init[0],model)
+            self.adj_run_mixed_layer(checkpoint_init[0],model)
         if(model.sw_ls):
             #statement self.tl_run_land_surface(model,checkpoint)
-            self.adj_run_land_surface(forcing,checkpoint_init[0],model)
+            self.adj_run_land_surface(checkpoint_init[0],model)
             if self.model.input.soilCOSmodeltype == 'Sun_Ogee':
                 self.adj_init_soil_COS_mod(checkpoint_init[0],model)
         if(model.sw_sl):
             for i in range(model.nr_of_surf_lay_its-1,-1,-1): #model.nr_of_surf_lay_its-1 because index model.nr_of_surf_lay_its does not exist
                 #statement self.tl_run_surface_layer(model,checkpoint)
-                self.adj_run_surface_layer(forcing,checkpoint_init[i],model)
+                self.adj_run_surface_layer(checkpoint_init[i],model)
         if(model.sw_rad):
             #statement self.tl_run_radiation(model,checkpoint)
-            self.adj_run_radiation(forcing,checkpoint_init[0],model)
+            self.adj_run_radiation(checkpoint_init[0],model)
         #statement self.tl_statistics(model,checkpoint)
-        self.adj_statistics(forcing,checkpoint_init[0],model)
+        self.adj_statistics(checkpoint_init[0],model)
         fac = model.mair / (model.rho*model.mco2)
         if not model.sw_ls:
             if hasattr(model.input,'wCO2_input'):
@@ -3570,7 +3569,7 @@ class inverse_modelling:
                 returnlist.append(self.__dict__[item])
             return returnlist
     
-    def adj_integrate_mixed_layer(self,forcing,checkpoint,model,HTy_variables=None):
+    def adj_integrate_mixed_layer(self,checkpoint,model,HTy_variables=None):
         dz0 = 50 #this is just a constant
         dz_h = checkpoint['iml_dz_h_middle']
         if(model.sw_wind):
@@ -3686,7 +3685,7 @@ class inverse_modelling:
                     self.HTy[i] = locals()[HTy_variables[i]] #in case it is not a self variable
 
     
-    def adj_integrate_land_surface(self,forcing,checkpoint,model,HTy_variables=None):
+    def adj_integrate_land_surface(self,checkpoint,model,HTy_variables=None):
         #statement dWl       = dWl0     + model.dt * self.dWltend
         self.adWl0 += self.adWl
         self.adWltend += model.dt * self.adWl
@@ -3717,7 +3716,7 @@ class inverse_modelling:
                 except KeyError:
                     self.HTy[i] = locals()[HTy_variables[i]] #in case it is not a self variable
 
-    def adj_store(self,forcing,checkpoint,model,HTy_variables=None):
+    def adj_store(self,checkpoint,model,HTy_variables=None):
         fac = checkpoint['sto_fac_end']
         #statement dout_dz            = self.ddz_h
         self.addz_h += self.adout_dz
@@ -4045,7 +4044,7 @@ class inverse_modelling:
                     self.HTy[i] = locals()[HTy_variables[i]] #in case it is not a self variable
 
     
-    def adj_run_mixed_layer(self,forcing,checkpoint,model,HTy_variables=None):
+    def adj_run_mixed_layer(self,checkpoint,model,HTy_variables=None):
         h = checkpoint['rml_h']
         ac = checkpoint['rml_ac']
         lcl = checkpoint['rml_lcl']
@@ -4390,7 +4389,7 @@ class inverse_modelling:
                 except KeyError:
                     self.HTy[i] = locals()[HTy_variables[i]] #in case it is not a self variable
     
-    def adj_run_cumulus(self,forcing,checkpoint,model,HTy_variables=None):
+    def adj_run_cumulus(self,checkpoint,model,HTy_variables=None):
         wthetav = checkpoint['rc_wthetav']
         deltaq = checkpoint['rc_deltaq']
         dz_h = checkpoint['rc_dz_h']
@@ -4573,7 +4572,7 @@ class inverse_modelling:
                 except KeyError:
                     self.HTy[i] = locals()[HTy_variables[i]] #in case it is not a self variable
 
-    def adj_run_land_surface(self,forcing,checkpoint,model,HTy_variables=None):
+    def adj_run_land_surface(self,checkpoint,model,HTy_variables=None):
         u = checkpoint['rls_u']
         v = checkpoint['rls_v']
         wstar = checkpoint['rls_wstar']
@@ -4973,10 +4972,10 @@ class inverse_modelling:
             self.adf2        = 0 
         if(self.model.ls_type == 'js'): 
             #statement drs = self.tl_jarvis_stewart(model,checkpoint,returnvariable='drs')
-            self.adj_jarvis_stewart(forcing,checkpoint,model)
+            self.adj_jarvis_stewart(checkpoint,model)
         elif(self.model.ls_type == 'ags'):
             #statement drs = self.tl_ags(model,checkpoint,returnvariable='drs')
-            self.adj_ags(forcing,checkpoint,model)
+            self.adj_ags(checkpoint,model)
             #self.adrs = 0 #not needed, since adrs set to zero in ags, and in the forward model ags does not return rs explicitly
         elif(self.model.ls_type == 'canopy_model'):
             raise Exception('not yet implemented')
@@ -5032,7 +5031,7 @@ class inverse_modelling:
                 except KeyError:
                     self.HTy[i] = locals()[HTy_variables[i]] #in case it is not a self variable
 
-    def adj_run_soil_COS_mod(self,forcing,checkpoint,model,HTy_variables=None):
+    def adj_run_soil_COS_mod(self,checkpoint,model,HTy_variables=None):
         sCOSm = model.soilCOSmodel #just for shorter notation
         airtemp = checkpoint['rsCm_airtemp']
         mol_rat_ocs_atm = checkpoint['rsCm_mol_rat_ocs_atm']
@@ -5297,7 +5296,7 @@ class inverse_modelling:
             for item in HTy_variables:
                 self.HTy_dict[item] = self.__dict__[item]
     
-    def adj_jarvis_stewart(self,forcing,checkpoint,model,HTy_variables=None):
+    def adj_jarvis_stewart(self,checkpoint,model,HTy_variables=None):
         Swin = checkpoint['js_Swin']
         w2 = checkpoint['js_w2']
         wwilt = checkpoint['js_wwilt']
@@ -5391,7 +5390,7 @@ class inverse_modelling:
                 except KeyError:
                     self.HTy[i] = locals()[HTy_variables[i]] #in case it is not a self variable
     
-    def adj_ags(self,forcing,checkpoint,model,HTy_variables=None):
+    def adj_ags(self,checkpoint,model,HTy_variables=None):
         if(model.c3c4 == 'c3'):
             c = 0
         elif(model.c3c4 == 'c4'):
@@ -5428,7 +5427,7 @@ class inverse_modelling:
             #statement dwCOSS_molm2s = self.tl_run_soil_COS_mod(model,checkpoint,returnvariable='dCOS_netuptake_soilsun')
             self.adCOS_netuptake_soilsun += self.adwCOSS_molm2s #THIS IS ESSENTIAL!! needed because there is a hidden statement in the tangent linear saying that dwCOSS_molm2s = dCOS_netuptake_soilsun. this occurs in the TL after calling tl_run_soil_COS_mod
             self.adwCOSS_molm2s = 0
-            self.adj_run_soil_COS_mod(forcing,checkpoint,model) 
+            self.adj_run_soil_COS_mod(checkpoint,model) 
             #statement self.dairtemp = self.dTsurf
             self.adTsurf += self.adairtemp
             self.adairtemp = 0
@@ -6148,7 +6147,7 @@ class inverse_modelling:
                 except KeyError:
                     self.HTy[i] = locals()[HTy_variables[i]] #in case it is not a self variable
                       
-    def adj_run_surface_layer(self,forcing,checkpoint,model,HTy_variables=None):
+    def adj_run_surface_layer(self,checkpoint,model,HTy_variables=None):
         ueff = checkpoint['rsl_ueff_end']
         q = checkpoint['rsl_q']
         qsurf = checkpoint['rsl_qsurf_end']
@@ -7254,7 +7253,7 @@ class inverse_modelling:
         self.adpsim_term_for_dCm_dzsl = 0
         if model.sw_use_ribtol:
             #statement dL = self.tl_ribtol(model,checkpoint,returnvariable='dL')
-            self.adj_ribtol(forcing,checkpoint,model)
+            self.adj_ribtol(checkpoint,model)
             self.adL = 0
             #statement dRib = dRib_dthetav + dRib_dzsl + dRib_dthetavsurf + dRib_dueff
             self.adRib_dthetav += self.adRib
@@ -7438,7 +7437,7 @@ class inverse_modelling:
                 except KeyError:
                     self.HTy[i] = locals()[HTy_variables[i]] #in case it is not a self variable
                     
-    def adj_ribtol(self,forcing,checkpoint,model,HTy_variables=None):
+    def adj_ribtol(self,checkpoint,model,HTy_variables=None):
         it = checkpoint['rtl_it_end']
         zsl = checkpoint['rtl_zsl']
         z0m = checkpoint['rtl_z0m']
@@ -7687,7 +7686,7 @@ class inverse_modelling:
                     self.HTy[i] = locals()[HTy_variables[i]] #in case it is not a self variable
 
     
-    def adj_run_radiation(self,forcing,checkpoint,model,HTy_variables=None):
+    def adj_run_radiation(self,checkpoint,model,HTy_variables=None):
         doy = checkpoint['rr_doy']
         lat = checkpoint['rr_lat']
         h = checkpoint['rr_h']
@@ -7769,7 +7768,7 @@ class inverse_modelling:
                 except KeyError:
                     self.HTy[i] = locals()[HTy_variables[i]] #in case it is not a self variable
         
-    def adj_statistics(self,forcing,checkpoint,model,HTy_variables=None):
+    def adj_statistics(self,checkpoint,model,HTy_variables=None):
         q = checkpoint['stat_q']
         theta = checkpoint['stat_theta']
         wq = checkpoint['stat_wq']
@@ -8599,8 +8598,7 @@ class inverse_modelling:
         self.y = np.random.random_sample(1)[0]
         self.initialise_adjoint()
         self.__dict__[y_variable] = self.y
-        forcingdummy = {}
-        self.adj_run_surface_layer(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
+        self.adj_run_surface_layer(checkpoint_test,testmodel,HTy_variables=HTy_variables) 
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         error = False
@@ -8632,8 +8630,7 @@ class inverse_modelling:
         self.tl_run_surface_layer(testmodel,checkpoint_test)
         self.y = np.random.random_sample(1)[0]
         self.initialise_adjoint()
-        forcingdummy = {}
-        self.adj_run_surface_layer(forcingdummy,checkpoint_test,testmodel) #important that forcings are zero
+        self.adj_run_surface_layer(checkpoint_test,testmodel) 
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         print('<Hx,y>,<x,Hty>, rel difference',dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy)
@@ -8660,8 +8657,7 @@ class inverse_modelling:
         self.y = np.random.random_sample(1)[0]
         self.initialise_adjoint()
         self.__dict__[y_variable] = self.y
-        forcingdummy = {}
-        self.adj_ribtol(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
+        self.adj_ribtol(checkpoint_test,testmodel,HTy_variables=HTy_variables) 
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         error = False
@@ -8696,8 +8692,7 @@ class inverse_modelling:
         self.y = np.random.random_sample(1)[0]
         self.initialise_adjoint()
         self.__dict__[y_variable] = self.y
-        forcingdummy = {}
-        self.adj_ags(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
+        self.adj_ags(checkpoint_test,testmodel,HTy_variables=HTy_variables) 
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         error = False
@@ -8729,8 +8724,7 @@ class inverse_modelling:
         self.tl_ags(testmodel,checkpoint_test)
         self.y = np.random.random_sample(1)[0]
         self.initialise_adjoint()
-        forcingdummy = {}
-        self.adj_ags(forcingdummy,checkpoint_test,testmodel) #important that forcings are zero
+        self.adj_ags(checkpoint_test,testmodel) 
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         print('<Hx,y>,<x,Hty>, rel difference',dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy)
@@ -8757,8 +8751,7 @@ class inverse_modelling:
         self.y = np.random.random_sample(1)[0]
         self.initialise_adjoint()
         self.__dict__[y_variable] = self.y
-        forcingdummy = {}
-        self.adj_run_mixed_layer(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
+        self.adj_run_mixed_layer(checkpoint_test,testmodel,HTy_variables=HTy_variables) 
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         error = False
@@ -8793,8 +8786,7 @@ class inverse_modelling:
         self.y = np.random.random_sample(1)[0]
         self.initialise_adjoint()
         self.__dict__[y_variable] = self.y
-        forcingdummy = {}
-        self.adj_integrate_mixed_layer(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
+        self.adj_integrate_mixed_layer(checkpoint_test,testmodel,HTy_variables=HTy_variables) 
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         error = False
@@ -8829,8 +8821,7 @@ class inverse_modelling:
         self.y = np.random.random_sample(1)[0]
         self.initialise_adjoint()
         self.__dict__[y_variable] = self.y
-        forcingdummy = {}
-        self.adj_run_radiation(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
+        self.adj_run_radiation(checkpoint_test,testmodel,HTy_variables=HTy_variables) 
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         error = False
@@ -8865,8 +8856,7 @@ class inverse_modelling:
         self.y = np.random.random_sample(1)[0]
         self.initialise_adjoint()
         self.__dict__[y_variable] = self.y
-        forcingdummy = {}
-        self.adj_run_land_surface(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
+        self.adj_run_land_surface(checkpoint_test,testmodel,HTy_variables=HTy_variables) 
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         error = False
@@ -8894,8 +8884,7 @@ class inverse_modelling:
         self.tl_run_land_surface(testmodel,checkpoint_test)
         self.y = np.random.random_sample(1)[0]
         self.initialise_adjoint()
-        forcingdummy = {}
-        self.adj_run_land_surface(forcingdummy,checkpoint_test,testmodel) #important that forcings are zero
+        self.adj_run_land_surface(checkpoint_test,testmodel) 
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         print('<Hx,y>,<x,Hty>, rel difference',dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy)
@@ -8922,8 +8911,7 @@ class inverse_modelling:
         self.y = np.random.random_sample(1)[0]
         self.initialise_adjoint()
         self.__dict__[y_variable] = self.y
-        forcingdummy = {}
-        self.adj_integrate_land_surface(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
+        self.adj_integrate_land_surface(checkpoint_test,testmodel,HTy_variables=HTy_variables) 
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         error = False
@@ -8958,8 +8946,7 @@ class inverse_modelling:
         self.y = np.random.random_sample(1)[0]
         self.initialise_adjoint()
         self.__dict__[y_variable] = self.y
-        forcingdummy = {}
-        self.adj_statistics(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
+        self.adj_statistics(checkpoint_test,testmodel,HTy_variables=HTy_variables) 
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         error = False
@@ -8994,8 +8981,7 @@ class inverse_modelling:
         self.y = np.random.random_sample(1)[0]
         self.initialise_adjoint()
         self.__dict__[y_variable] = self.y
-        forcingdummy = {}
-        self.adj_run_cumulus(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
+        self.adj_run_cumulus(checkpoint_test,testmodel,HTy_variables=HTy_variables) 
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         error = False
@@ -9037,8 +9023,7 @@ class inverse_modelling:
                     self.y[i,j] = np.random.random_sample(1)[0]
         self.initialise_adjoint()
         self.__dict__[y_variable] = cp.deepcopy(self.y)
-        forcingdummy = {}
-        self.adj_run_soil_COS_mod(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
+        self.adj_run_soil_COS_mod(checkpoint_test,testmodel,HTy_variables=HTy_variables) 
         #to prevent that dothxy is a matrix product, while dotxhty is not
         if np.size(self.Hx) > testmodel.soilCOSmodel.nr_nodes:
             self.Hx = np.ndarray.flatten(self.Hx)
@@ -9088,8 +9073,7 @@ class inverse_modelling:
         self.y = np.random.random_sample(1)[0]
         self.initialise_adjoint()
         self.__dict__[y_variable] = self.y
-        forcingdummy = {}
-        self.adj_store(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
+        self.adj_store(checkpoint_test,testmodel,HTy_variables=HTy_variables) 
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         error = False
@@ -9124,8 +9108,7 @@ class inverse_modelling:
         self.y = np.random.random_sample(1)[0]
         self.initialise_adjoint()
         self.__dict__[y_variable] = self.y
-        forcingdummy = {}
-        self.adj_jarvis_stewart(forcingdummy,checkpoint_test,testmodel,HTy_variables=HTy_variables) #important that forcings are zero
+        self.adj_jarvis_stewart(checkpoint_test,testmodel,HTy_variables=HTy_variables) 
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         error = False

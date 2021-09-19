@@ -18,7 +18,7 @@ if set_seed:
 adjointtest_surf_lay = False #an adjoint test of the surface layer module, without time integration
 gradtest_surf_lay = False
 adjointtest_ribtol = False
-gradtest_ribtol = False
+gradtest_ribtol = True
 adjointtest_ags = False
 gradtest_ags = False
 adjointtest_run_mixed_layer = False
@@ -27,7 +27,7 @@ adjointtest_int_mixed_layer = False
 gradtest_int_mixed_layer = False
 adjointtest_run_radiation = False
 gradtest_run_radiation = False
-adjointtest_run_land_surface = False
+adjointtest_run_land_surface = True
 gradtest_run_land_surface = False
 adjointtest_int_land_surface = False
 gradtest_int_land_surface = False
@@ -43,7 +43,7 @@ adjointtest_jarvis_stewart = False
 gradtest_jarvis_stewart = False
 manual_adjointtest = False
 adjointtest = False #this is over the full model run, so multiple timesteps normally (specify time settings in input)
-gradtest = True #this is over the full model run, so multiple timesteps normally (specify time settings in input)
+gradtest = False #this is over the full model run, so multiple timesteps normally (specify time settings in input)
 test_from_ref_paper = False
 #gradient tests require the variable save_vars_indict to be set to true
 

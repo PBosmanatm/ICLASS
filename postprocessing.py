@@ -29,6 +29,8 @@ plot_1d_pdfs = False
 plot_2d_pdfs = False
 plot_pdf_panels = True
 plot_colored_corr_matr = True
+if plot_colored_corr_matr:
+    showfullmatr = True
 plot_co2profiles = False
 plot_manual_fitpanels = False
 plot_auto_fitpanel = False
@@ -39,6 +41,11 @@ figformat = 'eps'#the format in which you want figure output, e.g. 'png'
 load_stored_objects = True
 if load_stored_objects:
     storefolder_objects = 'pickle_objects' 
+load_second_optim = False #load a second optimisation (not just a second ensemble member)
+if load_second_optim:
+    if load_stored_objects:
+        storefolder_objects2 = '../5param2obs/pickle_objects'
+    plot_two_optim_man_fitpanel =True
 ##############################
 ####### end settings #########
 ##############################
@@ -50,8 +57,11 @@ for i in range(len(MultiWordHeaders)):
     MultiWordHeaders[i] = ''.join(MultiWordHeaders[i].split()) #removes the spaces in between
 plt.rc('font', size=plotfontsize) #plot font size
 
+display_names = {}
+disp_nms_par = {}
 disp_units_par = {}
 disp_units = {}
+ 
 
 if remove_prev:
     filelist_list = []
@@ -78,6 +88,12 @@ if load_stored_objects:
     if 'disp_units_par.pkl' in os.listdir(storefolder_objects):
         with open(storefolder_objects+'/disp_units_par.pkl', 'rb') as input:
             disp_units_par = pickle.load(input)
+    if 'display_names.pkl' in os.listdir(storefolder_objects):
+        with open(storefolder_objects+'/display_names.pkl', 'rb') as input:
+            display_names = pickle.load(input)
+    if 'disp_nms_par.pkl' in os.listdir(storefolder_objects):
+        with open(storefolder_objects+'/disp_nms.pkl', 'rb') as input:
+            disp_nms_par = pickle.load(input)
     if 'optim.pkl' in os.listdir(storefolder_objects):
         with open(storefolder_objects+'/optim.pkl', 'rb') as input:
             optim = pickle.load(input)
@@ -87,9 +103,6 @@ if load_stored_objects:
     if 'measurement_error.pkl' in os.listdir(storefolder_objects):
         with open(storefolder_objects+'/measurement_error.pkl', 'rb') as input:
             measurement_error = pickle.load(input)
-    if 'display_names.pkl' in os.listdir(storefolder_objects):
-        with open(storefolder_objects+'/display_names.pkl', 'rb') as input:
-            display_names = pickle.load(input)
     if 'optimalinput.pkl' in os.listdir(storefolder_objects):
         with open(storefolder_objects+'/optimalinput.pkl', 'rb') as input:
             optimalinput = pickle.load(input)
@@ -105,13 +118,63 @@ if load_stored_objects:
     if 'PertData_mems.pkl' in os.listdir(storefolder_objects):
         with open(storefolder_objects+'/PertData_mems.pkl', 'rb') as input:
             PertData_mems = pickle.load(input)
-        
-##############################
-#### units for plots #########
-##############################
+    if load_second_optim:
+        if 'priormodel.pkl' in os.listdir(storefolder_objects2):
+            with open(storefolder_objects2+'/priormodel.pkl', 'rb') as input:
+                priormodel2 = pickle.load(input)
+        if 'priorinput.pkl' in os.listdir(storefolder_objects2):
+            with open(storefolder_objects2+'/priorinput.pkl', 'rb') as input:
+                priorinput2 = pickle.load(input)
+        if 'obsvarlist.pkl' in os.listdir(storefolder_objects2):
+            with open(storefolder_objects2+'/obsvarlist.pkl', 'rb') as input:
+                obsvarlist2 = pickle.load(input)
+        if 'optim.pkl' in os.listdir(storefolder_objects2):
+            with open(storefolder_objects2+'/optim.pkl', 'rb') as input:
+                optim2 = pickle.load(input)
+        if 'obs_times.pkl' in os.listdir(storefolder_objects2):
+            with open(storefolder_objects2+'/obs_times.pkl', 'rb') as input:
+                obs_times2 = pickle.load(input)
+        if 'measurement_error.pkl' in os.listdir(storefolder_objects2):
+            with open(storefolder_objects2+'/measurement_error.pkl', 'rb') as input:
+                measurement_error2 = pickle.load(input)
+        if 'optimalinput.pkl' in os.listdir(storefolder_objects2):
+            with open(storefolder_objects2+'/optimalinput.pkl', 'rb') as input:
+                optimalinput2 = pickle.load(input)
+        if 'optimalinput_onsp.pkl' in os.listdir(storefolder_objects2):
+            with open(storefolder_objects2+'/optimalinput_onsp.pkl', 'rb') as input:
+                optimalinput_onsp2 = pickle.load(input)
+        if 'optimalmodel.pkl' in os.listdir(storefolder_objects2):
+            with open(storefolder_objects2+'/optimalmodel.pkl', 'rb') as input:
+                optimalmodel2 = pickle.load(input)
+        if 'optimalmodel_onsp.pkl' in os.listdir(storefolder_objects2):
+            with open(storefolder_objects2+'/optimalmodel_onsp.pkl', 'rb') as input:
+                optimalmodel_onsp2 = pickle.load(input)
+        if 'PertData_mems.pkl' in os.listdir(storefolder_objects2):
+            with open(storefolder_objects2+'/PertData_mems.pkl', 'rb') as input:
+                PertData_mems2 = pickle.load(input)
+       
+########################################
+#### units and names for plots #########
+########################################
 # e.g. disp_units_par['theta'] = 'K' for parameter theta
 # or disp_units['theta'] = 'K' for observations of theta
-
+#or disp_nms_par['theta'] = r'$\theta$' #name to be displayed for parameter theta
+disp_nms_par['theta'] = r'$\theta$' #name for parameter theta
+disp_nms_par['advtheta'] = r'$adv_{\theta}$'
+disp_nms_par['advq'] = '$adv_{q}$'
+disp_nms_par['advCO2'] = '$adv_{CO2}$'
+disp_nms_par['deltatheta'] = r'$\Delta_{\theta}$'
+disp_nms_par['gammatheta'] = r'$\gamma_{\theta}$'
+disp_nms_par['deltaq'] = '$\Delta_{q}$'
+disp_nms_par['gammaq'] = '$\gamma_{q}$'
+disp_nms_par['deltaCO2'] = '$\Delta_{CO2}$'
+disp_nms_par['deltaCO2'] = '$\Delta_{CO2}$'
+disp_nms_par['gammaCO2'] = '$\gamma_{CO2}$'
+disp_nms_par['alfa_sto'] = r'$\alpha_{sto}$'
+disp_nms_par['alpha'] = r'$\alpha_{rad}$'
+disp_nms_par['EnBalDiffObsHFrac'] = '$Frac_{H}$'
+disp_nms_par['wg'] = '$w_{g}$'
+disp_nms_par['R10'] = '$R_{10}$'
 ##############################
 #### end units for plots #####
 ##############################
@@ -329,7 +392,7 @@ if use_ensemble:
             for k in range(n.size):
                 pdfx[k] = 0.5*(bins[k]+bins[k+1])
                 pdfy[k] = n[k]
-            ax[1].plot(pdfx,pdfy, linestyle='-', linewidth=2,color='red',label='post')
+            ax[1].plot(pdfx,pdfy, linestyle='dashed', linewidth=2,color='red',label='post')
             seq_p = np.array([x[plotvars[1]] for x in ensemble_p[1:]]) #iterate over the dictionaries,gives array . We exclude the first optimisation, since it biases the sampling as we choose it ourselves.
             seq_suc_p = np.array([seq_p[x] for x in range(len(seq_p)) if success_ens[1:][x]])
             mean_state_prior = np.mean(seq_suc_p)
@@ -342,7 +405,7 @@ if use_ensemble:
                 pdfy[k] = n_p[k]
             ax[1].ticklabel_format(axis="both", style="sci", scilimits=(0,0))
             ax[1].plot(pdfx,pdfy, linestyle='-', linewidth=2,color='gold',label='prior')
-            ax[1].axvline(mean_state_post, linestyle='dashed',linewidth=2,color='red',label = 'mean post')
+            ax[1].axvline(mean_state_post, linestyle='-',linewidth=2,color='red',label = 'mean post')
             ax[1].axvline(mean_state_prior, linestyle='dashed',linewidth=2,color='gold',label = 'mean prior')
             ax[1].set_xlabel(plotvars[1] + ' ('+ disp_units_par[plotvars[1]] +')')
             #ax[1].set_ylabel('Probability density (-)')             
@@ -396,8 +459,18 @@ if use_ensemble:
         if plot_colored_corr_matr:    
             plt.figure()
             sb.set(rc={'figure.figsize':(11,11)}) 
-            sb.set(font_scale=1.05)           
-            plot = sb.heatmap(post_cor_matr,annot=True,xticklabels=state,yticklabels = state, cmap="RdBu_r",cbar_kws={'label': 'Correlation (-)'}, linewidths=0.7,annot_kws={"size": 10.2 }) 
+            sb.set(font_scale=1.05)
+            disp_nms_state = []
+            for item in state:
+                if item in disp_nms_par:
+                    disp_nms_state.append(disp_nms_par[item])
+                else:
+                    disp_nms_state.append(item)
+            mask = None
+            if not showfullmatr:
+                mask = np.triu(np.ones(len(post_cor_matr)),k=1)
+            plot = sb.heatmap(post_cor_matr,annot=True,xticklabels=disp_nms_state,yticklabels = disp_nms_state, cmap="RdBu_r",cbar_kws={'label': 'Correlation (-)'}, linewidths=0.7,annot_kws={"size": 10.2 },mask = mask) 
+            plot.set_facecolor('white')
             plot.tick_params(labelsize=11)
             plt.ylim((len(state), 0))
             plt.subplots_adjust(left=0.21, right=0.92, top=0.93, bottom=0.25,wspace=0.1)
@@ -742,4 +815,50 @@ if plot_auto_fitpanel:
     plt.savefig('pp_fig_fitpanel_auto2.eps', format='eps')
     
     
-    
+if load_second_optim:
+    if plot_two_optim_man_fitpanel:
+        plt.rc('font', size=17)
+        fig, ax = plt.subplots(2,2,figsize=(16,12))
+        ax[0,0].plot(priormodel.out.t,priormodel.out.h, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+        ax[0,0].plot(optimalmodel.out.t,optimalmodel.out.h, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+        ax[0,0].plot(obs_times['h']/3600,optim.__dict__['obs_'+'h'], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs')
+        ax[0,0].set_ylabel('boundary layer height (m)')
+        ax[0,0].set_xlabel('time (h)')
+        ax[0,1].plot(priormodel.out.t,1000*priormodel.out.q, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+        ax[0,1].plot(optimalmodel.out.t,1000*optimalmodel.out.q, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+        ax[0,1].plot(obs_times['q']/3600,1000*optim.__dict__['obs_'+'q'], linestyle=' ', marker='*',color = 'black',ms=10, label = 'obs')
+        ax[0,1].set_ylabel('specific humidity (g/kg)')
+        ax[0,1].set_xlabel('time (h)')
+        ax[1,0].plot(priormodel2.out.t,priormodel2.out.h, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+        ax[1,0].plot(optimalmodel2.out.t,optimalmodel2.out.h, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+        ax[1,0].plot(obs_times2['h']/3600,optim2.__dict__['obs_'+'h'], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs')
+        ax[1,0].set_ylabel('boundary layer height (m)')
+        ax[1,0].set_xlabel('time (h)')
+        ax[1,1].plot(priormodel2.out.t,1000*priormodel2.out.q, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+        ax[1,1].plot(optimalmodel2.out.t,1000*optimalmodel2.out.q, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+        ax[1,1].plot(obs_times2['q']/3600,1000*optim2.__dict__['obs_'+'q'], linestyle=' ', marker='*',color = 'black',ms=10, label = 'obs')
+        ax[1,1].set_ylabel('specific humidity (g/kg)')
+        ax[1,1].set_xlabel('time (h)')
+        ax[1,1].legend(loc=0, frameon=False,prop={'size':21})
+        ax[0,0].annotate('(a)',
+                    xy=(0.00, 1.07), xytext=(0,0),
+                    xycoords=('axes fraction', 'axes fraction'),
+                    textcoords='offset points',
+                    size=16, fontweight='bold', ha='left', va='top')
+        ax[0,1].annotate('(b)',
+                    xy=(0.00, 1.07), xytext=(0,0),
+                    xycoords=('axes fraction', 'axes fraction'),
+                    textcoords='offset points',
+                    size=16, fontweight='bold',ha='left', va='top')
+        ax[1,0].annotate('(c)',
+                xy=(0.00, 1.07), xytext=(0,0),
+                xycoords=('axes fraction', 'axes fraction'),
+                textcoords='offset points',
+                size=16, fontweight='bold',ha='left', va='top')
+        ax[1,1].annotate('(d)',
+                xy=(0.00, 1.07), xytext=(0,0),
+                xycoords=('axes fraction', 'axes fraction'),
+                textcoords='offset points',
+                size=16, fontweight='bold',ha='left', va='top')
+        plt.savefig('pp_fig_fitpaneltwo_optims.eps', format='eps')
+                    
