@@ -33,8 +33,8 @@ if use_ensemble:
     est_post_pdf_covmatr = True #estimate the posterior pdf and covariance matrix of the state (and more)
     if est_post_pdf_covmatr:
         nr_bins = int(nr_of_members/10) #nr of bins for the pdfs
-        succes_opt_crit = 1.7 #the chi squared at which an optimisation is considered successful (lower or equal to is succesfull)
-    pert_obs_ens = True #Perturb observations of every ensemble member (except member 0)
+        succes_opt_crit = 3.0 #the chi squared at which an optimisation is considered successful (lower or equal to is succesfull)
+    pert_obs_ens = False #Perturb observations of every ensemble member (except member 0)
     if pert_obs_ens:
         use_sigma_O = False #If True, the total observational error is used to perturb the obs, if False only the measurement error is used
         plot_perturbed_obs = False #Plot the perturbed observations of the ensemble members
@@ -709,25 +709,25 @@ if use_backgr_in_cost or use_ensemble:
     priorvar['alpha'] = 0.1**2
     priorvar['gammatheta'] = 0.003**2 
     priorvar['gammatheta2'] = 0.003**2 
-    priorvar['gammaq'] = (0.003e-3)**2
-    priorvar['gammaCO2'] = (60.e-3)**2 
+    priorvar['gammaq'] = (0.002e-3)**2
+    priorvar['gammaCO2'] = (30.e-3)**2 
     priorvar['deltatheta'] = 1.5**2
     priorvar['deltaq'] = 0.002**2
     priorvar['theta'] = 1**2
-    priorvar['deltaCO2'] = 40**2
+    priorvar['deltaCO2'] = 25**2
     priorvar['CO2'] = 30**2
     priorvar['sca_sto'] = 0.25**2
-    priorvar['z0m'] = 0.1**2
-    priorvar['z0h'] = 0.1**2
+    priorvar['z0m'] = 0.05**2
+    priorvar['z0h'] = 0.05**2
     priorvar['advtheta'] = (2/3600)**2 
     priorvar['advq'] = (0.002/3600)**2 
-    priorvar['advCO2'] = (40/3600)**2
-    priorvar['wg'] = (0.2)**2
+    priorvar['advCO2'] = (15/3600)**2
+    priorvar['wg'] = (0.15)**2
 #    priorvar['obs_sca_cf_H'] = 0.4**2 
 #    priorvar['obs_sca_cf_LE'] = 0.4**2 
-    priorvar['FracH'] = 0.4**2 
+    priorvar['FracH'] = 0.3**2 
     priorvar['cc'] = 0.2**2 
-    priorvar['R10'] = 0.4**2 
+    priorvar['R10'] = 0.3**2 
 #    priorvar['wtheta'] = (150/1.1/1005)**2
 #    priorvar['wq'] = (0.1e-3)**2
 #    priorvar['ustar'] = (0.7)**2
@@ -802,23 +802,23 @@ if imposeparambounds or paramboundspenalty:
     boundedvars['alpha'] = [0.05,0.8] 
     boundedvars['sca_sto'] = [0.1,5]
     boundedvars['wg'] = [priorinput.wwilt+0.001,priorinput.wsat-0.001]
-    boundedvars['theta'] = [274,310]
     boundedvars['h'] = [50,3200]
-    boundedvars['wtheta'] = [0.05,0.6]
-    boundedvars['gammatheta'] = [0.0015,0.018]
-    boundedvars['gammatheta2'] = [0.0015,0.018]
+    boundedvars['gammatheta'] = [0.001,0.018]
+    boundedvars['gammatheta2'] = [0.001,0.018]
     boundedvars['gammaq'] = [-9e-6,9e-6]
     boundedvars['z0m'] = [0.0001,5]
     boundedvars['z0h'] = [0.0001,5]
-    boundedvars['q'] = [0.002,0.020]
-    boundedvars['divU'] = [0,1e-4]
-    boundedvars['fCA'] = [0.1,1e8]
-    boundedvars['CO2'] = [100,1000]
-    boundedvars['ustar'] = [0.01,50]
-    boundedvars['wq'] = [0,0.1] #negative flux seems problematic because L going to very small values
     boundedvars['FracH'] = [0,1]
-    boundedvars['cc'] = [0,1]
     boundedvars['R10'] = [0,15]
+#    boundedvars['wtheta'] = [0.05,0.6]
+#    boundedvars['divU'] = [0,1e-4]
+#    boundedvars['fCA'] = [0.1,1e8]
+#    boundedvars['CO2'] = [100,1000]
+#    boundedvars['ustar'] = [0.01,50]
+#    boundedvars['theta'] = [274,310]
+#    boundedvars['cc'] = [0,1]
+#    boundedvars['q'] = [0.002,0.020]
+#    boundedvars['wq'] = [0,0.1] #negative flux seems problematic because L going to very small values
 #############################################################
 ###### end user input: parameter bounds  ####################
 #############################################################    
@@ -1081,7 +1081,7 @@ for item in obsvarlist:
                 obs_weights[item] = [refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'h':
             optim.__dict__['obs_'+item] = np.array(BLH_selected) #we just have one day
-            measurement_error[item] = [120 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
+            measurement_error[item] = [100 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = np.array(dhour_BLH_selected) * 3600
             for i in range(len(obs_times[item])):
                 obs_times[item][i] = round(obs_times[item][i],0) #Very important, since otherwise the obs will be a fraction of a second off and will not be used
@@ -1090,7 +1090,7 @@ for item in obsvarlist:
                 obs_weights[item] = [refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'qmh':
             optim.__dict__['obs_'+item] = np.array(q200_selected)
-            measurement_error[item] = [0.00008 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
+            measurement_error[item] = [0.0001 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = np.array(obstimes_T)
             disp_units[item] = 'g kg$^{-1}$'
             display_names[item] = 'q_200'
@@ -1098,7 +1098,7 @@ for item in obsvarlist:
                 obs_weights[item] = [refnumobs*1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'qmh2':
             optim.__dict__['obs_'+item] = np.array(q140_selected)
-            measurement_error[item] = [0.00008 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
+            measurement_error[item] = [0.0001 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = np.array(obstimes_T)
             disp_units[item] = 'g kg$^{-1}$'
             display_names[item] = 'q_140'
@@ -1106,7 +1106,7 @@ for item in obsvarlist:
                 obs_weights[item] = [refnumobs*1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'qmh3':
             optim.__dict__['obs_'+item] = np.array(q80_selected)
-            measurement_error[item] = [0.00008 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
+            measurement_error[item] = [0.0001 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = np.array(obstimes_T)
             disp_units[item] = 'g kg$^{-1}$'
             display_names[item] = 'q_80'
@@ -1114,7 +1114,7 @@ for item in obsvarlist:
                 obs_weights[item] = [refnumobs*1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'qmh4':
             optim.__dict__['obs_'+item] = np.array(q40_selected)
-            measurement_error[item] = [0.00008 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
+            measurement_error[item] = [0.0001 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = np.array(obstimes_T)
             disp_units[item] = 'g kg$^{-1}$'
             display_names[item] = 'q_40'
@@ -1122,7 +1122,7 @@ for item in obsvarlist:
                 obs_weights[item] = [refnumobs*1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'qmh5':
             optim.__dict__['obs_'+item] = np.array(q20_selected)
-            measurement_error[item] = [0.00008 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
+            measurement_error[item] = [0.0001 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = np.array(obstimes_T)
             disp_units[item] = 'g kg$^{-1}$'
             display_names[item] = 'q_20'
@@ -1130,7 +1130,7 @@ for item in obsvarlist:
                 obs_weights[item] = [refnumobs*1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'qmh6':
             optim.__dict__['obs_'+item] = np.array(q10_selected)
-            measurement_error[item] = [0.00008 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
+            measurement_error[item] = [0.0001 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = np.array(obstimes_T)
             disp_units[item] = 'g kg$^{-1}$'
             display_names[item] = 'q_10'
@@ -1138,7 +1138,7 @@ for item in obsvarlist:
                 obs_weights[item] = [refnumobs*1./7*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'qmh7':
             optim.__dict__['obs_'+item] = np.array(q2_selected)
-            measurement_error[item] = [0.00008 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
+            measurement_error[item] = [0.0001 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = np.array(obstimes_T)
             disp_units[item] = 'g kg$^{-1}$'
             display_names[item] = 'q_2'
@@ -1153,14 +1153,14 @@ for item in obsvarlist:
                 obs_weights[item] = [refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'H':
             optim.__dict__['obs_'+item] = np.array(H_selected)
-            measurement_error[item] = [15 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
+            measurement_error[item] = [13 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = np.array(obstimes_T)
             disp_units[item] = 'W m$^{-2}$'
             if use_weights:
                 obs_weights[item] = [refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'LE':
             optim.__dict__['obs_'+item] = np.array(LE_selected)
-            measurement_error[item] = [15 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
+            measurement_error[item] = [13 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = np.array(obstimes_T)
             disp_units[item] = 'W m$^{-2}$'
             if use_weights:
@@ -1181,7 +1181,7 @@ for item in obsvarlist:
                 obs_weights[item] = [refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         elif item == 'Swout':
             optim.__dict__['obs_'+item] = np.array(SWU_selected)
-            measurement_error[item] = [2.5 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
+            measurement_error[item] = [2.0 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = np.array(obstimes_T)
             disp_units[item] = 'W m$^{-2}$'
             if use_weights:
@@ -1299,14 +1299,6 @@ else:
     mod_error['Tmh'],mod_error['Tmh2'],mod_error['Tmh3'],mod_error['Tmh4'],mod_error['Tmh5'],mod_error['Tmh6'],mod_error['Tmh7'] = [np.zeros(len(measurement_error['Tmh'])) for x in range(7)]
     for j in range(len(measurement_error['Tmh'])):
         if obs_times['Tmh'][j]/3600 > 10.5:
-            mod_error['Tmh'][j] = 0.15
-            mod_error['Tmh2'][j] = 0.15
-            mod_error['Tmh3'][j] = 0.15
-            mod_error['Tmh4'][j] = 0.15
-            mod_error['Tmh5'][j] = 0.15
-            mod_error['Tmh6'][j] = 0.15
-            mod_error['Tmh7'][j] = 0.15
-        else:
             mod_error['Tmh'][j] = 0.3
             mod_error['Tmh2'][j] = 0.3
             mod_error['Tmh3'][j] = 0.3
@@ -1314,17 +1306,17 @@ else:
             mod_error['Tmh5'][j] = 0.3
             mod_error['Tmh6'][j] = 0.3
             mod_error['Tmh7'][j] = 0.3
+        else:
+            mod_error['Tmh'][j] = 0.5
+            mod_error['Tmh2'][j] = 0.5
+            mod_error['Tmh3'][j] = 0.5
+            mod_error['Tmh4'][j] = 0.5
+            mod_error['Tmh5'][j] = 0.5
+            mod_error['Tmh6'][j] = 0.5
+            mod_error['Tmh7'][j] = 0.5
     mod_error['qmh'],mod_error['qmh2'],mod_error['qmh3'],mod_error['qmh4'],mod_error['qmh5'],mod_error['qmh6'],mod_error['qmh7'] = [np.zeros(len(measurement_error['qmh'])) for x in range(7)]
     for j in range(len(measurement_error['qmh'])):
         if obs_times['qmh'][j]/3600 > 10.5:
-            mod_error['qmh'][j] = 0.00015
-            mod_error['qmh2'][j] = 0.00015
-            mod_error['qmh3'][j] = 0.00015
-            mod_error['qmh4'][j] = 0.00015
-            mod_error['qmh5'][j] = 0.00015
-            mod_error['qmh6'][j] = 0.00015
-            mod_error['qmh7'][j] = 0.00015
-        else:
             mod_error['qmh'][j] = 0.0002
             mod_error['qmh2'][j] = 0.0002
             mod_error['qmh3'][j] = 0.0002
@@ -1332,28 +1324,36 @@ else:
             mod_error['qmh5'][j] = 0.0002
             mod_error['qmh6'][j] = 0.0002
             mod_error['qmh7'][j] = 0.0002
+        else:
+            mod_error['qmh'][j] = 0.0003
+            mod_error['qmh2'][j] = 0.0003
+            mod_error['qmh3'][j] = 0.0003
+            mod_error['qmh4'][j] = 0.0003
+            mod_error['qmh5'][j] = 0.0003
+            mod_error['qmh6'][j] = 0.0003
+            mod_error['qmh7'][j] = 0.0003
     mod_error['CO2mh'],mod_error['CO2mh2'],mod_error['CO2mh3'],mod_error['CO2mh4'] = [np.zeros(len(measurement_error['CO2mh'])) for x in range(4)]
     for j in range(len(measurement_error['CO2mh'])):
         if obs_times['CO2mh'][j]/3600 > 10.5:
-            mod_error['CO2mh'][j] = 1
-            mod_error['CO2mh2'][j] = 1
-            mod_error['CO2mh3'][j] = 1
-            mod_error['CO2mh4'][j] = 1
+            mod_error['CO2mh'][j] = 1.0
+            mod_error['CO2mh2'][j] = 1.0
+            mod_error['CO2mh3'][j] = 1.0
+            mod_error['CO2mh4'][j] = 1.0
         else:
-            mod_error['CO2mh'][j] = 2.5
-            mod_error['CO2mh2'][j] = 2.5
-            mod_error['CO2mh3'][j] = 2.5
-            mod_error['CO2mh4'][j] = 2.5
-    mod_error['h'] = [40 for j in range(len(measurement_error['h']))]
-    mod_error['H'] = [np.abs(0.10*optim.obs_H[j]) for j in range(len(measurement_error['H']))]
-    mod_error['LE'] = [np.abs(0.10*optim.obs_LE[j]) for j in range(len(measurement_error['LE']))]
-    mod_error['wCO2'] = [np.abs(0.30*optim.obs_wCO2[j]) for j in range(len(measurement_error['wCO2']))]
+            mod_error['CO2mh'][j] = 3
+            mod_error['CO2mh2'][j] = 3
+            mod_error['CO2mh3'][j] = 3
+            mod_error['CO2mh4'][j] = 3
+    mod_error['h'] = [60 for j in range(len(measurement_error['h']))]
+    mod_error['H'] = [np.abs(0.12*optim.obs_H[j]) for j in range(len(measurement_error['H']))]
+    mod_error['LE'] = [np.abs(0.12*optim.obs_LE[j]) for j in range(len(measurement_error['LE']))]
+    mod_error['wCO2'] = [np.abs(0.15*optim.obs_wCO2[j]) for j in range(len(measurement_error['wCO2']))]
     mod_error['Swout'] = np.zeros(len(measurement_error['Swout']))
     for j in range(len(measurement_error['Swout'])):
         if obs_times['Swout'][j]/3600 > 10.5 and obs_times['Swout'][j]/3600 < 13:
-            mod_error['Swout'][j] = 13
+            mod_error['Swout'][j] = 15
         else:
-            mod_error['Swout'][j] = 3
+            mod_error['Swout'][j] = 3.0
 #specify the representation error here, if nothing specified it is assumed 0
 #e.g. repr_error['theta'] = [0.3 for j in range(len(measurement_error['theta']))]
 ########################################################################
