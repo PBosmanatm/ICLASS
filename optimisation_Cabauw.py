@@ -74,7 +74,7 @@ if (use_backgr_in_cost and use_weights):
 if write_to_f:
     wr_obj_to_pickle_files = True #write certain variables to files for possible postprocessing later
     figformat = 'eps' #the format in which you want figure output, e.g. 'png'
-plot_errbars = False #plot error bars in the figures
+plot_errbars = True #plot error bars in the figures
 plotfontsize = 12 #plot font size, except for legend
 legendsize = plotfontsize - 1
 ######################################
@@ -1822,21 +1822,20 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
                                      Gradfile='Gradfile'+str(counter)+'.txt',pri_err_cov_matr=b_cov,paramboundspenalty=paramboundspenalty,boundedvars=boundedvars)
     optim_mem.print = print_status_dur_ens
     Hx_prior_mem = {}
-    PertData = {}
-    PertDict = {} #same as PertData, but to be passed as argument to min_func etc.
+    PertDict = {} #To be passed as argument to min_func etc.
     for item in obsvarlist:
         Hx_prior_mem[item] = priormodel_mem.out.__dict__[item]
         optim_mem.__dict__['obs_'+item] = cp.deepcopy(optim.__dict__['obs_'+item])
         optim_mem.__dict__['error_obs_' + item] = cp.deepcopy(optim.__dict__['error_obs_' + item])
         if pert_Hx_min_sy_ens: #add a perturbation to H(x) - sy in the cost function, using sigma_O
             rand_nr_list = ([np.random.normal(0,optim_mem.__dict__['error_obs_' + item][i]) for i in range(len(measurement_error[item]))])
-            PertData[item] = rand_nr_list
+            PertDict[item] = rand_nr_list
         elif pert_obs_ens: 
             if use_sigma_O:
                 rand_nr_list = ([np.random.normal(0,optim_mem.__dict__['error_obs_' + item][i]) for i in range(len(measurement_error[item]))])
             else:
                 rand_nr_list = ([np.random.normal(0,measurement_error[item][i]) for i in range(len(measurement_error[item]))])            
-            PertData[item] = rand_nr_list
+            PertDict[item] = rand_nr_list
             optim_mem.__dict__['obs_'+item] += rand_nr_list
             if plot_perturbed_obs:
                 unsca = 1 #a scale for plotting the obs with different units
@@ -2002,7 +2001,7 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
     CostParts = optim_mem.cost_func(state_opt_mem,inputcopy_mem,state,obs_times,obs_weights,PertDict,True)
     if write_to_f:
         open('Optimfile'+str(counter)+'.txt','a').write('{0:>25s}'.format('\n finished'))
-    return min_costf_mem,state_opt_mem,optim_mem.pstate,non_state_pparamvals,CostParts,PertData
+    return min_costf_mem,state_opt_mem,optim_mem.pstate,non_state_pparamvals,CostParts,PertDict
    
 #chi squared denominator to be used later
 if use_weights:
@@ -2289,7 +2288,9 @@ if write_to_f:
         CP_best_st_obsmem0 = optim.cost_func(state_opt,inputcopy,state,obs_times,obs_weights,RetCFParts=True)
         open('Optstatsfile.txt','a').write('{0:>32s}'.format('costf parts best state with obs'))
         open('Optstatsfile.txt','a').write('\n')
-        open('Optstatsfile.txt','a').write('{0:>32s}'.format('and non-state pars of member 0:'))
+        open('Optstatsfile.txt','a').write('{0:>32s}'.format(', prior and non-state'))
+        open('Optstatsfile.txt','a').write('\n')
+        open('Optstatsfile.txt','a').write('{0:>32s}'.format('parameters of member 0:'))
         open('Optstatsfile.txt','a').write('\n      ')
         for obsvar in obsvarlist:
             open('Optstatsfile.txt','a').write('{0:>25s}'.format(obsvar))

@@ -7865,6 +7865,8 @@ class inverse_modelling:
                     self.HTy[i] = locals()[HTy_variables[i]] #in case it is not a self variable
     
     def grad_test(self,inputdata,perturbationvars,outputvar,dstate,returnvariable,output_dict,printmode='absolute'):
+        lb_gr = 0.999
+        rb_gr = 1.001
         if not hasattr(self,'failed_grad_test_list'):
             self.failed_grad_test_list = [] #list of vars where test fails
         #outputtime is the last timestep
@@ -7920,7 +7922,7 @@ class inverse_modelling:
             print('tl :'+str(tl_output))
         if output_dict_model != 'vars_rsCm': #than we only have scalar output variables
             if not ((tl_output==0 and numderiv[str(alpharange[-1])]==0) and numderiv[str(alpharange[-2])]==0):
-                if ((tl_output/numderiv[str(alpharange[-1])]<0.9999 or tl_output/numderiv[str(alpharange[-1])]>1.0001) and (tl_output/numderiv[str(alpharange[-2])]<0.9999 or tl_output/numderiv[str(alpharange[-2])]>1.0001)):
+                if ((tl_output/numderiv[str(alpharange[-1])]<lb_gr or tl_output/numderiv[str(alpharange[-1])]>rb_gr) and (tl_output/numderiv[str(alpharange[-2])]<lb_gr or tl_output/numderiv[str(alpharange[-2])]>rb_gr)):
                     for i in range(5):
                         print('GRADIENT TEST FAILURE!! '+str(returnvariable))
                     self.all_tests_pass = False
@@ -7930,7 +7932,7 @@ class inverse_modelling:
                 thistestfails = False
                 for i in range(len(numderiv[str(alpharange[-1])])):
                     if not ((tl_output[i]==0 and numderiv[str(alpharange[-1])][i]==0) and numderiv[str(alpharange[-2])][i]==0): #in this test I say it passes if it is ok for the last or one but last value in alpha
-                        if ((tl_output[i]/numderiv[str(alpharange[-1])][i]<0.9999 or tl_output[i]/numderiv[str(alpharange[-1])][i]>1.0001) and (tl_output[i]/numderiv[str(alpharange[-2])][i]<0.9999 or tl_output[i]/numderiv[str(alpharange[-2])][i]>1.0001)):
+                        if ((tl_output[i]/numderiv[str(alpharange[-1])][i]<lb_gr or tl_output[i]/numderiv[str(alpharange[-1])][i]>rb_gr) and (tl_output[i]/numderiv[str(alpharange[-2])][i]<lb_gr or tl_output[i]/numderiv[str(alpharange[-2])][i]>rb_gr)):
                             thistestfails = True
                             self.all_tests_pass = False
                 if thistestfails: #to avoid printing for every element in the array
@@ -7942,7 +7944,7 @@ class inverse_modelling:
                 for i in range(len(numderiv[str(alpharange[-1])])):
                     for j in range(len(numderiv[str(alpharange[-1])][i])):
                         if not ((tl_output[i,j]==0 and numderiv[str(alpharange[-1])][i,j]==0) and numderiv[str(alpharange[-2])][i,j]==0):
-                            if ((tl_output[i,j]/numderiv[str(alpharange[-1])][i,j]<0.9999 or tl_output[i,j]/numderiv[str(alpharange[-1])][i,j]>1.0001) and (tl_output[i,j]/numderiv[str(alpharange[-2])][i,j]<0.9999 or tl_output[i,j]/numderiv[str(alpharange[-2])][i,j]>1.0001)):
+                            if ((tl_output[i,j]/numderiv[str(alpharange[-1])][i,j]<lb_gr or tl_output[i,j]/numderiv[str(alpharange[-1])][i,j]>rb_gr) and (tl_output[i,j]/numderiv[str(alpharange[-2])][i,j]<lb_gr or tl_output[i,j]/numderiv[str(alpharange[-2])][i,j]>rb_gr)):
                                 thistestfails = True
                                 self.all_tests_pass = False
                 if thistestfails: #to avoid printing for every element in the array
@@ -7951,7 +7953,7 @@ class inverse_modelling:
                     self.failed_grad_test_list.append(str(returnvariable))
             else: #than it is a scalar
                 if not ((tl_output==0 and numderiv[str(alpharange[-1])]==0) and numderiv[str(alpharange[-2])]==0):
-                    if ((tl_output/numderiv[str(alpharange[-1])]<0.9999 or tl_output/numderiv[str(alpharange[-1])]>1.0001) and (tl_output/numderiv[str(alpharange[-2])]<0.9999 or tl_output/numderiv[str(alpharange[-2])]>1.0001)):
+                    if ((tl_output/numderiv[str(alpharange[-1])]<lb_gr or tl_output/numderiv[str(alpharange[-1])]>rb_gr) and (tl_output/numderiv[str(alpharange[-2])]<lb_gr or tl_output/numderiv[str(alpharange[-2])]>rb_gr)):
                         for i in range(5):
                             print('GRADIENT TEST FAILURE!! '+str(returnvariable))
                         self.all_tests_pass = False

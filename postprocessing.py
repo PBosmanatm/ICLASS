@@ -31,6 +31,10 @@ plot_pdf_panels = True
 plot_colored_corr_matr = True
 if plot_colored_corr_matr:
     showfullmatr = True
+    TakeSubSample = True
+    if TakeSubSample:
+        Start = 0 #the index where to start, default is 0
+        SelectStep = 1 #The step size to sample the ensemble
 plot_co2profiles = False
 plot_manual_fitpanels = False
 plot_auto_fitpanel = False
@@ -92,7 +96,7 @@ if load_stored_objects:
         with open(storefolder_objects+'/display_names.pkl', 'rb') as input:
             display_names = pickle.load(input)
     if 'disp_nms_par.pkl' in os.listdir(storefolder_objects):
-        with open(storefolder_objects+'/disp_nms.pkl', 'rb') as input:
+        with open(storefolder_objects+'/disp_nms_par.pkl', 'rb') as input:
             disp_nms_par = pickle.load(input)
     if 'optim.pkl' in os.listdir(storefolder_objects):
         with open(storefolder_objects+'/optim.pkl', 'rb') as input:
@@ -198,7 +202,6 @@ with open('Optstatsfile.txt','r') as StatsFile:
                 for j in range(len(state)):
                     post_cor_matr[i,j] = line_to_use[j]
                 StatsFile.readline()
-            post_cor_matr = np.round(post_cor_matr,2)
         elif 'optimised ensemble members:' in line:
             ensemble = []
             headers_line = StatsFile.readline()
@@ -355,11 +358,10 @@ if use_ensemble:
             plt.rc('font', size=22)
             plotvars = ['R10','gammaq']
             fig, ax = plt.subplots(1,2,figsize=(24,8))
-            seq = np.array([x[plotvars[0]] for x in ensemble[1:]]) #iterate over the dictionaries,gives array. We exclude the first optimisation, since it biases the sampling as we choose it ourselves.
-            succes_state_ens = np.array([seq[x] for x in range(len(seq)) if success_ens[1:][x]])
-            mean_state_post = np.mean(succes_state_ens) #np.nanmean not necessary since we filter already for successful optimisations
-            nbins = np.linspace(np.min(succes_state_ens), np.max(succes_state_ens), nr_bins + 1)
-            n, bins = np.histogram(succes_state_ens, nbins, density=1)
+            succes_state_ens_var0 = succes_state_ens[state.index(plotvars[0])]
+            mean_state_post_var0 = np.mean(succes_state_ens_var0) #np.nanmean not necessary since we filter already for successful optimisations
+            nbins = np.linspace(np.min(succes_state_ens_var0), np.max(succes_state_ens_var0), nr_bins + 1)
+            n, bins = np.histogram(succes_state_ens_var0, nbins, density=1)
             pdfx = np.zeros(n.size)
             pdfy = np.zeros(n.size)
             for k in range(n.size):
@@ -377,16 +379,15 @@ if use_ensemble:
                 pdfx[k] = 0.5*(bins_p[k]+bins_p[k+1])
                 pdfy[k] = n_p[k]
             ax[0].plot(pdfx,pdfy, linestyle='dashed', linewidth=2,color='gold',label='prior')
-            ax[0].axvline(mean_state_post, linestyle='-',linewidth=2,color='red',label = 'mean post')
+            ax[0].axvline(mean_state_post_var0, linestyle='-',linewidth=2,color='red',label = 'mean post')
             ax[0].axvline(mean_state_prior, linestyle='dashed',linewidth=2,color='gold',label = 'mean prior')
             ax[0].set_xlabel(plotvars[0] + ' ('+ disp_units_par[plotvars[0]] +')')
             ax[0].set_ylabel('Probability density (-)')  
             
-            seq = np.array([x[plotvars[1]] for x in ensemble[1:]]) #iterate over the dictionaries,gives array. We exclude the first optimisation, since it biases the sampling as we choose it ourselves.
-            succes_state_ens = np.array([seq[x] for x in range(len(seq)) if success_ens[1:][x]])
-            mean_state_post = np.mean(succes_state_ens) #np.nanmean not necessary since we filter already for successful optimisations
-            nbins = np.linspace(np.min(succes_state_ens), np.max(succes_state_ens), nr_bins + 1)
-            n, bins = np.histogram(succes_state_ens, nbins, density=1)
+            succes_state_ens_var1 = succes_state_ens[state.index(plotvars[1])]
+            mean_state_post_var1 = np.mean(succes_state_ens_var1) #np.nanmean not necessary since we filter already for successful optimisations
+            nbins = np.linspace(np.min(succes_state_ens_var1), np.max(succes_state_ens_var1), nr_bins + 1)
+            n, bins = np.histogram(succes_state_ens_var1, nbins, density=1)
             pdfx = np.zeros(n.size)
             pdfy = np.zeros(n.size)
             for k in range(n.size):
@@ -405,7 +406,7 @@ if use_ensemble:
                 pdfy[k] = n_p[k]
             ax[1].ticklabel_format(axis="both", style="sci", scilimits=(0,0))
             ax[1].plot(pdfx,pdfy, linestyle='-', linewidth=2,color='gold',label='prior')
-            ax[1].axvline(mean_state_post, linestyle='-',linewidth=2,color='red',label = 'mean post')
+            ax[1].axvline(mean_state_post_var1, linestyle='-',linewidth=2,color='red',label = 'mean post')
             ax[1].axvline(mean_state_prior, linestyle='dashed',linewidth=2,color='gold',label = 'mean prior')
             ax[1].set_xlabel(plotvars[1] + ' ('+ disp_units_par[plotvars[1]] +')')
             #ax[1].set_ylabel('Probability density (-)')             
@@ -469,6 +470,13 @@ if use_ensemble:
             mask = None
             if not showfullmatr:
                 mask = np.triu(np.ones(len(post_cor_matr)),k=1)
+            if TakeSubSample:
+                succes_state_ens_for_cor = np.zeros((len(state),len(succes_state_ens[0][Start::SelectStep])),dtype=float)
+                for i in range(len(state)):
+                    succes_state_ens_for_cor[i,:] = succes_state_ens[i][Start::SelectStep]
+                post_cor_matr = np.corrcoef(succes_state_ens_for_cor) #no ddof for np.corrcoef, gives DeprecationWarning
+                
+            post_cor_matr = np.round(post_cor_matr,2)
             plot = sb.heatmap(post_cor_matr,annot=True,xticklabels=disp_nms_state,yticklabels = disp_nms_state, cmap="RdBu_r",cbar_kws={'label': 'Correlation (-)'}, linewidths=0.7,annot_kws={"size": 10.2 },mask = mask) 
             plot.set_facecolor('white')
             plot.tick_params(labelsize=11)

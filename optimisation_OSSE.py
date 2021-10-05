@@ -53,7 +53,7 @@ optim_method = 'tnc' #bfgs or tnc, the chosen optimisation algorithm
 if optim_method == 'tnc':
     maxnr_of_restarts = 2 #The number of times to restart the optimisation if the cost function is not as low as specified in stopcrit. Only implemented for tnc method at the moment. 
     if maxnr_of_restarts > 0:
-        stopcrit = 0.0001#If the cost function is equal or lower than this value, no restart will be attempted   
+        stopcrit = 0.00001#If the cost function is equal or lower than this value, no restart will be attempted   
 elif optim_method == 'bfgs':
     gtol = 1e-05 # A parameter for the bfgs algorithm. From scipy documentation: 'Gradient norm must be less than gtol before successful termination.'
 perturb_truth_obs = False #Perturb the 'true' observations. When using ensemble, obs of members will be perturbed twice, member 0 just once
@@ -65,7 +65,7 @@ if (perturb_truth_obs or (use_ensemble or estimate_model_err)):
     set_seed = True #Set the seed in case the output should be reproducable
     if set_seed:
         seedvalue = 14 #the chosen value of the seed. No floating point numbers and no negative numbers 
-discard_nan_minims = True #if False, if in a minimisation nan is encountered, it will use the state from the best simulation so far, if True, the minimisation will result in a state with nans 
+discard_nan_minims = False #if False, if in a minimisation nan is encountered, it will use the state from the best simulation so far, if True, the minimisation will result in a state with nans 
 use_weights = False #weights for the cost function, to enlarge or reduce the importance of certain obs 
 if use_weights:
     weight_morninghrs = 1/4 #to change weights of obs in the morning (the hour at which the morning ends is specified in variable 'end_morninghrs'), when everything less well mixed. 1 means equal weights
@@ -134,6 +134,8 @@ priormodinput.wCOS       = 0.01
 priormodinput.COS        = 500
 priormodinput.COSmeasuring_height = 5.
 priormodinput.COSmeasuring_height2 = 8.
+priormodinput.CO2measuringheight = 20.
+priormodinput.Tmeasuringheight = 2.
 priormodinput.sca_sto = 1
 priormodinput.gciCOS = 0.2 /(1.2*1000) * 28.9
 priormodinput.ags_C_mode = 'MXL' 
@@ -367,27 +369,27 @@ if imposeparambounds or paramboundspenalty:
 #############################################################
 ###### user input: parameter bounds #########################
 #############################################################
-    boundedvars['deltatheta'] = [0.2,7] #lower and upper bound
-    boundedvars['deltaCO2'] = [-200,200]
-    boundedvars['deltaq'] = [-0.008,0.008]
-    boundedvars['alpha'] = [0.05,0.8] 
-    boundedvars['sca_sto'] = [0.1,5]
-    boundedvars['wg'] = [priorinput.wwilt+0.001,priorinput.wsat-0.001]
-    boundedvars['theta'] = [274,310]
-    boundedvars['h'] = [50,3200]
-    boundedvars['wtheta'] = [0.05,0.6]
-    boundedvars['gammatheta'] = [0.002,0.018]
-#    boundedvars['gammatheta2'] = [0.002,0.018]
-    boundedvars['gammaq'] = [-9e-6,9e-6]
-    boundedvars['z0m'] = [0.0001,5]
-    boundedvars['z0h'] = [0.0001,5]
-    boundedvars['q'] = [0.002,0.020]
-    boundedvars['divU'] = [0,1e-4]
-    boundedvars['fCA'] = [0.1,1e8]
-    boundedvars['CO2'] = [100,1000]
-    boundedvars['ustar'] = [0.01,50]
-    boundedvars['wq'] = [0,0.1] #negative flux seems problematic because L going to very small values
-#    boundedvars['FracH'] = [0,1]
+#    boundedvars['deltatheta'] = [0.2,7] #lower and upper bound
+#    boundedvars['deltaCO2'] = [-200,200]
+#    boundedvars['deltaq'] = [-0.008,0.008]
+#    boundedvars['alpha'] = [0.05,0.8] 
+#    boundedvars['sca_sto'] = [0.1,5]
+#    boundedvars['wg'] = [priorinput.wwilt+0.001,priorinput.wsat-0.001]
+#    boundedvars['theta'] = [274,310]
+#    boundedvars['h'] = [50,3200]
+#    boundedvars['wtheta'] = [0.05,0.6]
+#    boundedvars['gammatheta'] = [0.002,0.018]
+##    boundedvars['gammatheta2'] = [0.002,0.018]
+#    boundedvars['gammaq'] = [-9e-6,9e-6]
+#    boundedvars['z0m'] = [0.0001,5]
+#    boundedvars['z0h'] = [0.0001,5]
+#    boundedvars['q'] = [0.002,0.020]
+#    boundedvars['divU'] = [0,1e-4]
+#    boundedvars['fCA'] = [0.1,1e8]
+#    boundedvars['CO2'] = [100,1000]
+#    boundedvars['ustar'] = [0.01,50]
+#    boundedvars['wq'] = [0,0.1] #negative flux seems problematic because L going to very small values
+##    boundedvars['FracH'] = [0,1]
 #############################################################
 ###### end user input: parameter bounds  ####################
 #############################################################  
@@ -445,16 +447,20 @@ for item in obsvarlist:
         if use_weights:
             obs_weights[item] = [1.0 for j in range(len(optim.__dict__['obs_'+item]))]
     if item == 'q':
-        measurement_error[item] = [0.002 for number in range(len(obs_times[item]))]
+        measurement_error[item] = [0.00065 for number in range(len(obs_times[item]))]
         disp_units[item] = 'g/kg'
     if item == 'Tmh':
-        measurement_error[item] = [2 for number in range(len(obs_times[item]))]
+        measurement_error[item] = [0.9 for number in range(len(obs_times[item]))]
     if item == 'Ts':
         measurement_error[item] = [2 for number in range(len(obs_times[item]))]
     if item == 'H':
-        measurement_error[item] = [30 for number in range(len(obs_times[item]))]
+        measurement_error[item] = [25 for number in range(len(obs_times[item]))]
     if item == 'LE':
-        measurement_error[item] = [30 for number in range(len(obs_times[item]))]
+        measurement_error[item] = [25 for number in range(len(obs_times[item]))]
+    if item == 'wCO2':
+        measurement_error[item] = [0.04 for number in range(len(obs_times[item]))]
+    if item == 'CO2mh':
+        measurement_error[item] = [2 for number in range(len(obs_times[item]))]
         
     #Here we account for possible scaling factors for the observations
     if hasattr(truthinput,'obs_sca_cf_'+item):
@@ -1054,21 +1060,20 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
                                      Gradfile='Gradfile'+str(counter)+'.txt',pri_err_cov_matr=b_cov,paramboundspenalty=paramboundspenalty,boundedvars=boundedvars)
     optim_mem.print = print_status_dur_ens
     Hx_prior_mem = {}
-    PertData = {}
-    PertDict = {} #same as PertData, but to be passed as argument to min_func etc.
+    PertDict = {} #To be passed as argument to min_func etc.
     for item in obsvarlist:
         Hx_prior_mem[item] = priormodel_mem.out.__dict__[item]
         optim_mem.__dict__['obs_'+item] = cp.deepcopy(optim.__dict__['obs_'+item]) #the truth obs
         optim_mem.__dict__['error_obs_' + item] = cp.deepcopy(optim.__dict__['error_obs_' + item])
         if pert_Hx_min_sy_ens: #add a perturbation to H(x) - sy in the cost function, using sigma_O
             rand_nr_list = ([np.random.normal(0,optim_mem.__dict__['error_obs_' + item][i]) for i in range(len(measurement_error[item]))])
-            PertData[item] = rand_nr_list
+            PertDict[item] = rand_nr_list
         elif pert_obs_ens: 
             if use_sigma_O:
                 rand_nr_list = ([np.random.normal(0,optim_mem.__dict__['error_obs_' + item][i]) for i in range(len(measurement_error[item]))])
             else:
                 rand_nr_list = ([np.random.normal(0,measurement_error[item][i]) for i in range(len(measurement_error[item]))])
-            PertData[item] = rand_nr_list
+            PertDict[item] = rand_nr_list
             optim_mem.__dict__['obs_'+item] += rand_nr_list
             if plot_perturbed_obs:
                 unsca = 1 #a scale for plotting the obs with different units
@@ -1236,7 +1241,7 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
     CostParts = optim_mem.cost_func(state_opt_mem,inputcopy_mem,state,obs_times,obs_weights,PertDict,True)
     if write_to_f:
         open('Optimfile'+str(counter)+'.txt','a').write('{0:>25s}'.format('\n finished'))
-    return min_costf_mem,state_opt_mem,optim_mem.pstate,non_state_pparamvals,CostParts,PertData
+    return min_costf_mem,state_opt_mem,optim_mem.pstate,non_state_pparamvals,CostParts,PertDict
 
 #chi squared denominator to be used later
 if use_weights:
@@ -1524,7 +1529,9 @@ if write_to_f:
         CP_best_st_obsmem0 = optim.cost_func(state_opt,inputcopy,state,obs_times,obs_weights,RetCFParts=True)
         open('Optstatsfile.txt','a').write('{0:>32s}'.format('costf parts best state with obs'))
         open('Optstatsfile.txt','a').write('\n')
-        open('Optstatsfile.txt','a').write('{0:>32s}'.format('and non-state pars of member 0:'))
+        open('Optstatsfile.txt','a').write('{0:>32s}'.format(', prior and non-state'))
+        open('Optstatsfile.txt','a').write('\n')
+        open('Optstatsfile.txt','a').write('{0:>32s}'.format('parameters of member 0:'))
         open('Optstatsfile.txt','a').write('\n      ')
         for obsvar in obsvarlist:
             open('Optstatsfile.txt','a').write('{0:>25s}'.format(obsvar))
@@ -1874,3 +1881,54 @@ if write_to_f:
 #    plt.xlabel('timestep')
 #    plt.legend(prop={'size':legendsize})
 
+#plt.rc('font', size=17)
+#fig, ax = plt.subplots(2,2,figsize=(16,12))
+#ax[0,0].plot(priormodel.out.t,priormodel.out.__dict__['h'], ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+#ax[0,0].plot(optimalmodel.out.t,optimalmodel.out.__dict__['h'], linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+#ax[0,0].plot(obs_times['h']/3600,optim.__dict__['obs_'+'h'], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs')
+#ax[0,0].errorbar(obs_times['h']/3600,optim.__dict__['obs_'+'h'],yerr=optim.__dict__['error_obs_'+'h'],ecolor='black',fmt='None')
+#ax[0,0].set_ylabel('boundary layer height (m)')
+#ax[0,0].set_xlabel('time (h)')
+#ax[0,1].plot(priormodel.out.t,1000*priormodel.out.q, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+#ax[0,1].plot(optimalmodel.out.t,1000*optimalmodel.out.q, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+#ax[0,1].plot(obs_times['q']/3600,1000*optim.__dict__['obs_q'], linestyle=' ', marker='*',color = 'black',ms=10, label = 'obs')
+#ax[0,1].errorbar(obs_times['q']/3600,1000*optim.__dict__['obs_'+'q'],yerr=1000*optim.__dict__['error_obs_'+'q'],ecolor='black',fmt='None')
+#ax[0,1].set_ylabel('specific humidity (g/kg)')
+#ax[0,1].set_xlabel('time (h)')
+#
+#ax[1,0].plot(priormodel.out.t,priormodel.out.__dict__['wCO2'], ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+#ax[1,0].plot(optimalmodel.out.t,optimalmodel.out.__dict__['wCO2'], linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+#ax[1,0].plot(obs_times['wCO2']/3600,optim.__dict__['obs_'+'wCO2'], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs')
+#ax[1,0].errorbar(obs_times['wCO2']/3600,optim.__dict__['obs_'+'wCO2'],yerr=optim.__dict__['error_obs_'+'wCO2'],ecolor='black',fmt='None')
+#ax[1,0].set_ylabel('CO$_2$ flux (ppm ms$^{-1}$)')
+#ax[1,0].set_xlabel('time (h)')
+#ax[1,1].plot(priormodel.out.t,priormodel.out.Tmh, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+#ax[1,1].plot(optimalmodel.out.t,optimalmodel.out.Tmh, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+#ax[1,1].plot(obs_times['Tmh']/3600,optim.__dict__['obs_Tmh'], linestyle=' ', marker='*',color = 'black',ms=10, label = 'obs')
+#ax[1,1].errorbar(obs_times['Tmh']/3600,optim.__dict__['obs_'+'Tmh'],yerr=optim.__dict__['error_obs_'+'Tmh'],ecolor='black',fmt='None')
+#ax[1,1].set_ylabel('2-m temperature (K)')
+#ax[1,1].set_xlabel('time (h)')
+#ax[1,1].legend(loc=0, frameon=False,prop={'size':17})
+#
+#ax[0,0].annotate('(a)',
+#            xy=(0.00, 1.07), xytext=(0,0),
+#            xycoords=('axes fraction', 'axes fraction'),
+#            textcoords='offset points',
+#            size=16, fontweight='bold', ha='left', va='top')
+#ax[0,1].annotate('(b)',
+#            xy=(0.00, 1.07), xytext=(0,0),
+#            xycoords=('axes fraction', 'axes fraction'),
+#            textcoords='offset points',
+#            size=16, fontweight='bold',ha='left', va='top')
+#ax[1,0].annotate('(c)',
+#            xy=(0.00, 1.07), xytext=(0,0),
+#            xycoords=('axes fraction', 'axes fraction'),
+#            textcoords='offset points',
+#            size=16, fontweight='bold',ha='left', va='top')
+#ax[1,1].annotate('(d)',
+#            xy=(0.00, 1.07), xytext=(0,0),
+#            xycoords=('axes fraction', 'axes fraction'),
+#            textcoords='offset points',
+#            size=16, fontweight='bold',ha='left', va='top')
+#if write_to_f:
+#    plt.savefig('fig_fitpanel.eps', format='eps')
