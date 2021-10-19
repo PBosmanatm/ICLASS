@@ -18,7 +18,7 @@ style.use('classic')
 ##############################
 ####### settings #############
 ##############################
-nr_bins = 37 #for 1d-pdf
+nr_bins = 15 #for 1d-pdf
 nr_bins2d = nr_bins
 interp_pdf = False
 if interp_pdf:
@@ -30,14 +30,14 @@ plot_2d_pdfs = False
 plot_pdf_panels = True
 plot_colored_corr_matr = True
 if plot_colored_corr_matr:
-    showfullmatr = True
-    TakeSubSample = True
+    showfullmatr = False
+    TakeSubSample = True #Include another correl matrix based on subsample
     if TakeSubSample:
         Start = 0 #the index where to start, default is 0
-        SelectStep = 1 #The step size to sample the ensemble
+        SelectStep = 2 #The step size to sample the ensemble
 plot_co2profiles = False
 plot_manual_fitpanels = False
-plot_auto_fitpanel = False
+plot_auto_fitpanel = True
 plot_enbal_panel = True
 plotfontsize = 12 #plot font size, except for legend
 legendsize = plotfontsize - 1
@@ -163,6 +163,9 @@ if load_stored_objects:
 # e.g. disp_units_par['theta'] = 'K' for parameter theta
 # or disp_units['theta'] = 'K' for observations of theta
 #or disp_nms_par['theta'] = r'$\theta$' #name to be displayed for parameter theta
+#or display_names['wCO2'] = '$F_{CO2}$' #name to be displayed for observations of wCO2
+display_names['wCO2'] = '$F_{CO2}$'
+disp_units['wCO2'] = 'mg CO$_2$ m$^{-2}$s$^{-1}$'
 disp_nms_par['theta'] = r'$\theta$' #name for parameter theta
 disp_nms_par['advtheta'] = r'$adv_{\theta}$'
 disp_nms_par['advq'] = '$adv_{q}$'
@@ -174,14 +177,14 @@ disp_nms_par['gammaq'] = '$\gamma_{q}$'
 disp_nms_par['deltaCO2'] = '$\Delta_{CO2}$'
 disp_nms_par['deltaCO2'] = '$\Delta_{CO2}$'
 disp_nms_par['gammaCO2'] = '$\gamma_{CO2}$'
-disp_nms_par['alfa_sto'] = r'$\alpha_{sto}$'
+disp_nms_par['sca_sto'] = r'$\alpha_{sto}$'
 disp_nms_par['alpha'] = r'$\alpha_{rad}$'
-disp_nms_par['EnBalDiffObsHFrac'] = '$Frac_{H}$'
+disp_nms_par['FracH'] = '$Frac_{H}$'
 disp_nms_par['wg'] = '$w_{g}$'
 disp_nms_par['R10'] = '$R_{10}$'
-##############################
-#### end units for plots #####
-##############################
+############################################
+#### end units and names for plots #########
+############################################
 
 use_ensemble = False
 with open('Optstatsfile.txt','r') as StatsFile:
@@ -356,7 +359,7 @@ if use_ensemble:
                     plt.savefig('pp_pdf_posterior_'+itemname+'.'+figformat, format=figformat)
         if plot_pdf_panels:
             plt.rc('font', size=22)
-            plotvars = ['R10','gammaq']
+            plotvars = ['advtheta','gammaq']
             fig, ax = plt.subplots(1,2,figsize=(24,8))
             succes_state_ens_var0 = succes_state_ens[state.index(plotvars[0])]
             mean_state_post_var0 = np.mean(succes_state_ens_var0) #np.nanmean not necessary since we filter already for successful optimisations
@@ -378,10 +381,11 @@ if use_ensemble:
             for k in range(n_p.size):
                 pdfx[k] = 0.5*(bins_p[k]+bins_p[k+1])
                 pdfy[k] = n_p[k]
+            ax[0].ticklabel_format(axis="both", style="sci", scilimits=(0,0))
             ax[0].plot(pdfx,pdfy, linestyle='dashed', linewidth=2,color='gold',label='prior')
             ax[0].axvline(mean_state_post_var0, linestyle='-',linewidth=2,color='red',label = 'mean post')
             ax[0].axvline(mean_state_prior, linestyle='dashed',linewidth=2,color='gold',label = 'mean prior')
-            ax[0].set_xlabel(plotvars[0] + ' ('+ disp_units_par[plotvars[0]] +')')
+            ax[0].set_xlabel(disp_nms_par[plotvars[0]] + ' ('+ disp_units_par[plotvars[0]] +')')
             ax[0].set_ylabel('Probability density (-)')  
             
             succes_state_ens_var1 = succes_state_ens[state.index(plotvars[1])]
@@ -393,7 +397,7 @@ if use_ensemble:
             for k in range(n.size):
                 pdfx[k] = 0.5*(bins[k]+bins[k+1])
                 pdfy[k] = n[k]
-            ax[1].plot(pdfx,pdfy, linestyle='dashed', linewidth=2,color='red',label='post')
+            ax[1].plot(pdfx,pdfy, linestyle='-', linewidth=2,color='red',label='post')
             seq_p = np.array([x[plotvars[1]] for x in ensemble_p[1:]]) #iterate over the dictionaries,gives array . We exclude the first optimisation, since it biases the sampling as we choose it ourselves.
             seq_suc_p = np.array([seq_p[x] for x in range(len(seq_p)) if success_ens[1:][x]])
             mean_state_prior = np.mean(seq_suc_p)
@@ -405,10 +409,10 @@ if use_ensemble:
                 pdfx[k] = 0.5*(bins_p[k]+bins_p[k+1])
                 pdfy[k] = n_p[k]
             ax[1].ticklabel_format(axis="both", style="sci", scilimits=(0,0))
-            ax[1].plot(pdfx,pdfy, linestyle='-', linewidth=2,color='gold',label='prior')
+            ax[1].plot(pdfx,pdfy, linestyle='dashed', linewidth=2,color='gold',label='prior')
             ax[1].axvline(mean_state_post_var1, linestyle='-',linewidth=2,color='red',label = 'mean post')
             ax[1].axvline(mean_state_prior, linestyle='dashed',linewidth=2,color='gold',label = 'mean prior')
-            ax[1].set_xlabel(plotvars[1] + ' ('+ disp_units_par[plotvars[1]] +')')
+            ax[1].set_xlabel(disp_nms_par[plotvars[1]] + ' ('+ disp_units_par[plotvars[1]] +')')
             #ax[1].set_ylabel('Probability density (-)')             
             ax[1].legend(loc=0, frameon=True,prop={'size':21}) 
             ax[0].annotate('(a)',
@@ -421,7 +425,7 @@ if use_ensemble:
             xycoords=('axes fraction', 'axes fraction'),
             textcoords='offset points',
             size=20, fontweight='bold',ha='left', va='top')
-            plt.subplots_adjust(left=0.04, right=0.96, top=0.93, bottom=0.10,wspace=0.1)
+            plt.subplots_adjust(left=0.05, right=0.96, top=0.93, bottom=0.10,wspace=0.1)
             plt.savefig('pp_pdfpanel_posterior.'+figformat, format=figformat)
             plt.rc('font', size=plotfontsize) #plot font size
         if plot_2d_pdfs:
@@ -470,23 +474,61 @@ if use_ensemble:
             mask = None
             if not showfullmatr:
                 mask = np.triu(np.ones(len(post_cor_matr)),k=1)
-            if TakeSubSample:
-                succes_state_ens_for_cor = np.zeros((len(state),len(succes_state_ens[0][Start::SelectStep])),dtype=float)
-                for i in range(len(state)):
-                    succes_state_ens_for_cor[i,:] = succes_state_ens[i][Start::SelectStep]
-                post_cor_matr = np.corrcoef(succes_state_ens_for_cor) #no ddof for np.corrcoef, gives DeprecationWarning
-                
             post_cor_matr = np.round(post_cor_matr,2)
             plot = sb.heatmap(post_cor_matr,annot=True,xticklabels=disp_nms_state,yticklabels = disp_nms_state, cmap="RdBu_r",cbar_kws={'label': 'Correlation (-)'}, linewidths=0.7,annot_kws={"size": 10.2 },mask = mask) 
             plot.set_facecolor('white')
             plot.tick_params(labelsize=11)
             plt.ylim((len(state), 0))
             plt.subplots_adjust(left=0.21, right=0.92, top=0.93, bottom=0.25,wspace=0.1)
-            plt.savefig('pp_correls.'+figformat)  
+            plt.savefig('pp_correls.'+figformat) 
             #Now reset the plot params:
             plt.rcParams.update(plt.rcParamsDefault)
             style.use('classic')
             plt.rc('font', size=plotfontsize) #plot font size
+                       
+            if TakeSubSample:
+                succes_state_ens_for_cor = np.zeros((len(state),len(succes_state_ens[0][Start::SelectStep])),dtype=float)
+                for i in range(len(state)):
+                    succes_state_ens_for_cor[i,:] = succes_state_ens[i][Start::SelectStep]
+                post_cor_matr_ss = np.corrcoef(succes_state_ens_for_cor) #no ddof for np.corrcoef, gives DeprecationWarning
+                plt.figure()
+                print('Nr of mems used for subsample colored_corr_matr:')
+                print(len(succes_state_ens_for_cor[0]))
+                sb.set(rc={'figure.figsize':(11,11)}) 
+                sb.set(font_scale=1.05)  
+                post_cor_matr_ss = np.round(post_cor_matr_ss,2)
+                plot = sb.heatmap(post_cor_matr_ss,annot=True,xticklabels=disp_nms_state,yticklabels = disp_nms_state, cmap="RdBu_r",cbar_kws={'label': 'Correlation (-)'}, linewidths=0.7,annot_kws={"size": 10.2 },mask = mask) 
+                plot.set_facecolor('white')
+                plot.tick_params(labelsize=11)
+                plt.ylim((len(state), 0))
+                plt.subplots_adjust(left=0.21, right=0.92, top=0.93, bottom=0.25,wspace=0.1)
+                plt.savefig('pp_correls_subs.'+figformat)  
+                #Now reset the plot params:
+                plt.rcParams.update(plt.rcParamsDefault)
+                style.use('classic')
+                plt.rc('font', size=plotfontsize) #plot font size
+                
+                plt.figure()
+                sb.set(rc={'figure.figsize':(11,11)}) 
+                sb.set(font_scale=1.05)  
+                post_cor_matr_diff = np.round(post_cor_matr_ss-post_cor_matr,2)
+                plot = sb.heatmap(post_cor_matr_diff,annot=True,xticklabels=disp_nms_state,yticklabels = disp_nms_state, cmap="RdBu_r",cbar_kws={'label': 'Diff in Correlation (-)'}, linewidths=0.7,annot_kws={"size": 10.2 },mask = mask) 
+                plot.set_facecolor('white')
+                plot.tick_params(labelsize=11)
+                plt.ylim((len(state), 0))
+                plt.subplots_adjust(left=0.21, right=0.92, top=0.93, bottom=0.25,wspace=0.1)
+                plt.savefig('pp_correls_diff.'+figformat)  
+                post_cor_matr_diff_to_av = []#the one that we will estimate the mean off, excludes the diagonal elements
+                for i in range(len(post_cor_matr_diff)):
+                    for j in range(len(post_cor_matr_diff[0])):
+                        if j < i:
+                            post_cor_matr_diff_to_av.append(post_cor_matr_diff[i,j])
+                print('Mean abs value of change when using subsample colored_corr_matr:')
+                print(np.mean(np.abs(post_cor_matr_diff_to_av)))
+                #Now reset the plot params:
+                plt.rcParams.update(plt.rcParamsDefault)
+                style.use('classic')
+                plt.rc('font', size=plotfontsize) #plot font size
     
 if plot_obsfit:
     for i in range(len(obsvarlist)):
@@ -763,7 +805,7 @@ if plot_auto_fitpanel:
     #Below is a more automatised panel plot:
     plt.rc('font', size=17)
     plotvars = ['h','qmh','wCO2','Tmh']  #first the var for 0,0 than 0,1 than 1,0 than 1,1
-    annotatelist = ['a','b','c','d']
+    annotatelist = ['(a)','(b)','(c)','(d)']
     unsca = np.ones(len(plotvars)) #a scale for plotting the obs with different units
     for i in range(len(plotvars)):
         if (disp_units[plotvars[i]] == 'g/kg' or disp_units[plotvars[i]] == 'g kg$^{-1}$') and (plotvars[i] == 'q' or plotvars[i].startswith('qmh')): #q can be plotted differently for clarity
