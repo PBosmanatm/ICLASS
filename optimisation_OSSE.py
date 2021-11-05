@@ -49,6 +49,7 @@ if paramboundspenalty:
     setNanCostfOutBoundsTo0 = True #when cost function becomes nan when params outside specified bounds, set cost f to zero before adding penalty (nan + number gives nan)
     penalty_exp = 60 #exponent to use in the penalty function
 remove_prev = True #Use with caution, be careful for other files in working directory! Removes (non-user specified) files that might have remained from previous optimisations. See manual for a list
+abort_slow_minims = True #Abort minimisations that proceed too slow (can be followed by a restart)
 optim_method = 'tnc' #bfgs or tnc, the chosen optimisation algorithm
 if optim_method == 'tnc':
     maxnr_of_restarts = 2 #The number of times to restart the optimisation if the cost function is not as low as specified in stopcrit. Only implemented for tnc method at the moment. 
@@ -136,7 +137,7 @@ priormodinput.COSmeasuring_height = 5.
 priormodinput.COSmeasuring_height2 = 8.
 priormodinput.CO2measuringheight = 20.
 priormodinput.Tmeasuringheight = 2.
-priormodinput.sca_sto = 1
+priormodinput.sca_sto = 0.5
 priormodinput.gciCOS = 0.2 /(1.2*1000) * 28.9
 priormodinput.ags_C_mode = 'MXL' 
 priormodinput.sw_useWilson  = False
@@ -151,7 +152,7 @@ priormodinput.divU       = 0.00  # horizontal large-scale divergence of wind [s-
 priormodinput.fc         = 1.e-4     # Coriolis parameter [m s-1]
 priormodinput.theta      = 282.      # initial mixed-layer potential temperature [K]
 priormodinput.deltatheta = 2       # initial temperature jump at h [K]
-priormodinput.gammatheta = 0.003     # free atmosphere potential temperature lapse rate [K m-1]
+priormodinput.gammatheta = 0.005     # free atmosphere potential temperature lapse rate [K m-1]
 priormodinput.advtheta   = 0.        # advection of heat [K s-1]
 priormodinput.beta       = 0.2       # entrainment ratio for virtual heat [-]
 priormodinput.wtheta     = 0.1       # surface kinematic heat flux [K m s-1]
@@ -192,7 +193,7 @@ priormodinput.cc         = 0.0       # cloud cover fraction [-]
 priormodinput.dFz        = 0.        # cloud top radiative divergence [W m-2] 
 priormodinput.sw_ls      = True     # land surface switch
 priormodinput.ls_type    = 'ags'     # land-surface parameterization ('js' for Jarvis-Stewart or 'ags' for A-Gs)
-priormodinput.wg         = 0.27      # volumetric water content top soil layer [m3 m-3]
+priormodinput.wg         = 0.14      # volumetric water content top soil layer [m3 m-3]
 priormodinput.w2         = 0.21      # volumetric water content deeper soil layer [m3 m-3]
 priormodinput.cveg       = 0.85      # vegetation fraction [-]
 priormodinput.Tsoil      = 282.      # temperature top soil layer [K]
@@ -262,7 +263,7 @@ priorinput = cp.deepcopy(priormodinput)
 #################################################################################
 ###### user input: state, list of used pseudo-obs and non-model priorinput ######
 #################################################################################
-state=['h','alpha']
+state=['h','alpha','sca_sto','wg','gammatheta']
 obsvarlist=['h','q']#
 #below we can add some input necessary for the state in the optimisation, that is not part of the model input (a scale for some of the observations in the costfunction if desired). Or FracH
 if 'FracH' in state:
@@ -399,7 +400,7 @@ if imposeparambounds or paramboundspenalty:
 
 #create inverse modelling framework, do check,...          
 optim = im.inverse_modelling(priormodel,write_to_file=write_to_f,use_backgr_in_cost=use_backgr_in_cost,StateVarNames=state,obsvarlist=obsvarlist,
-                             pri_err_cov_matr=b_cov,paramboundspenalty=paramboundspenalty,boundedvars=boundedvars)
+                             pri_err_cov_matr=b_cov,paramboundspenalty=paramboundspenalty,abort_slow_minims=abort_slow_minims,boundedvars=boundedvars)
 Hx_prior = {}
 for item in obsvarlist:
     Hx_prior[item] = priormodel.out.__dict__[item]
@@ -413,6 +414,9 @@ truthinput.alpha = 0.20
 #truthinput.deltatheta = 1
 #truthinput.theta = 288
 truthinput.h = 350
+truthinput.sca_sto = 1.0
+truthinput.gammatheta = 0.003
+truthinput.wg = 0.27
 #truthinput.advtheta = 0.0002
 #truthinput.advq = 0.0000002
 #truthinput.gammatheta = 0.006
@@ -447,10 +451,10 @@ for item in obsvarlist:
         if use_weights:
             obs_weights[item] = [1.0 for j in range(len(optim.__dict__['obs_'+item]))]
     if item == 'q':
-        measurement_error[item] = [0.00065 for number in range(len(obs_times[item]))]
+        measurement_error[item] = [0.0004 for number in range(len(obs_times[item]))]
         disp_units[item] = 'g/kg'
     if item == 'Tmh':
-        measurement_error[item] = [0.9 for number in range(len(obs_times[item]))]
+        measurement_error[item] = [0.65 for number in range(len(obs_times[item]))]
     if item == 'Ts':
         measurement_error[item] = [2 for number in range(len(obs_times[item]))]
     if item == 'H':
@@ -502,9 +506,9 @@ if use_ensemble:
 #        disp_nms_par['deltaCO2'] = '$\Delta_{CO2}$'
 #        disp_nms_par['deltaCO2'] = '$\Delta_{CO2}$'
 #        disp_nms_par['gammaCO2'] = '$\gamma_{CO2}$'
-#        disp_nms_par['alfa_sto'] = r'$\alpha_{sto}$'
+#        disp_nms_par['sca_sto'] = r'$\alpha_{sto}$'
 #        disp_nms_par['alpha'] = r'$\alpha_{rad}$'
-#        disp_nms_par['EnBalDiffObsHFrac'] = '$Frac_{H}$'
+#        disp_nms_par['FracH'] = '$Frac_{H}$'
 #        disp_nms_par['wg'] = '$w_{g}$'
 #        disp_nms_par['R10'] = '$R_{10}$'
     
@@ -686,7 +690,7 @@ for item in obsvarlist:
                 if obs_times[item][i] < end_morninghrs * 3600:
                     obs_weights[item][i] = weight_morninghrs #nans are already excluded in the obs at this stage, so no problem with nan
     for num in obs_times[item]:
-        if round(num, 10) not in [round(num2, 10) for num2 in priormodel.out.t * 3600]:
+        if round(num, 8) not in [round(num2, 8) for num2 in priormodel.out.t * 3600]:
             raise Exception('Error: obs occuring at a time that is not modelled (' + str(item) +')')
     if item not in disp_units:
         disp_units[item] = ''
@@ -743,7 +747,7 @@ if estimate_model_err:
         for item in obsvarlist:
             returndict[item] = []
             for t in range(len(model_mem.out.t)):
-                if round(model_mem.out.t[t]*3600, 10) in [round(num2, 10) for num2 in obstimes[item]]:
+                if round(model_mem.out.t[t]*3600, 8) in [round(num2, 8) for num2 in obstimes[item]]:
                     returndict[item].append(model_mem.out.__dict__[item][t])
                     if np.isnan(model_mem.out.__dict__[item][t]):
                         returndict['hasnans'] = True
@@ -873,7 +877,7 @@ if ana_deriv:
         weight = 1.0 # a weight for the observations in the cost function, modified below if weights are specified. For each variable in the obs, provide either no weights or a weight for every time there is an observation for that variable
         k = 0 #counter for the observations (specific for each type of obs)
         for ti in range(priormodel.tsteps):
-            if round(priormodel.out.t[ti] * 3600,10) in [round(num, 10) for num in obs_times[item]]: #so if we are at a time where we have an obs
+            if round(priormodel.out.t[ti] * 3600,8) in [round(num, 8) for num in obs_times[item]]: #so if we are at a time where we have an obs
                 if item in obs_weights:
                     weight = obs_weights[item][k]
                 forcing = weight * (Hx_prior[item][ti] - obs_scale * observations_item[k])/(optim.__dict__['error_obs_' + item][k]**2)
@@ -1057,7 +1061,7 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
     priormodel_mem = fwdm.model(priorinput_mem)
     priormodel_mem.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False,save_vars_indict=False) #delete_at_end should be false, to keep tsteps of model
     optim_mem = im.inverse_modelling(priormodel_mem,write_to_file=write_to_f,use_backgr_in_cost=use_backgr_in_cost,StateVarNames=state,obsvarlist=obsvarlist,Optimfile='Optimfile'+str(counter)+'.txt',
-                                     Gradfile='Gradfile'+str(counter)+'.txt',pri_err_cov_matr=b_cov,paramboundspenalty=paramboundspenalty,boundedvars=boundedvars)
+                                     Gradfile='Gradfile'+str(counter)+'.txt',pri_err_cov_matr=b_cov,paramboundspenalty=paramboundspenalty,abort_slow_minims=abort_slow_minims,boundedvars=boundedvars)
     optim_mem.print = print_status_dur_ens
     Hx_prior_mem = {}
     PertDict = {} #To be passed as argument to min_func etc.
@@ -1135,7 +1139,7 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
             pert = 0.0
             k = 0
             for ti in range(priormodel_mem.tsteps):
-                if round(priormodel_mem.out.t[ti] * 3600,10) in [round(num, 10) for num in obs_times[item]]: #so if we are at a time where we have an obs
+                if round(priormodel_mem.out.t[ti] * 3600,8) in [round(num, 8) for num in obs_times[item]]: #so if we are at a time where we have an obs
                     if item in obs_weights:
                         weight = obs_weights[item][k]
                     if item in PertDict:
@@ -1576,7 +1580,7 @@ if write_to_f:
         outp_at_obstimes[obsvar] = []
         outp_at_obstimes_pr[obsvar] = []
         for ti in range(priormodel.tsteps):
-            if round(optimalmodel.out.t[ti] * 3600,10) in [round(num, 10) for num in obs_times[obsvar]]:
+            if round(optimalmodel.out.t[ti] * 3600,8) in [round(num, 8) for num in obs_times[obsvar]]:
                 outp_at_obstimes[obsvar] += [optimalmodel.out.__dict__[obsvar][ti]]
                 outp_at_obstimes_pr[obsvar] += [priormodel.out.__dict__[obsvar][ti]]
         numerator = np.var(outp_at_obstimes[obsvar])
@@ -1881,54 +1885,3 @@ if write_to_f:
 #    plt.xlabel('timestep')
 #    plt.legend(prop={'size':legendsize})
 
-#plt.rc('font', size=17)
-#fig, ax = plt.subplots(2,2,figsize=(16,12))
-#ax[0,0].plot(priormodel.out.t,priormodel.out.__dict__['h'], ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
-#ax[0,0].plot(optimalmodel.out.t,optimalmodel.out.__dict__['h'], linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
-#ax[0,0].plot(obs_times['h']/3600,optim.__dict__['obs_'+'h'], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs')
-#ax[0,0].errorbar(obs_times['h']/3600,optim.__dict__['obs_'+'h'],yerr=optim.__dict__['error_obs_'+'h'],ecolor='black',fmt='None')
-#ax[0,0].set_ylabel('boundary layer height (m)')
-#ax[0,0].set_xlabel('time (h)')
-#ax[0,1].plot(priormodel.out.t,1000*priormodel.out.q, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
-#ax[0,1].plot(optimalmodel.out.t,1000*optimalmodel.out.q, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
-#ax[0,1].plot(obs_times['q']/3600,1000*optim.__dict__['obs_q'], linestyle=' ', marker='*',color = 'black',ms=10, label = 'obs')
-#ax[0,1].errorbar(obs_times['q']/3600,1000*optim.__dict__['obs_'+'q'],yerr=1000*optim.__dict__['error_obs_'+'q'],ecolor='black',fmt='None')
-#ax[0,1].set_ylabel('specific humidity (g/kg)')
-#ax[0,1].set_xlabel('time (h)')
-#
-#ax[1,0].plot(priormodel.out.t,priormodel.out.__dict__['wCO2'], ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
-#ax[1,0].plot(optimalmodel.out.t,optimalmodel.out.__dict__['wCO2'], linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
-#ax[1,0].plot(obs_times['wCO2']/3600,optim.__dict__['obs_'+'wCO2'], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs')
-#ax[1,0].errorbar(obs_times['wCO2']/3600,optim.__dict__['obs_'+'wCO2'],yerr=optim.__dict__['error_obs_'+'wCO2'],ecolor='black',fmt='None')
-#ax[1,0].set_ylabel('CO$_2$ flux (ppm ms$^{-1}$)')
-#ax[1,0].set_xlabel('time (h)')
-#ax[1,1].plot(priormodel.out.t,priormodel.out.Tmh, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
-#ax[1,1].plot(optimalmodel.out.t,optimalmodel.out.Tmh, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
-#ax[1,1].plot(obs_times['Tmh']/3600,optim.__dict__['obs_Tmh'], linestyle=' ', marker='*',color = 'black',ms=10, label = 'obs')
-#ax[1,1].errorbar(obs_times['Tmh']/3600,optim.__dict__['obs_'+'Tmh'],yerr=optim.__dict__['error_obs_'+'Tmh'],ecolor='black',fmt='None')
-#ax[1,1].set_ylabel('2-m temperature (K)')
-#ax[1,1].set_xlabel('time (h)')
-#ax[1,1].legend(loc=0, frameon=False,prop={'size':17})
-#
-#ax[0,0].annotate('(a)',
-#            xy=(0.00, 1.07), xytext=(0,0),
-#            xycoords=('axes fraction', 'axes fraction'),
-#            textcoords='offset points',
-#            size=16, fontweight='bold', ha='left', va='top')
-#ax[0,1].annotate('(b)',
-#            xy=(0.00, 1.07), xytext=(0,0),
-#            xycoords=('axes fraction', 'axes fraction'),
-#            textcoords='offset points',
-#            size=16, fontweight='bold',ha='left', va='top')
-#ax[1,0].annotate('(c)',
-#            xy=(0.00, 1.07), xytext=(0,0),
-#            xycoords=('axes fraction', 'axes fraction'),
-#            textcoords='offset points',
-#            size=16, fontweight='bold',ha='left', va='top')
-#ax[1,1].annotate('(d)',
-#            xy=(0.00, 1.07), xytext=(0,0),
-#            xycoords=('axes fraction', 'axes fraction'),
-#            textcoords='offset points',
-#            size=16, fontweight='bold',ha='left', va='top')
-#if write_to_f:
-#    plt.savefig('fig_fitpanel.eps', format='eps')

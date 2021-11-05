@@ -1092,7 +1092,8 @@ class model:
             self.deltau   = deltau0     + self.dt * self.deltautend
             self.v        = v0      + self.dt * self.vtend
             self.deltav   = deltav0     + self.dt * self.deltavtend
-            
+        if self.checkpoint:
+            self.cpx[self.t]['iml_dz0_end']    = dz0
         if self.save_vars_indict:
             the_locals = cp.deepcopy(locals()) #to prevent error 'dictionary changed size during iteration'
             for variablename in the_locals: #note that the self variables are not included

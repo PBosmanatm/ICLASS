@@ -49,6 +49,7 @@ if paramboundspenalty:
     setNanCostfOutBoundsTo0 = True #when cost function becomes nan when params outside specified bounds, set cost f to zero before adding penalty (nan + number gives nan)
     penalty_exp = 60 #exponent to use in the penalty function
 remove_prev = True #Use with caution, be careful for other files in working directory! Removes (non-user specified) files that might have remained from previous optimisations. See manual for a list
+abort_slow_minims = True #Abort minimisations that proceed too slow (can be followed by a restart)
 optim_method = 'tnc' #bfgs or tnc, the chosen optimisation algorithm
 if optim_method == 'tnc':
     maxnr_of_restarts = 1 #The number of times to restart the optimisation if the cost function is not as low as specified in stopcrit. Only implemented for tnc method at the moment. 
@@ -828,7 +829,7 @@ if imposeparambounds or paramboundspenalty:
 
 #create inverse modelling framework, do check,...
 optim = im.inverse_modelling(priormodel,write_to_file=write_to_f,use_backgr_in_cost=use_backgr_in_cost,StateVarNames=state,obsvarlist=obsvarlist,
-                             pri_err_cov_matr=b_cov,paramboundspenalty=paramboundspenalty,boundedvars=boundedvars)
+                             pri_err_cov_matr=b_cov,paramboundspenalty=paramboundspenalty,abort_slow_minims=abort_slow_minims,boundedvars=boundedvars)
 Hx_prior = {}
 for item in obsvarlist:
     Hx_prior[item] = priormodel.out.__dict__[item]
@@ -1224,9 +1225,9 @@ if use_ensemble:
         disp_nms_par['deltaCO2'] = '$\Delta_{CO2}$'
         disp_nms_par['deltaCO2'] = '$\Delta_{CO2}$'
         disp_nms_par['gammaCO2'] = '$\gamma_{CO2}$'
-        disp_nms_par['alfa_sto'] = r'$\alpha_{sto}$'
+        disp_nms_par['sca_sto'] = r'$\alpha_{sto}$'
         disp_nms_par['alpha'] = r'$\alpha_{rad}$'
-        disp_nms_par['EnBalDiffObsHFrac'] = '$Frac_{H}$'
+        disp_nms_par['FracH'] = '$Frac_{H}$'
         disp_nms_par['wg'] = '$w_{g}$'
         disp_nms_par['R10'] = '$R_{10}$'
 ######################################################################################################
@@ -1449,7 +1450,7 @@ for item in obsvarlist:
                     obs_weights[item][i] = weight_morninghrs #nans are already excluded in the obs at this stage, so no problem with nan
     
     for num in obs_times[item]:
-        if round(num, 10) not in [round(num2, 10) for num2 in priormodel.out.t * 3600]:
+        if round(num, 8) not in [round(num2, 8) for num2 in priormodel.out.t * 3600]:
             raise Exception('Error: obs occuring at a time that is not modelled (' + str(item) +')')
     if item not in disp_units:
         disp_units[item] = ''
@@ -1506,7 +1507,7 @@ if estimate_model_err:
         for item in obsvarlist:
             returndict[item] = []
             for t in range(len(model_mem.out.t)):
-                if round(model_mem.out.t[t]*3600, 10) in [round(num2, 10) for num2 in obstimes[item]]:
+                if round(model_mem.out.t[t]*3600, 8) in [round(num2, 8) for num2 in obstimes[item]]:
                     returndict[item].append(model_mem.out.__dict__[item][t])
                     if np.isnan(model_mem.out.__dict__[item][t]):
                         returndict['hasnans'] = True
@@ -1633,7 +1634,7 @@ if ana_deriv:
         weight = 1.0 # a weight for the observations in the cost function, modified below if weights are specified. For each variable in the obs, provide either no weights or a weight for every time there is an observation for that variable 
         k = 0 #counter for the observations (specific for each type of obs)
         for ti in range(priormodel.tsteps):
-            if round(priormodel.out.t[ti] * 3600,10) in [round(num, 10) for num in obs_times[item]]: #so if we are at a time where we have an obs        
+            if round(priormodel.out.t[ti] * 3600,8) in [round(num, 8) for num in obs_times[item]]: #so if we are at a time where we have an obs        
                 if item in obs_weights:
                     weight = obs_weights[item][k]
                 forcing = weight * (Hx_prior[item][ti] - obs_scale * observations_item[k])/(optim.__dict__['error_obs_' + item][k]**2)
@@ -1819,7 +1820,7 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
     priormodel_mem = fwdm.model(priorinput_mem)
     priormodel_mem.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False,save_vars_indict=False) #delete_at_end should be false, to keep tsteps of model
     optim_mem = im.inverse_modelling(priormodel_mem,write_to_file=write_to_f,use_backgr_in_cost=use_backgr_in_cost,StateVarNames=state,obsvarlist=obsvarlist,Optimfile='Optimfile'+str(counter)+'.txt',
-                                     Gradfile='Gradfile'+str(counter)+'.txt',pri_err_cov_matr=b_cov,paramboundspenalty=paramboundspenalty,boundedvars=boundedvars)
+                                     Gradfile='Gradfile'+str(counter)+'.txt',pri_err_cov_matr=b_cov,paramboundspenalty=paramboundspenalty,abort_slow_minims=abort_slow_minims,boundedvars=boundedvars)
     optim_mem.print = print_status_dur_ens
     Hx_prior_mem = {}
     PertDict = {} #To be passed as argument to min_func etc.
@@ -1895,7 +1896,7 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
             pert = 0.0
             k = 0 #counter for the observations (specific for each type of obs) 
             for ti in range(priormodel_mem.tsteps):
-                if round(priormodel_mem.out.t[ti] * 3600,10) in [round(num, 10) for num in obs_times[item]]: #so if we are at a time where we have an obs
+                if round(priormodel_mem.out.t[ti] * 3600,8) in [round(num, 8) for num in obs_times[item]]: #so if we are at a time where we have an obs
                     if item in obs_weights:
                         weight = obs_weights[item][k]
                     if item in PertDict:
@@ -2335,7 +2336,7 @@ if write_to_f:
         outp_at_obstimes[obsvar] = []
         outp_at_obstimes_pr[obsvar] = []
         for ti in range(priormodel.tsteps):
-            if round(optimalmodel.out.t[ti] * 3600,10) in [round(num, 10) for num in obs_times[obsvar]]:
+            if round(optimalmodel.out.t[ti] * 3600,8) in [round(num, 8) for num in obs_times[obsvar]]:
                 outp_at_obstimes[obsvar] += [optimalmodel.out.__dict__[obsvar][ti]]
                 outp_at_obstimes_pr[obsvar] += [priormodel.out.__dict__[obsvar][ti]]
         numerator = np.var(outp_at_obstimes[obsvar])

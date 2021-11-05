@@ -29,7 +29,7 @@ class static_costfError(Exception):
 
 class inverse_modelling:
     
-    def __init__(self,model,write_to_file=False,use_backgr_in_cost=False,StateVarNames=[],obsvarlist=[],Optimfile='Optimfile.txt',Gradfile='Gradfile.txt',pri_err_cov_matr=None,paramboundspenalty=False,boundedvars={}):                         
+    def __init__(self,model,write_to_file=False,use_backgr_in_cost=False,StateVarNames=[],obsvarlist=[],Optimfile='Optimfile.txt',Gradfile='Gradfile.txt',pri_err_cov_matr=None,paramboundspenalty=False,abort_slow_minims=True,boundedvars={}):                         
         self.adjointtestingags = False #adjoint test of one module at one single time step
         self.adjointtestingrun_surf_lay = False
         self.adjointtestingribtol = False
@@ -47,6 +47,7 @@ class inverse_modelling:
         self.adjointtesting = False
         self.gradienttesting = False
         self.paramboundspenalty = paramboundspenalty
+        self.abort_slow_minims = abort_slow_minims #Abort minimisations that proceed too slow (can be followed by a restart)
         self.model = model
         self.boundedvars = cp.deepcopy(boundedvars)
         self.forcing = []
@@ -64,7 +65,7 @@ class inverse_modelling:
         self.Statelist = []
         self.nr_sims_for_check = 10 #when the cost function changes too slowly, the minimisation will be aborted. This number determines how many of the most recent simulations (their cost function value) will be taken into account 
         self.nr_of_sim_bef_restart = 0 #the simulation nr reached before restart took place (if applicable, at this point in the code no restart has taken place). 
-        self.print = True
+        self.print = True #switch for printing
         if self.write_to_f:
             self.Optimf = Optimfile
             self.Gradf = Gradfile
@@ -85,12 +86,13 @@ class inverse_modelling:
             for item in StateVarNames:
                 open(self.Gradf,'a').write('{0:>30s}'.format('Costf_grad_'+item))
     
-    def min_func(self,state_to_opt,inputdata,state_var_names,obs_times,obs_weights={},PertDict={}): #some dummy vars as arg list of min_func and deriv_func needs to be the same
+    def min_func(self,state_to_opt,inputdata_arg,state_var_names,obs_times,obs_weights={},PertDict={}): #some dummy vars as arg list of min_func and derivative function needs to be the same
         cost = 0
         self.sim_nr += 1
         if self.print:
             print('accessing min func')
             print('state_to_opt'+str(state_to_opt))
+        inputdata = cp.deepcopy(inputdata_arg)
         obs_sca_cf = {}
         for i in range(len(state_var_names)):
             inputdata.__dict__[state_var_names[i]] = state_to_opt[i]
@@ -117,7 +119,7 @@ class inverse_modelling:
             pert = 0.0 #a perturbation to H(x) - s*y
             k = 0 #counter for the observations (specific for each type of obs)
             for i in range (model.tsteps):
-                if round(model.out.t[i] * 3600,3) in [round(num, 3) for num in obs_times[item]]: #so if we are at a time where we have an obs
+                if round(model.out.t[i] * 3600,8) in [round(num, 8) for num in obs_times[item]]: #so if we are at a time where we have an obs
                     if item in obs_weights:
                         weight = obs_weights[item][k]
                     if item in PertDict:
@@ -162,23 +164,25 @@ class inverse_modelling:
             raise nan_incostfError('nan in costf')
         self.Costflist.append(cost)
         self.Statelist.append(state_to_opt)
-        if self.sim_nr > 15 and (self.sim_nr - self.nr_of_sim_bef_restart > self.nr_sims_for_check): #second condition to prevent termination immediately after restart
-            too_small_diff = True
-            for i in range(len(self.Costflist)-1,len(self.Costflist)-1-self.nr_sims_for_check,-1): #so you look at last 10 sims
-                diff = (self.Costflist[i] - self.Costflist[i-1])/self.Costflist[i-1]
-                if abs(diff) > 0.001:
-                    too_small_diff = False #prevent too many sims without a reasonable change in costf
-            if too_small_diff == True:
-                if self.write_to_f:
-                    open(self.Optimf,'a').write('\n')
-                    open(self.Optimf,'a').write('{0:<25s}'.format('aborted minimisation'))
-                self.nr_of_sim_bef_restart = self.sim_nr 
-                raise static_costfError('too slow progress in costf')
+        if self.abort_slow_minims:
+            if self.sim_nr > 15 and (self.sim_nr - self.nr_of_sim_bef_restart > self.nr_sims_for_check): #second condition to prevent termination immediately after restart
+                too_small_diff = True
+                for i in range(len(self.Costflist)-1,len(self.Costflist)-1-self.nr_sims_for_check,-1): #so, if self.nr_sims_for_check=10, for the last 10 sims you look at the change compared to the previous sim
+                    diff = (self.Costflist[i] - self.Costflist[i-1])/self.Costflist[i-1]
+                    if abs(diff) > 0.001:
+                        too_small_diff = False #prevent too many sims without a reasonable change in costf
+                if too_small_diff == True:
+                    if self.write_to_f:
+                        open(self.Optimf,'a').write('\n')
+                        open(self.Optimf,'a').write('{0:<25s}'.format('aborted minimisation'))
+                    self.nr_of_sim_bef_restart = self.sim_nr 
+                    raise static_costfError('too slow progress in costf')
         return cost
     
-    def cost_func(self,state_to_opt,inputdata,state_var_names,obs_times,obs_weights={},PertDict={},RetCFParts=False): #Similar to min func, but without file writing and changing forcings etc, so it can be called safely without altering an optimisation
+    def cost_func(self,state_to_opt,inputdata_arg,state_var_names,obs_times,obs_weights={},PertDict={},RetCFParts=False): #Similar to min func, but without file writing and changing forcings etc, so it can be called safely without altering an optimisation
         cost = 0
         obs_sca_cf = {}
+        inputdata = cp.deepcopy(inputdata_arg)
         for i in range(len(state_var_names)):
             inputdata.__dict__[state_var_names[i]] = state_to_opt[i]
             if state_var_names[i].startswith('obs_sca_cf_'):
@@ -207,7 +211,7 @@ class inverse_modelling:
             pert = 0.0 #a perturbation to H(x) - s*y
             k = 0 #counter for the observations (specific for each type of obs)
             for i in range (model.tsteps):
-                if round(model.out.t[i] * 3600,3) in [round(num, 3) for num in obs_times[item]]: #so if we are at a time where we have an obs
+                if round(model.out.t[i] * 3600,8) in [round(num, 8) for num in obs_times[item]]: #so if we are at a time where we have an obs
                     if item in obs_weights:
                         weight = obs_weights[item][k]
                     if item in PertDict:
@@ -228,8 +232,8 @@ class inverse_modelling:
                             if math.isnan(cost):
                                 cost = 0 #to avoid ending up with a lot of nans. note that nan + a number gives nan. 
                                 if RetCFParts:
-                                    for key in RetCFParts:
-                                       RetCFParts[key] = 0
+                                    for key in CostParts:
+                                        CostParts[key] = 0
                         increment = 1/self.penalty_exp*(2 - (state_to_opt[i] - self.boundedvars[state_var_names[i]][0]))**self.penalty_exp #note that this will always be positive
                         cost += increment
                         if RetCFParts:
@@ -239,8 +243,8 @@ class inverse_modelling:
                             if math.isnan(cost):
                                 cost = 0 #to avoid ending up with a lot of nans. note that nan + a number gives nan. 
                                 if RetCFParts:
-                                    for key in RetCFParts:
-                                       RetCFParts[key] = 0
+                                    for key in CostParts:
+                                        CostParts[key] = 0
                         increment = 1/self.penalty_exp*(2 + (state_to_opt[i] - self.boundedvars[state_var_names[i]][1]))**self.penalty_exp 
                         cost += increment
                         if RetCFParts:
@@ -256,7 +260,7 @@ class inverse_modelling:
             return cost
     
     def ana_deriv(self,state_to_opt,inputdata,state_var_names,obs_times,obs_weights={},PertDict={}): #some dummy vars as arg list of min_func and deriv_func needs to be the same
-        model = self.model #just to ease notation later on
+        model = self.model #just to ease notation later on. Note that we should not use the checkpoints of self.model, only the constants!!
         if self.print:
             print('accessing deriv_func')
             print ('state'+str(state_to_opt))
@@ -333,7 +337,7 @@ class inverse_modelling:
             print('end deriv_func')
         return np.array(gradient) #!!!!must return an array!!
     
-    def num_deriv(self,state_to_opt,inputdata,state_var_names,obs_times,obs_weights={},PertDict={}): #some dummy vars as arg list of min_func and deriv_func needs to be the same
+    def num_deriv(self,state_to_opt,inputdata_arg,state_var_names,obs_times,obs_weights={},PertDict={}): #some dummy vars as arg list of min_func and deriv_func needs to be the same
         if self.print:
             print('accessing num_deriv')
         if self.write_to_f:
@@ -341,16 +345,18 @@ class inverse_modelling:
             open(self.Gradf,'a').write('{0:>25s}'.format(str(self.sim_nr)))
             for item in state_to_opt:
                 open(self.Gradf,'a').write('{0:>25s}'.format(str(item)))
+        inputdata = cp.deepcopy(inputdata_arg)
         gradient = np.zeros(len(state_to_opt))
-        cost_forw = 0
-        cost_backw = 0
         delta = 0.000001
         obs_sca_cf = {}
         for i in range(len(state_var_names)):
+            inputdata.__dict__[state_var_names[i]] = state_to_opt[i] #Essential to do this in a seperate loop before the gradient calculation loop, since we need to calculate gradient at the right location in parameter space, so we need to set all model state parameters to their correct value!! 
             if state_var_names[i].startswith('obs_sca_cf_'):
                 item = state_var_names[i].split("obs_sca_cf_",1)[1] #split so we get the part after obs_sca_cf_
                 obs_sca_cf[item] = state_to_opt[i] #set the obsscales
         for i in range(len(state_var_names)):
+            cost_forw = 0
+            cost_backw = 0
             inputdata.__dict__[state_var_names[i]] = state_to_opt[i] + delta
             if state_var_names[i].startswith('obs_sca_cf_'):
                 item = state_var_names[i].split("obs_sca_cf_",1)[1] #split so we get the part after obs_sca_cf_
@@ -379,7 +385,7 @@ class inverse_modelling:
                 pert = 0.0 #a perturbation to H(x) - s*y
                 r = 0 #counter for the observations (specific for each type of obs)
                 for j in range (model.tsteps):
-                    if round(model.out.t[j] * 3600,3) in [round(num, 3) for num in obs_times[item]]: #so if we are at a time where we have an obs
+                    if round(model.out.t[j] * 3600,8) in [round(num, 8) for num in obs_times[item]]: #so if we are at a time where we have an obs
                         if item in obs_weights:
                             weight = obs_weights[item][r]
                         if item in PertDict:
@@ -412,7 +418,7 @@ class inverse_modelling:
                 pert = 0.0 #a perturbation to H(x) - s*y
                 r = 0 #counter for the observations (specific for each type of obs)
                 for k in range (model.tsteps):
-                    if round(model.out.t[k] * 3600,3) in [round(num, 3) for num in obs_times[item]]: #so if we are at a time where we have an obs
+                    if round(model.out.t[k] * 3600,8) in [round(num, 8) for num in obs_times[item]]: #so if we are at a time where we have an obs
                         if item in obs_weights:
                             weight = obs_weights[item][r]
                         if item in PertDict:
@@ -449,6 +455,7 @@ class inverse_modelling:
                 gradient[i] += dcostf_dbackground
                 if self.write_to_f:
                     open(self.Gradf,'a').write('{0:>30s}'.format(str(dcostf_dbackground)))
+            inputdata.__dict__[state_var_names[i]] = state_to_opt[i] #reset the inputdata for the calcs of the next state param in loop!
         if self.write_to_f:
             for item in gradient:
                 open(self.Gradf,'a').write('{0:>30s}'.format(str(item)))
@@ -2427,6 +2434,7 @@ class inverse_modelling:
             
     def tl_integrate_mixed_layer(self,model,checkpoint,returnvariable=None):
         dz_h = checkpoint['iml_dz_h_middle']
+        dz0 = checkpoint['iml_dz0_end']
         self.Output_tl_iml = {}
         dh0 = self.dh
         dtheta0  = self.dtheta
@@ -2452,7 +2460,6 @@ class inverse_modelling:
         ddeltaCO2     = ddeltaCO20   + model.dt * self.ddeltaCO2tend
         ddeltaCOS     = ddeltaCOS0   + model.dt * self.ddeltaCOStend
         ddz_h     = ddz0     + model.dt * self.ddztend
-        dz0 = 50
         ddz0 = 0
         if(dz_h < dz0):
             ddz_h = 0
@@ -2477,7 +2484,8 @@ class inverse_modelling:
                     return returnvar
     
     def initialise_adjoint(self):
-        #All variables that could be used in multiple modules, without being set to zero after use in every module should appear here
+        #old comment: All variables that could be used in multiple modules, without being set to zero after use in every module should appear here
+        #all adjoint variables that can require initialisation to 0 should appear here
         #surface layer derivatives
         self.adq2m = 0
         self.adqmh = 0
@@ -3570,7 +3578,7 @@ class inverse_modelling:
             return returnlist
     
     def adj_integrate_mixed_layer(self,checkpoint,model,HTy_variables=None):
-        dz0 = 50 #this is just a constant
+        dz0 = checkpoint['iml_dz0_end'] 
         dz_h = checkpoint['iml_dz_h_middle']
         if(model.sw_wind):
             #statement ddeltav   = ddeltav0     + model.dt * self.ddeltavtend
@@ -7865,7 +7873,7 @@ class inverse_modelling:
                     self.HTy[i] = locals()[HTy_variables[i]] #in case it is not a self variable
     
     def grad_test(self,inputdata,perturbationvars,outputvar,dstate,returnvariable,output_dict,printmode='absolute'):
-        lb_gr = 0.999
+        lb_gr = 0.999 #left (lower) bound for passing gradient test
         rb_gr = 1.001
         if not hasattr(self,'failed_grad_test_list'):
             self.failed_grad_test_list = [] #list of vars where test fails
@@ -7968,6 +7976,8 @@ class inverse_modelling:
         cpx =  default_model.cpx[-1]
         if hasattr(default_model,outputvar):
             default_out = default_model.__dict__[outputvar]
+            if outputvar in default_model.vars_rsl:
+                print ('WARNING: outputvar exists both as self-variable and in dictionary')
         else:
             default_out = default_model.vars_rsl[outputvar]
         print(returnvariable+' :')
@@ -8000,6 +8010,8 @@ class inverse_modelling:
     
     def grad_test_ribtol(self,model,perturbationvars,outputvar,dstate,returnvariable,printmode='absolute'):
         #this module is a bit special since it is a submodule
+        lb_gr = 0.999 #left (lower) bound for passing gradient test
+        rb_gr = 1.001
         dummy_model = cp.deepcopy(model) #just to not manipulate orig model
         dummy_model.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False,save_vars_indict=True)
         default_model = cp.deepcopy(dummy_model)
@@ -8009,24 +8021,26 @@ class inverse_modelling:
         print(returnvariable+' :')
         self.initialise_tl(dstate)
         tl_output = self.tl_ribtol(default_model,cpx,returnvariable=returnvariable)
-        for alpha in [1e-2,1e-4,1e-5,1e-6,1e-8]:
+        numderiv = {}
+        alpharange = [1e-2,1e-4,1e-5,1e-6,1e-8]
+        for alpha in alpharange:
             p_model = cp.deepcopy(dummy_model) #here we need to use a model that has been runned, without the extra call to surf layer
             for item in perturbationvars:
                 p_model.__dict__[item] += alpha
             p_model.ribtol(p_model.Rib, p_model.zsl, p_model.z0m, p_model.z0h)
             p_out = p_model.vars_rtl[outputvar]
-            numderiv = (p_out - default_out)/alpha
+            numderiv[str(alpha)] = (p_out - default_out)/alpha
             if printmode == 'absolute':
-                print(numderiv)
+                print(numderiv[str(alpha)])
             elif printmode == 'relative':
                 try:
-                    print(numderiv/tl_output)
+                    print(numderiv[str(alpha)]/tl_output)
                 except ZeroDivisionError:
                     print('NAN')
         if printmode == 'absolute':
             print('tl :'+str(tl_output))
-        if not (tl_output==0 and numderiv==0):
-            if (tl_output/numderiv<0.9999 or tl_output/numderiv>1.0001):
+        if not ((tl_output==0 and numderiv[str(alpharange[-1])]==0) and numderiv[str(alpharange[-2])]==0):
+            if ((tl_output/numderiv[str(alpharange[-1])]<lb_gr or tl_output/numderiv[str(alpharange[-1])]>rb_gr) and (tl_output/numderiv[str(alpharange[-2])]<lb_gr or tl_output/numderiv[str(alpharange[-2])]>rb_gr)):
                 for i in range(5):
                     print('GRADIENT TEST FAILURE!! '+str(returnvariable))
                 self.all_tests_pass = False
@@ -8039,6 +8053,8 @@ class inverse_modelling:
         cpx =  default_model.cpx[-1]
         if hasattr(default_model,outputvar):
             default_out = default_model.__dict__[outputvar]
+            if outputvar in default_model.vars_ags:
+                print ('WARNING: outputvar exists both as self-variable and in dictionary')
         else:
             default_out = default_model.vars_ags[outputvar]
         print(returnvariable+' :')
@@ -8078,6 +8094,8 @@ class inverse_modelling:
         cpx =  default_model.cpx[-1]
         if hasattr(default_model,outputvar):
             default_out = default_model.__dict__[outputvar]
+            if outputvar in default_model.vars_rml:
+                print ('WARNING: outputvar exists both as self-variable and in dictionary')
         else:
             default_out = default_model.vars_rml[outputvar]
         print(returnvariable+' :')
@@ -8117,6 +8135,8 @@ class inverse_modelling:
         cpx =  default_model.cpx[-1]
         if hasattr(default_model,outputvar):
             default_out = default_model.__dict__[outputvar]
+            if outputvar in default_model.vars_iml:
+                print ('WARNING: outputvar exists both as self-variable and in dictionary')
         else:
             default_out = default_model.vars_iml[outputvar]
         print(returnvariable+' :')
@@ -8156,6 +8176,8 @@ class inverse_modelling:
         cpx =  default_model.cpx[-1]
         if hasattr(default_model,outputvar):
             default_out = default_model.__dict__[outputvar]
+            if outputvar in default_model.vars_rr:
+                print ('WARNING: outputvar exists both as self-variable and in dictionary')
         else:
             default_out = default_model.vars_rr[outputvar]
         print(returnvariable+' :')
@@ -8194,6 +8216,8 @@ class inverse_modelling:
         cpx =  default_model.cpx[-1]
         if hasattr(default_model,outputvar):
             default_out = default_model.__dict__[outputvar]
+            if outputvar in default_model.vars_rls:
+                print ('WARNING: outputvar exists both as self-variable and in dictionary')
         else:
             default_out = default_model.vars_rls[outputvar]
         print(returnvariable+' :')
@@ -8233,6 +8257,8 @@ class inverse_modelling:
         cpx =  default_model.cpx[-1]
         if hasattr(default_model,outputvar):
             default_out = default_model.__dict__[outputvar]
+            if outputvar in default_model.vars_ils:
+                print ('WARNING: outputvar exists both as self-variable and in dictionary')
         else:
             default_out = default_model.vars_ils[outputvar]
         print(returnvariable+' :')
@@ -8272,6 +8298,8 @@ class inverse_modelling:
         cpx =  default_model.cpx[-1]
         if hasattr(default_model,outputvar):
             default_out = default_model.__dict__[outputvar]
+            if outputvar in default_model.vars_stat:
+                print ('WARNING: outputvar exists both as self-variable and in dictionary')
         else:
             default_out = default_model.vars_stat[outputvar]
         print(returnvariable+' :')
@@ -8477,6 +8505,8 @@ class inverse_modelling:
         cpx =  default_model.cpx[-1]
         if hasattr(default_model,outputvar):
             default_out = default_model.__dict__[outputvar]
+            if outputvar in default_model.vars_js:
+                print ('WARNING: outputvar exists both as self-variable and in dictionary')
         else:
             default_out = default_model.vars_js[outputvar]
         print(returnvariable+' :')
