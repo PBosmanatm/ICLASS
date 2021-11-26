@@ -46,13 +46,13 @@ if estimate_model_err:
 imposeparambounds = True #force the optimisation to keep parameters within specified bounds (tnc only) and when using ensemble, keep priors within bounds (tnc and bfgs)
 paramboundspenalty = False #add a penalty to the cost function when parameter bounds exceeded in the optimisation
 if paramboundspenalty:
-    setNanCostfOutBoundsTo0 = True #when cost function becomes nan when params outside specified bounds, set cost f to zero before adding penalty (nan + number gives nan)
-    penalty_exp = 60 #exponent to use in the penalty function
-remove_prev = True #Use with caution, be careful for other files in working directory! Removes (non-user specified) files that might have remained from previous optimisations. See manual for a list
+    setNanCostfOutBoundsTo0 = True #when cost function becomes nan when params outside specified bounds, set cost func to zero before adding penalty (nan + number gives nan)
+    penalty_exp = 60 #exponent to use in the penalty function (see manual)
+remove_prev = True #Use with caution, be careful for other files in working directory! Removes certain files that might have remained from previous optimisations. See manual for more info on what files are removed
 abort_slow_minims = True #Abort minimisations that proceed too slow (can be followed by a restart)
-optim_method = 'tnc' #bfgs or tnc, the chosen optimisation algorithm
+optim_method = 'tnc' #bfgs or tnc, the chosen optimisation algorithm. tnc recommended
 if optim_method == 'tnc':
-    maxnr_of_restarts = 2 #The number of times to restart the optimisation if the cost function is not as low as specified in stopcrit. Only implemented for tnc method at the moment. 
+    maxnr_of_restarts = 2 #The maximum number of times to restart the optimisation if the cost function is not as low as specified in stopcrit. Only implemented for tnc method at the moment. 
     if maxnr_of_restarts > 0:
         stopcrit = 0.00001#If the cost function is equal or lower than this value, no restart will be attempted   
 elif optim_method == 'bfgs':
@@ -67,9 +67,9 @@ if (perturb_truth_obs or (use_ensemble or estimate_model_err)):
     if set_seed:
         seedvalue = 14 #the chosen value of the seed. No floating point numbers and no negative numbers 
 discard_nan_minims = False #if False, if in a minimisation nan is encountered, it will use the state from the best simulation so far, if True, the minimisation will result in a state with nans 
-use_weights = False #weights for the cost function, to enlarge or reduce the importance of certain obs 
+use_weights = False #weights for the cost function, to enlarge or reduce the importance of certain obs, or to modify the relative importance of the obs vs the background part
 if use_weights:
-    weight_morninghrs = 1/4 #to change weights of obs in the morning (the hour at which the morning ends is specified in variable 'end_morninghrs'), when everything less well mixed. 1 means equal weights
+    weight_morninghrs = 1/4 #to change weights of obs in the morning (the hour at which the morning ends is specified in variable 'end_morninghrs'), when everything less well mixed. 1 means equal weights compared to the other parts of the day
     end_morninghrs = 10 #At all times smaller than this time (UTC, decimal hour), weight_morninghrs is applied
 if (use_backgr_in_cost and use_weights):
     obs_vs_backgr_weight = 1.0 # a scaling factor for the importance of all the observations in the cost function 
@@ -534,6 +534,8 @@ if 'FracH' in state:
 ##################################################################
     for item in ['H','LE']:
         if item in obsvarlist:
+            if not hasattr(optim,'EnBalDiffObs_at'+item+'times'):
+                raise Exception('When including FracH in state and '+ item + ' in obsvarlist, \'optim.EnBalDiffObs_at'+item+'times\' should be specified!')
             if len(optim.__dict__['EnBalDiffObs_at'+item+'times']) != len(optim.__dict__['obs_'+item]):
                 raise Exception('When including FracH in state and '+ item + ' in obsvarlist, an EnBalDiffObs_at' +item+'times value should correspond to every obs of ' + item)
             if type(optim.__dict__['EnBalDiffObs_at'+item+'times']) not in [np.ndarray,list]: #a check to see whether data is of a correct type
@@ -555,8 +557,6 @@ if 'FracH' in state:
                 
     for item in ['H','LE']:
         if item in obsvarlist:
-            if not hasattr(optim,'EnBalDiffObs_at'+item+'times'):
-                raise Exception('When including FracH in state and '+ item + ' in obsvarlist, \'optim.EnBalDiffObs_at'+item+'times\' should be specified!')
             itoremove = []
             for i in range(len(optim.__dict__['EnBalDiffObs_at'+item+'times'])):
                 if np.isnan(optim.__dict__['EnBalDiffObs_at'+item+'times'][i]):
@@ -577,7 +577,8 @@ if estimate_model_err:
 ########################################################################
 ###### user input: model and representation error ######################
 ########################################################################
-    #in case the model error is estimated with a model ensemble (switch estimate_model_err), specify here the parameters to perturb for this estimation:
+    #in case the model error is estimated with a model ensemble (switch estimate_model_err), specify here the parameters to perturb for this estimation
+    #and the distributions to sample random numbers from (to add to these parameters in the ensemble):
     me_paramdict['cveg'] = {'distr':'uniform','leftbound': 0.1,'rightbound': 1.0}
     me_paramdict['Lambda'] = {'distr':'normal','scale': 0.3}
 else:
@@ -642,6 +643,9 @@ for item in obsvarlist:
         raise Exception('Error: size of measurement_error and obstimes inconsistent for '+item+'!')
     if len(obs_times[item]) != len(repr_error[item]):
         raise Exception('Error: size of repr_error and obstimes inconsistent for '+item+'!')
+    if use_weights and item in obs_weights:
+        if len(obs_times[item]) != len(obs_weights[item]):
+            raise Exception('Error: size of weights and obstimes inconsistent for '+item+'!')
     itoremove = []
     for i in range(len(optim.__dict__['obs_'+item])):
         if np.isnan(optim.__dict__['obs_'+item][i]):
@@ -671,9 +675,6 @@ for item in obsvarlist:
             np.random.seed(None)
         rand_nr_list = ([np.random.normal(0,measurement_error[item][i]) for i in range(len(measurement_error[item]))])
         optim.__dict__['obs_'+item] += rand_nr_list
-    if use_weights and item in obs_weights:
-        if len(obs_times[item]) != len(obs_weights[item]):
-            raise Exception('Error: size of weights and obstimes inconsistent for '+item+'!')
     if (use_backgr_in_cost and use_weights): #add weight of obs vs prior (identical for every obs) in the cost function
         if item in obs_weights: #if already a weight specified for the specific type of obs
             obs_weights[item] = [x * obs_vs_backgr_weight for x in obs_weights[item]]

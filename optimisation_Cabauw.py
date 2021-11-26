@@ -46,13 +46,13 @@ if estimate_model_err:
 imposeparambounds = True #force the optimisation to keep parameters within specified bounds (tnc only) and when using ensemble, keep priors within bounds (tnc and bfgs)
 paramboundspenalty = False #add a penalty to the cost function when parameter bounds exceeded in the optimisation
 if paramboundspenalty:
-    setNanCostfOutBoundsTo0 = True #when cost function becomes nan when params outside specified bounds, set cost f to zero before adding penalty (nan + number gives nan)
-    penalty_exp = 60 #exponent to use in the penalty function
-remove_prev = True #Use with caution, be careful for other files in working directory! Removes (non-user specified) files that might have remained from previous optimisations. See manual for a list
+    setNanCostfOutBoundsTo0 = True #when cost function becomes nan when params outside specified bounds, set cost func to zero before adding penalty (nan + number gives nan)
+    penalty_exp = 60 #exponent to use in the penalty function (see manual)
+remove_prev = True #Use with caution, be careful for other files in working directory! Removes certain files that might have remained from previous optimisations. See manual for more info on what files are removed
 abort_slow_minims = True #Abort minimisations that proceed too slow (can be followed by a restart)
-optim_method = 'tnc' #bfgs or tnc, the chosen optimisation algorithm
+optim_method = 'tnc' #bfgs or tnc, the chosen optimisation algorithm. tnc recommended
 if optim_method == 'tnc':
-    maxnr_of_restarts = 1 #The number of times to restart the optimisation if the cost function is not as low as specified in stopcrit. Only implemented for tnc method at the moment. 
+    maxnr_of_restarts = 1 #The maximum number of times to restart the optimisation if the cost function is not as low as specified in stopcrit. Only implemented for tnc method at the moment. 
     if maxnr_of_restarts > 0:
         stopcrit = 40.0#If the cost function is equal or lower than this value, no restart will be attempted   
 elif optim_method == 'bfgs':
@@ -65,10 +65,10 @@ if estimate_model_err or use_ensemble:
     if set_seed:
         seedvalue = 18 #the chosen value of the seed. No floating point numbers and no negative numbers 
 discard_nan_minims = False #if False, if in a minimisation nan is encountered, it will use the state from the best simulation so far, if True, the minimisation will result in a state with nans    
-use_mean = False #switch for using mean of obs over several days
-use_weights = True #weights for the cost function, to enlarge or reduce the importance of certain obs
+use_mean = False #switch for using mean of obs over several days (and mean during hour)
+use_weights = True #weights for the cost function, to enlarge or reduce the importance of certain obs, or to modify the relative importance of the obs vs the background part
 if use_weights:
-    weight_morninghrs = 1 #to change weights of obs in the morning (the hour at which the morning ends is specified in variable 'end_morninghrs'), when everything less well mixed. 1 means equal weights
+    weight_morninghrs = 1 #to change weights of obs in the morning (the hour at which the morning ends is specified in variable 'end_morninghrs'), when everything less well mixed. 1 means equal weights compared to the other parts of the day
     end_morninghrs = 10 #At all times smaller than this time (UTC, decimal hour), weight_morninghrs is applied
 if (use_backgr_in_cost and use_weights):
     obs_vs_backgr_weight = 1.0 # a scaling factor for the importance of all the observations in the cost function
@@ -136,10 +136,10 @@ g = 9.81
 selectedyears = [2003.]
 selectedmonths = [9]
 selectedday = 25 #only used when not use_mean = True
-selecteddays = [24,25,26]#[24,25,26] #period over which we average
-selectedminutes = [5,15,25,35,45,55]#use an array! Do not include the same element twice
+selecteddays = [24,25,26]#[24,25,26] #period over which we average in case use_mean is True
+selectedminutes = [5,15,25,35,45,55]#use an array! Do not include the same element twice. This list is not for all datafiles relevant.
 starthour = 9 #utc, start of obs  (use an integer!)
-endhour = 15 #(use an integer!)
+endhour = 15 #(use an integer!). Obs at this hour will not be included. Model runs up to and including this time
 
 directory = 'Cabauw_obs'
 data_Temp = pd.read_csv(directory+'/'+'caboper_air_temperature_200309-24-25-26.lot', skiprows=[0,1,3],delim_whitespace=True)
@@ -228,13 +228,13 @@ if use_mean != True:
     TD10_selected = data_DewP[timeselection]['TD010'] +273.15
     TD2_selected = data_DewP[timeselection]['TD002'] +273.15
     Press_selected = data_Press[timeselection]['AP0']*100. #Pa
-    e200_selected = 610.7 * np.exp(17.2694*(TD200_selected - 273.16) / (TD200_selected - 35.86)) #eq 3.3 intro atm
-    e140_selected = 610.7 * np.exp(17.2694*(TD140_selected - 273.16) / (TD140_selected - 35.86)) #eq 3.3 intro atm
-    e80_selected = 610.7 * np.exp(17.2694*(TD80_selected - 273.16) / (TD80_selected - 35.86)) #eq 3.3 intro atm
-    e40_selected = 610.7 * np.exp(17.2694*(TD40_selected - 273.16) / (TD40_selected - 35.86)) #eq 3.3 intro atm
-    e20_selected = 610.7 * np.exp(17.2694*(TD20_selected - 273.16) / (TD20_selected - 35.86)) #eq 3.3 intro atm
-    e10_selected = 610.7 * np.exp(17.2694*(TD10_selected - 273.16) / (TD10_selected - 35.86)) #eq 3.3 intro atm
-    e2_selected = 610.7 * np.exp(17.2694*(TD2_selected - 273.16) / (TD2_selected - 35.86)) #eq 3.3 intro atm
+    e200_selected = 610.7 * np.exp(17.2694*(TD200_selected - 273.16) / (TD200_selected - 35.86)) #eq 3.3 and 3.7 intro atm
+    e140_selected = 610.7 * np.exp(17.2694*(TD140_selected - 273.16) / (TD140_selected - 35.86)) #eq 3.3 and 3.7 intro atm
+    e80_selected = 610.7 * np.exp(17.2694*(TD80_selected - 273.16) / (TD80_selected - 35.86)) #eq 3.3 and 3.7 intro atm
+    e40_selected = 610.7 * np.exp(17.2694*(TD40_selected - 273.16) / (TD40_selected - 35.86)) #eq 3.3 and 3.7 intro atm
+    e20_selected = 610.7 * np.exp(17.2694*(TD20_selected - 273.16) / (TD20_selected - 35.86)) #eq 3.3 and 3.7 intro atm
+    e10_selected = 610.7 * np.exp(17.2694*(TD10_selected - 273.16) / (TD10_selected - 35.86)) #eq 3.3 and 3.7 intro atm
+    e2_selected = 610.7 * np.exp(17.2694*(TD2_selected - 273.16) / (TD2_selected - 35.86)) #eq 3.3 and 3.7 intro atm
     rho80 = (Press_selected - 1.22030 * g * 80) / (287.04 * Temp80_selected) #1.22030 from us standard atmopsphere 40m
     q200_selected = Eps * e200_selected / (Press_selected - rho80 * g * 200 - (1 - Eps) * e200_selected) #eq 3.4 intro atm
     q140_selected = Eps * e140_selected / (Press_selected - rho80 * g * 140 - (1 - Eps) * e140_selected) #eq 3.4 intro atm
@@ -326,13 +326,13 @@ else:
         TD10_selected = data_DewP[timeselection2]['TD010'] +273.15
         TD2_selected = data_DewP[timeselection2]['TD002'] +273.15
         Presstoaverage = data_Press[timeselection2]['AP0']*100 #Pa
-        e200_selected = 610.7 * np.exp(17.2694*(TD200_selected - 273.16) / (TD200_selected - 35.86)) #eq 3.3 intro atm
-        e140_selected = 610.7 * np.exp(17.2694*(TD140_selected - 273.16) / (TD140_selected - 35.86)) #eq 3.3 intro atm
-        e80_selected = 610.7 * np.exp(17.2694*(TD80_selected - 273.16) / (TD80_selected - 35.86)) #eq 3.3 intro atm
-        e40_selected = 610.7 * np.exp(17.2694*(TD40_selected - 273.16) / (TD40_selected - 35.86)) #eq 3.3 intro atm
-        e20_selected = 610.7 * np.exp(17.2694*(TD20_selected - 273.16) / (TD20_selected - 35.86)) #eq 3.3 intro atm
-        e10_selected = 610.7 * np.exp(17.2694*(TD10_selected - 273.16) / (TD10_selected - 35.86)) #eq 3.3 intro atm
-        e2_selected = 610.7 * np.exp(17.2694*(TD2_selected - 273.16) / (TD2_selected - 35.86)) #eq 3.3 intro atm
+        e200_selected = 610.7 * np.exp(17.2694*(TD200_selected - 273.16) / (TD200_selected - 35.86)) #eq 3.3 intro atm and 3.7 intro atm
+        e140_selected = 610.7 * np.exp(17.2694*(TD140_selected - 273.16) / (TD140_selected - 35.86)) #eq 3.3 intro atm and 3.7 intro atm
+        e80_selected = 610.7 * np.exp(17.2694*(TD80_selected - 273.16) / (TD80_selected - 35.86)) #eq 3.3 intro atm and 3.7 intro atm
+        e40_selected = 610.7 * np.exp(17.2694*(TD40_selected - 273.16) / (TD40_selected - 35.86)) #eq 3.3 intro atm and 3.7 intro atm
+        e20_selected = 610.7 * np.exp(17.2694*(TD20_selected - 273.16) / (TD20_selected - 35.86)) #eq 3.3 intro atm and 3.7 intro atm
+        e10_selected = 610.7 * np.exp(17.2694*(TD10_selected - 273.16) / (TD10_selected - 35.86)) #eq 3.3 intro atm and 3.7 intro atm
+        e2_selected = 610.7 * np.exp(17.2694*(TD2_selected - 273.16) / (TD2_selected - 35.86)) #eq 3.3 intro atm and 3.7 intro atm
         rho80 = (Presstoaverage - 1.22030 * g * 80) / (287.04 * Temp80toaverage) #1.22030 from us standard atmopsphere 40m
         q200toaverage = Eps * e200_selected / (Presstoaverage - rho80 * g * 200 - (1 - Eps) * e200_selected) #eq 3.4 intro atm
         q140toaverage = Eps * e140_selected / (Presstoaverage - rho80 * g * 140 - (1 - Eps) * e140_selected) #eq 3.4 intro atm
@@ -345,7 +345,7 @@ else:
         Htoaverage = data_Flux[timeselection2]['HSON'] #W/m2
         LEtoaverage = data_Flux[timeselection2]['LEED'] #W/m2
         Gtoaverage = data_Flux[timeselection2]['FG0'] #W/m2
-        ustartoaverage = data_Flux[timeselection2]['FG0'] #m/s
+        ustartoaverage = data_Flux[timeselection2]['USTED'] #m/s
         wCO2toaverage = data_Flux[timeselection2]['FCED']
         Windsp200toaverage = data_Windsp[timeselection2]['F200'] #m s-1
         Windsp10toaverage = data_Windsp[timeselection2]['F010'] #m s-1
@@ -445,22 +445,24 @@ for i in range(len(time_CO2)):
         day_CO2[i] = day_CO2[i] - 1 #than it is from previous day
 month_True_False = np.zeros(len(time_CO2),dtype=bool)
 year_True_False = np.zeros(len(time_CO2),dtype=bool)
-day_True_False = np.zeros(len(time_CO2),dtype=bool)
 for i in range(len(month_True_False)):
     if month_CO2[i] in selectedmonths:
         month_True_False[i] = True
     if year_CO2[i] in selectedyears:
         year_True_False[i] = True
-    if day_CO2[i] in selecteddays:
-        day_True_False[i] = True #True for all selected days only      
+          
 if use_mean != True:
     timeselection = np.logical_and(np.logical_and(day_CO2 == selectedday,np.logical_and(month_True_False,year_True_False)),np.logical_and(hour_CO2>=starthour,hour_CO2<endhour))
-    CO2_200_selected = data_CO2[timeselection]['CO2_200'] #ppm
+    CO2_200_selected = data_CO2[timeselection]['CO2_200'] #ppm. Here the data file has e.g. header CO2_200, but measurements are made at 207, 127, 67 and 27 m, see Notes.txt
     CO2_120_selected = data_CO2[timeselection]['CO2_120'] #ppm
     CO2_60_selected = data_CO2[timeselection]['CO2_60'] #ppm
     CO2_20_selected = data_CO2[timeselection]['CO2_20'] #ppm
     hour_CO2_selected = hour_CO2[timeselection]
 else:
+    day_True_False = np.zeros(len(time_CO2),dtype=bool)
+    for i in range(len(month_True_False)):
+        if day_CO2[i] in selecteddays:
+            day_True_False[i] = True #True for all selected days only
     stdevCO2_200_hourly = np.zeros((endhour-starthour))
     stdevCO2_120_hourly = np.zeros((endhour-starthour))
     stdevCO2_60_hourly = np.zeros((endhour-starthour))
@@ -493,10 +495,10 @@ priormodinput = fwdm.model_input()
 ###### user input: prior model param ######
 ########################################### 
 priormodinput.COS        = 0.400 #ppb
-priormodinput.CO2measuring_height = 200. - canopy_height
-priormodinput.CO2measuring_height2 = 120 - canopy_height
-priormodinput.CO2measuring_height3 = 60 - canopy_height
-priormodinput.CO2measuring_height4 = 20 - canopy_height
+priormodinput.CO2measuring_height = 207. - canopy_height
+priormodinput.CO2measuring_height2 = 127 - canopy_height
+priormodinput.CO2measuring_height3 = 67 - canopy_height
+priormodinput.CO2measuring_height4 = 27 - canopy_height
 priormodinput.Tmeasuring_height = 200 - canopy_height #0 would be a problem
 priormodinput.Tmeasuring_height2 = 140 - canopy_height #0 would be a problem
 priormodinput.Tmeasuring_height3 = 80 - canopy_height #0 would be a problem
@@ -521,14 +523,15 @@ priormodinput.runtime    = (endhour-priormodinput.tstart)*3600 + priormodinput.d
 priormodinput.sw_ml      = True      # mixed-layer model switch
 priormodinput.sw_shearwe = True     # shear growth mixed-layer switch
 priormodinput.sw_fixft   = False     # Fix the free-troposphere switch
-priormodinput.h          = np.array(BLH_selected)[0]      # initial ABL height [m]
 if use_mean:
     priormodinput.Ps         = Press_mean[0]   # surface pressure [Pa]
+    priormodinput.h          = BLH_mean[0]      # initial ABL height [m]
 else:
     priormodinput.Ps         = np.array(Press_selected)[0]   # surface pressure [Pa]
+    priormodinput.h          = np.array(BLH_selected)[0]      # initial ABL height [m]
 priormodinput.divU       = 0.00        # horizontal large-scale divergence of wind [s-1]
 if use_mean:
-     priormodinput.theta      = 284
+     priormodinput.theta      = np.array(Temp200_mean)[0]*((np.array(Press_mean)[0]-200*9.81*np.array(rho80)[0])/100000)**(-287.04/1005)    # initial mixed-layer potential temperature [K]
 else:
     priormodinput.theta      = np.array(Temp200_selected)[0]*((np.array(Press_selected)[0]-200*9.81*np.array(rho80)[0])/100000)**(-287.04/1005)    # initial mixed-layer potential temperature [K]
 priormodinput.deltatheta = 4.20       # initial temperature jump at h [K]
@@ -538,14 +541,14 @@ priormodinput.htrans = 95000 #height of BL above which to use gammatheta2 instea
 priormodinput.advtheta   = 0        # advection of heat [K s-1]
 priormodinput.beta       = 0.2       # entrainment ratio for virtual heat [-]
 if use_mean:
-    priormodinput.q          = 0.0049     # initial mixed-layer specific humidity [kg kg-1]
+    priormodinput.q          = np.array(q200_mean)[0]     # initial mixed-layer specific humidity [kg kg-1]
 else:
     priormodinput.q          = np.array(q200_selected)[0]
 priormodinput.deltaq     = -0.0008    # initial specific humidity jump at h [kg kg-1]
 priormodinput.gammaq     = -1.2e-6        # free atmosphere specific humidity lapse rate [kg kg-1 m-1]
 priormodinput.advq       = 0        # advection of moisture [kg kg-1 s-1] 
 if use_mean:
-    priormodinput.CO2        = 422.      # initial mixed-layer CO2 [ppm]
+    priormodinput.CO2        = np.array(CO2_200_mean)[0]      # initial mixed-layer CO2 [ppm]
 else:
     priormodinput.CO2        = np.array(CO2_200_selected)[0]      # initial mixed-layer CO2 [ppm]
 priormodinput.deltaCO2   = -44.      # initial CO2 jump at h [ppm]
@@ -556,11 +559,14 @@ priormodinput.advCO2     = 0         # advection of CO2 [ppm s-1]
 priormodinput.advCOS     = 0.        # advection of COS [ppb s-1]
 priormodinput.wCOS       = 0.01        # surface kinematic COS flux [ppb m s-1]
 priormodinput.sw_wind    = True     # prognostic wind switch
-priormodinput.u          = np.array(Windsp200_selected)[0]        # initial mixed-layer u-wind speed [m s-1]
+if use_mean:
+    priormodinput.u          = np.array(Windsp200_mean)[0]        # initial mixed-layer u-wind speed [m s-1]
+else:
+    priormodinput.u          = np.array(Windsp200_selected)[0]        # initial mixed-layer u-wind speed [m s-1]
 priormodinput.deltau     = 3.        # initial u-wind jump at h [m s-1]
 priormodinput.gammau     = 0.002      # free atmosphere u-wind speed lapse rate [s-1]
 priormodinput.advu       = 0.        # advection of u-wind [m s-2]
-priormodinput.v          = 0      # initial mixed-layer u-wind speed [m s-1]
+priormodinput.v          = 0      # initial mixed-layer v-wind speed [m s-1]
 priormodinput.deltav     = 0       # initial u-wind jump at h [m s-1]
 priormodinput.gammav     = 0.        # free atmosphere v-wind speed lapse rate [s-1]
 priormodinput.advv       = 0.        # advection of v-wind [m s-2]
@@ -569,7 +575,7 @@ priormodinput.ustar      = 0.3       # surface friction velocity [m s-1]
 priormodinput.z0m        = 0.05      # roughness length for momentum [m]
 priormodinput.z0h        = 0.01     # roughness length for scalars [m]
 priormodinput.sw_rad     = True     # radiation switch
-priormodinput.lat        = 51.971     # latitude [deg] #https://icdc.cen.uni-hamburg.de/1/daten/atmosphere/weathermast-cabauw.html
+priormodinput.lat        = 51.971     # latitude [deg] #https://icdc.cen.uni-hamburg.de/1/daten/atmosphere/weathermast-cabauw.html and https://latitude.to/articles-by-country/nl/netherlands/204321/knmi-mast-cabauw
 priormodinput.lon        = 4.927     # longitude [deg]
 priormodinput.doy        = 268.      # day of the year [-]
 priormodinput.fc         = 2 * 7.2921e-5 * np.sin(priormodinput.lat*2*np.pi/360.)     # Coriolis parameter [m s-1]
@@ -705,7 +711,7 @@ if use_backgr_in_cost or use_ensemble:
 ###########################################################
 ###### user input: prior variance/covar (if used) #########
 ###########################################################
-    #if not optim.use_backgr_in_cost, than these are only used for perturbing the ensemble (when use_ensemble = True)
+    #if not use_backgr_in_cost, than these are only used for perturbing the ensemble (when use_ensemble = True)
     #prior variances of the items in the state:
     priorvar['alpha'] = 0.1**2
     priorvar['gammatheta'] = 0.003**2 
@@ -769,7 +775,7 @@ if use_backgr_in_cost or use_ensemble:
         for thing in priorcovar:
             if thing.count(',') != 1:
                 raise Exception('Invalid key \''+thing+'\' in priorcovar')
-            if ''.join(thing.split()) != thing:
+            if ''.join(thing.split()) != thing: #if a whitespace present, the LHS will not be equal to the RHS
                 raise Exception('Invalid key \''+thing+'\' in priorcovar')
             thing1,thing2 = thing.split(',')
             if thing1 not in priorinput.__dict__:
@@ -788,7 +794,7 @@ if use_backgr_in_cost or use_ensemble:
                     b_cov[i][state.index(item2)] = priorcovar[item2+','+item] 
                     b_cov[state.index(item2)][i] = priorcovar[item2+','+item]
     if not np.all(np.linalg.eigvals(b_cov) > 0):
-        raise Exception('Prior error covariance matrix is not positive definite, check the specified elements')#See page 12 and 13 of Brasseur and Jacob 2017                              
+        raise Exception('Prior error covariance matrix is not positive definite, check the specified elements')#See page 12 (page498) and 13 (page499) of Brasseur and Jacob 2017                              
 else:
      b_cov = None 
 
@@ -851,39 +857,39 @@ for item in obsvarlist:
     #please use np.array or list as datastructure for the obs, obs errors, observation times or weights
     if use_mean:
         if item == 'Tmh':
-            optim.__dict__['obs_'+item] = np.ndarray.flatten(Temp200_mean) #flatten becuase it is from the second datafile, which has a different structure
-            measurement_error[item] = np.ndarray.flatten(stdevTemp200_hourly)
+            optim.__dict__['obs_'+item] = np.array(Temp200_mean) #it is already a numpy array, but this might prevent modifying the original Temp200_mean array when optim.__dict__['obs_'+item] would get modified.
+            measurement_error[item] = np.array(stdevTemp200_hourly)
             obs_times[item] = hours_mean * 3600.
             disp_units[item] = 'K'
             display_names[item] = 'T_200'
         if item == 'Tmh2':
-            optim.__dict__['obs_'+item] = np.ndarray.flatten(Temp140_mean) #flatten becuase it is from the second datafile, which has a different structure
-            measurement_error[item] = np.ndarray.flatten(stdevTemp140_hourly)
+            optim.__dict__['obs_'+item] = np.array(Temp140_mean) 
+            measurement_error[item] = np.array(stdevTemp140_hourly)
             obs_times[item] = hours_mean * 3600.
             disp_units[item] = 'K'
         if item == 'Tmh3':
-            optim.__dict__['obs_'+item] = np.ndarray.flatten(Temp80_mean) #flatten becuase it is from the second datafile, which has a different structure
-            measurement_error[item] = np.ndarray.flatten(stdevTemp80_hourly)
+            optim.__dict__['obs_'+item] = np.array(Temp80_mean) 
+            measurement_error[item] = np.array(stdevTemp80_hourly)
             obs_times[item] = hours_mean * 3600.
             disp_units[item] = 'K'
         if item == 'Tmh4':
-            optim.__dict__['obs_'+item] = np.ndarray.flatten(Temp40_mean) #flatten becuase it is from the second datafile, which has a different structure
-            measurement_error[item] = np.ndarray.flatten(stdevTemp40_hourly)
+            optim.__dict__['obs_'+item] = np.array(Temp40_mean) 
+            measurement_error[item] = np.array(stdevTemp40_hourly)
             obs_times[item] = hours_mean * 3600.
             disp_units[item] = 'K'
         if item == 'Tmh5':
-            optim.__dict__['obs_'+item] = np.ndarray.flatten(Temp20_mean) #flatten becuase it is from the second datafile, which has a different structure
-            measurement_error[item] = np.ndarray.flatten(stdevTemp20_hourly)
+            optim.__dict__['obs_'+item] = np.array(Temp20_mean) 
+            measurement_error[item] = np.array(stdevTemp20_hourly)
             obs_times[item] = hours_mean * 3600.
             disp_units[item] = 'K'
         if item == 'Tmh6':
-            optim.__dict__['obs_'+item] = np.ndarray.flatten(Temp10_mean) #flatten becuase it is from the second datafile, which has a different structure
-            measurement_error[item] = np.ndarray.flatten(stdevTemp10_hourly)
+            optim.__dict__['obs_'+item] = np.array(Temp10_mean) 
+            measurement_error[item] = np.array(stdevTemp10_hourly)
             obs_times[item] = hours_mean * 3600.
             disp_units[item] = 'K'
         if item == 'Tmh7':
-            optim.__dict__['obs_'+item] = np.ndarray.flatten(Temp2_mean) #flatten becuase it is from the second datafile, which has a different structure
-            measurement_error[item] = np.ndarray.flatten(stdevTemp2_hourly)
+            optim.__dict__['obs_'+item] = np.array(Temp2_mean) 
+            measurement_error[item] = np.array(stdevTemp2_hourly)
             obs_times[item] = hours_mean * 3600.
             disp_units[item] = 'K'
         elif item == 'CO2mh':
@@ -953,27 +959,27 @@ for item in obsvarlist:
             obs_times[item] = hours_mean * 3600.
             disp_units[item] = 'g kg$^{-1}$'
         elif item == 'qmh6':
-            optim.__dict__['obs_'+item] = q10_mean
+            optim.__dict__['obs_'+item] = np.array(q10_mean)
             measurement_error[item] = stdevq10_hourly
             obs_times[item] = hours_mean * 3600.
             disp_units[item] = 'g kg$^{-1}$'
         elif item == 'qmh7':
-            optim.__dict__['obs_'+item] = q2_mean
+            optim.__dict__['obs_'+item] = np.array(q2_mean)
             measurement_error[item] = stdevq2_hourly
             obs_times[item] = hours_mean * 3600.
             disp_units[item] = 'g kg$^{-1}$'
         elif item == 'ustar':
-            optim.__dict__['obs_'+item] = ustar_mean
+            optim.__dict__['obs_'+item] = np.array(ustar_mean)
             measurement_error[item] = stdevustar_hourly
             obs_times[item] = hours_mean * 3600.
             disp_units[item] = 'm s$^{-1}$'
         elif item == 'H':
-            optim.__dict__['obs_'+item] = H_mean
+            optim.__dict__['obs_'+item] = np.array(H_mean)
             measurement_error[item] = stdevH_hourly
             obs_times[item] = hours_mean * 3600.
             disp_units[item] = 'W m$^{-2}$'
         elif item == 'LE':
-            optim.__dict__['obs_'+item] = LE_mean
+            optim.__dict__['obs_'+item] = np.array(LE_mean)
             measurement_error[item] = stdevLE_hourly
             obs_times[item] = hours_mean * 3600.
             disp_units[item] = 'W m$^{-2}$'
@@ -994,7 +1000,7 @@ for item in obsvarlist:
                 obs_weights[item] = [1./7*refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
                 # np.sum(~np.isnan(optim.__dict__['obs_'+item])) used here instead of len(optim.__dict__['obs_'+item]), since nan data should not count for the length of the observation array. ~ inverts the np.isnan array. 
         if item == 'Tmh2':
-            optim.__dict__['obs_'+item] = np.array(Temp140_selected) #flatten becuase it is from the second datafile, which has a different structure
+            optim.__dict__['obs_'+item] = np.array(Temp140_selected) 
             measurement_error[item] = [0.1 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = np.array(obstimes_T)
             disp_units[item] = 'K'
@@ -1002,7 +1008,7 @@ for item in obsvarlist:
             if use_weights:
                 obs_weights[item] = [1./7*refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         if item == 'Tmh3':
-            optim.__dict__['obs_'+item] = np.array(Temp80_selected) #flatten becuase it is from the second datafile, which has a different structure
+            optim.__dict__['obs_'+item] = np.array(Temp80_selected) 
             measurement_error[item] = [0.1 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = np.array(obstimes_T)
             disp_units[item] = 'K'
@@ -1010,7 +1016,7 @@ for item in obsvarlist:
             if use_weights:
                 obs_weights[item] = [1./7*refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         if item == 'Tmh4':
-            optim.__dict__['obs_'+item] = np.array(Temp40_selected) #flatten becuase it is from the second datafile, which has a different structure
+            optim.__dict__['obs_'+item] = np.array(Temp40_selected) 
             measurement_error[item] = [0.1 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = np.array(obstimes_T)
             disp_units[item] = 'K'
@@ -1018,7 +1024,7 @@ for item in obsvarlist:
             if use_weights:
                 obs_weights[item] = [1./7*refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         if item == 'Tmh5':
-            optim.__dict__['obs_'+item] = np.array(Temp20_selected) #flatten becuase it is from the second datafile, which has a different structure
+            optim.__dict__['obs_'+item] = np.array(Temp20_selected) 
             measurement_error[item] = [0.1 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = np.array(obstimes_T)
             disp_units[item] = 'K'
@@ -1026,7 +1032,7 @@ for item in obsvarlist:
             if use_weights:
                 obs_weights[item] = [1./7*refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         if item == 'Tmh6':
-            optim.__dict__['obs_'+item] = np.array(Temp10_selected) #flatten becuase it is from the second datafile, which has a different structure
+            optim.__dict__['obs_'+item] = np.array(Temp10_selected) 
             measurement_error[item] = [0.1 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = np.array(obstimes_T)
             disp_units[item] = 'K'
@@ -1034,7 +1040,7 @@ for item in obsvarlist:
             if use_weights:
                 obs_weights[item] = [1./7*refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
         if item == 'Tmh7':
-            optim.__dict__['obs_'+item] = np.array(Temp2_selected) #flatten becuase it is from the second datafile, which has a different structure
+            optim.__dict__['obs_'+item] = np.array(Temp2_selected) 
             measurement_error[item] = [0.1 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
             obs_times[item] = np.array(obstimes_T)
             disp_units[item] = 'K'
@@ -1048,7 +1054,7 @@ for item in obsvarlist:
             if use_weights:
                 obs_weights[item] = [1./4*refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
             disp_units[item] = 'ppm'
-            display_names[item] = 'CO2$_{200}$'
+            display_names[item] = 'CO2$_{207}$'
         elif item == 'CO2mh2':
             optim.__dict__['obs_'+item] = np.array(CO2_120_selected)
             measurement_error[item] = [1 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
@@ -1056,7 +1062,7 @@ for item in obsvarlist:
             if use_weights:
                 obs_weights[item] = [1./4*refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
             disp_units[item] = 'ppm'
-            display_names[item] = 'CO2$_{120}$'
+            display_names[item] = 'CO2$_{127}$'
         elif item == 'CO2mh3':
             optim.__dict__['obs_'+item] = np.array(CO2_60_selected)
             measurement_error[item] = [1 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
@@ -1064,7 +1070,7 @@ for item in obsvarlist:
             if use_weights:
                 obs_weights[item] = [1./4*refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
             disp_units[item] = 'ppm'
-            display_names[item] = 'CO2$_{60}$'
+            display_names[item] = 'CO2$_{67}$'
         elif item == 'CO2mh4':
             optim.__dict__['obs_'+item] = np.array(CO2_20_selected)
             measurement_error[item] = [1 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
@@ -1072,7 +1078,7 @@ for item in obsvarlist:
             if use_weights:
                 obs_weights[item] = [1./4*refnumobs*1/np.sum(~np.isnan(optim.__dict__['obs_'+item])) for j in range(len(optim.__dict__['obs_'+item]))]
             disp_units[item] = 'ppm'
-            display_names[item] = 'CO2$_{20}$'
+            display_names[item] = 'CO2$_{27}$'
         elif item == 'wCO2':
             optim.__dict__['obs_'+item] = np.array(wCO2_selected)
             measurement_error[item] = [0.08 for j in range(len(optim.__dict__['obs_'+item]))]#we don't have info on this
@@ -1247,6 +1253,8 @@ if 'FracH' in state:
     
     for item in ['H','LE']:
         if item in obsvarlist:
+            if not hasattr(optim,'EnBalDiffObs_at'+item+'times'):
+                raise Exception('When including FracH in state and '+ item + ' in obsvarlist, \'optim.EnBalDiffObs_at'+item+'times\' should be specified!')
             if len(optim.__dict__['EnBalDiffObs_at'+item+'times']) != len(optim.__dict__['obs_'+item]):
                 raise Exception('When including FracH in state and '+ item + ' in obsvarlist, an EnBalDiffObs_at' +item+'times value should correspond to every obs of ' + item)
             if type(optim.__dict__['EnBalDiffObs_at'+item+'times']) not in [np.ndarray,list]: #a check to see whether data is of a correct type
@@ -1268,8 +1276,6 @@ if 'FracH' in state:
             
     for item in ['H','LE']:
         if item in obsvarlist:
-            if not hasattr(optim,'EnBalDiffObs_at'+item+'times'):
-                raise Exception('When including FracH in state and '+ item + ' in obsvarlist, \'optim.EnBalDiffObs_at'+item+'times\' should be specified!')
             itoremove = []
             for i in range(len(optim.__dict__['EnBalDiffObs_at'+item+'times'])):
                 if np.isnan(optim.__dict__['EnBalDiffObs_at'+item+'times'][i]):
@@ -1290,7 +1296,8 @@ if estimate_model_err:
 ########################################################################
 ###### user input: model and representation error ######################
 ########################################################################
-    #in case the model error is estimated with a model ensemble (switch estimate_model_err), specify here the parameters to perturb for this estimation:
+    #in case the model error is estimated with a model ensemble (switch estimate_model_err), specify here the parameters to perturb for this estimation
+    #and the distributions to sample random numbers from (to add to these parameters in the ensemble):
     me_paramdict['cveg'] = {'distr':'uniform','leftbound': 0.1,'rightbound': 1.0}
     me_paramdict['Lambda'] = {'distr':'normal','scale': 0.3}
 else:
@@ -1407,11 +1414,14 @@ for item in obsvarlist:
         if type(obs_weights[item]) not in [np.ndarray,list]:
             raise Exception('Please convert observation weight data of '+item+' into type \'numpy.ndarray\' or list!')
     if len(obs_times[item]) != len(optim.__dict__['obs_'+item]):
-        raise Exception('Error: size of obs and obstimes inconsistent!') 
+        raise Exception('Error: size of obs and obstimes inconsistent for '+item+'!') 
     if len(obs_times[item]) != len(measurement_error[item]):
         raise Exception('Error: size of measurement_error and obstimes inconsistent for '+item+'!')
     if len(obs_times[item]) != len(repr_error[item]):
         raise Exception('Error: size of repr_error and obstimes inconsistent for '+item+'!')
+    if use_weights and item in obs_weights:
+        if len(obs_times[item]) != len(obs_weights[item]):
+            raise Exception('Error: size of weights and obstimes inconsistent for '+item+'!')
     itoremove = []
     for i in range(len(optim.__dict__['obs_'+item])):
         if np.isnan(optim.__dict__['obs_'+item][i]):
@@ -1430,9 +1440,6 @@ for item in obsvarlist:
     if 'FracH' in state and item in ['H','LE']: #This is in case of a nan in e.g. H that is not a nan in EnBalDiffObs_atHtimes yet!
         optim.__dict__['EnBalDiffObs_at'+item+'times'] = np.delete(optim.__dict__['EnBalDiffObs_at'+item+'times'],itoremove) #exclude the nan obs 
         
-    if use_weights and item in obs_weights:
-        if len(obs_times[item]) != len(obs_weights[item]):
-            raise Exception('Error: size of weights and obstimes inconsistent for '+item+'!')
     if (use_backgr_in_cost and use_weights): #add weight of obs vs prior (identical for every obs) in the cost function
         if item in obs_weights: #if already a weight specified for the specific type of obs
             obs_weights[item] = [x * obs_vs_backgr_weight for x in obs_weights[item]]
