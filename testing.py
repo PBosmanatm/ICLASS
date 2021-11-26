@@ -16,7 +16,7 @@ if set_seed:
 
 #what to run:
 adjointtest_surf_lay = False #an adjoint test of the surface layer module, without time integration
-gradtest_surf_lay = True
+gradtest_surf_lay = False
 adjointtest_ribtol = False
 gradtest_ribtol = False
 adjointtest_ags = False
@@ -31,7 +31,7 @@ adjointtest_run_land_surface = False
 gradtest_run_land_surface = False
 adjointtest_int_land_surface = False
 gradtest_int_land_surface = False
-adjointtest_statistics = False
+adjointtest_statistics = True
 gradtest_statistics = False
 adjointtest_run_soil_COS_mod = False
 gradtest_run_soil_COS_mod = False

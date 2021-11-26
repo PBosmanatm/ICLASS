@@ -8539,7 +8539,7 @@ class inverse_modelling:
                 self.all_tests_pass = False
         
     def adjoint_test(self,model,x_variables,Hx_variable,y_variable,HTy_variables,Hx_dict,printmode='relative'):
-        #Note that the order of x and HTy should be identical, e.g. the first element of HTy should be the adjoint variable of the first element of HTy!!
+        #Note that the order of x and HTy should be identical, e.g. if the first element of HTy is adtheta, the first element of x should be dtheta. 
         if not hasattr(self,'failed_adj_test_list'):
             self.failed_adj_test_list = [] #list of vars where this test fails
         self.adjointtesting = True
@@ -8599,7 +8599,7 @@ class inverse_modelling:
             dotxhty += dotelem
         error = False
         if printmode == 'relative':
-            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,(dothxy-dotxhty)/dothxy))
             if abs((dothxy-dotxhty)/dothxy) > 5e-13:
                 error = True
         else:
@@ -8612,6 +8612,12 @@ class inverse_modelling:
             self.all_tests_pass = False
             self.failed_adj_test_list.append(str(Hx_variable))
         self.adjointtesting = False
+        #To get the dimensions clear, a summary of the maximum dimensions of the variables:
+        #self.x: a list of lists, two dimensions: nr of x vars, len of each x-var. None of the x-vars can be matrices, only vector or scalar.
+        #self.HTy: Same dimensions as self.x
+        #self.Hx: a vector. Before flattening a list of lists, whereby the inner list could be a matrix! Before flattening up to three dimensions: First dimension is time, there can be a matrix for each time step (rows and cols the second and third dimension). After flattening two dims:
+        #time and a flattened matrix
+        #self.y: Same dimensions as self.Hx, is flattened as well
         
     def adjoint_test_surf_lay(self,testmodel,x_variables,Hx_variable,y_variable,HTy_variables,printmode='relative'):
         self.adjointtestingrun_surf_lay = True
@@ -8635,7 +8641,7 @@ class inverse_modelling:
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         error = False
         if printmode == 'relative':
-            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,(dothxy-dotxhty)/dothxy))
             if abs((dothxy-dotxhty)/dothxy) > 5e-13:
                 error = True
         else:
@@ -8665,7 +8671,7 @@ class inverse_modelling:
         self.adj_run_surface_layer(checkpoint_test,testmodel) 
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, rel difference',dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy)
+        print('<Hx,y>,<x,Hty>, rel difference',dothxy,dotxhty,(dothxy-dotxhty)/dothxy)
         if abs((dothxy-dotxhty)/dothxy) > 9.99e-16:
             for i in range(5):
                 print("ADJOINT TEST FAILURE!")
@@ -8694,7 +8700,7 @@ class inverse_modelling:
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         error = False
         if printmode == 'relative':
-            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,(dothxy-dotxhty)/dothxy))
             if abs((dothxy-dotxhty)/dothxy) > 5e-13:
                 error = True
         else:
@@ -8729,7 +8735,7 @@ class inverse_modelling:
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         error = False
         if printmode == 'relative':
-            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,(dothxy-dotxhty)/dothxy))
             if abs((dothxy-dotxhty)/dothxy) > 5e-13:
                 error = True
         else:
@@ -8759,7 +8765,7 @@ class inverse_modelling:
         self.adj_ags(checkpoint_test,testmodel) 
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, rel difference',dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy)
+        print('<Hx,y>,<x,Hty>, rel difference',dothxy,dotxhty,(dothxy-dotxhty)/dothxy)
         if abs((dothxy-dotxhty)/dothxy) > 9.99e-16:
             for i in range(5):
                 print("ADJOINT TEST FAILURE!")
@@ -8788,7 +8794,7 @@ class inverse_modelling:
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         error = False
         if printmode == 'relative':
-            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,(dothxy-dotxhty)/dothxy))
             if abs((dothxy-dotxhty)/dothxy) > 5e-13:
                 error = True
         else:
@@ -8823,7 +8829,7 @@ class inverse_modelling:
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         error = False
         if printmode == 'relative':
-            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,(dothxy-dotxhty)/dothxy))
             if abs((dothxy-dotxhty)/dothxy) > 5e-13:
                 error = True
         else:
@@ -8858,7 +8864,7 @@ class inverse_modelling:
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         error = False
         if printmode == 'relative':
-            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,(dothxy-dotxhty)/dothxy))
             if abs((dothxy-dotxhty)/dothxy) > 5e-13:
                 error = True
         else:
@@ -8893,7 +8899,7 @@ class inverse_modelling:
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         error = False
         if printmode == 'relative':
-            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,(dothxy-dotxhty)/dothxy))
             if abs((dothxy-dotxhty)/dothxy) > 5e-13:
                 error = True
         else:
@@ -8919,7 +8925,7 @@ class inverse_modelling:
         self.adj_run_land_surface(checkpoint_test,testmodel) 
         dothxy = np.dot(np.array(self.Hx),np.array(self.y))
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
-        print('<Hx,y>,<x,Hty>, rel difference',dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy)
+        print('<Hx,y>,<x,Hty>, rel difference',dothxy,dotxhty,(dothxy-dotxhty)/dothxy)
         if abs((dothxy-dotxhty)/dothxy) > 9.99e-16:
             for i in range(5):
                 print("ADJOINT TEST FAILURE!")
@@ -8948,7 +8954,7 @@ class inverse_modelling:
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         error = False
         if printmode == 'relative':
-            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,(dothxy-dotxhty)/dothxy))
             if abs((dothxy-dotxhty)/dothxy) > 5e-13:
                 error = True
         else:
@@ -8983,7 +8989,7 @@ class inverse_modelling:
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         error = False
         if printmode == 'relative':
-            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,(dothxy-dotxhty)/dothxy))
             if abs((dothxy-dotxhty)/dothxy) > 5e-13:
                 error = True
         else:
@@ -9018,7 +9024,7 @@ class inverse_modelling:
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         error = False
         if printmode == 'relative':
-            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,(dothxy-dotxhty)/dothxy))
             if abs((dothxy-dotxhty)/dothxy) > 5e-13:
                 error = True
         else:
@@ -9075,7 +9081,7 @@ class inverse_modelling:
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         error = False
         if printmode == 'relative':
-            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,(dothxy-dotxhty)/dothxy))
             if abs((dothxy-dotxhty)/dothxy) > 5e-13:
                 error = True
         else:
@@ -9110,7 +9116,7 @@ class inverse_modelling:
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         error = False
         if printmode == 'relative':
-            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,(dothxy-dotxhty)/dothxy))
             if abs((dothxy-dotxhty)/dothxy) > 5e-13:
                 error = True
         else:
@@ -9145,7 +9151,7 @@ class inverse_modelling:
         dotxhty = np.dot(np.array(self.x),np.array(self.HTy))
         error = False
         if printmode == 'relative':
-            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,abs(dothxy-dotxhty)/dothxy))
+            print('<Hx,y>,<x,Hty>, rel difference: % 10.4E % 10.4E % 10.4E'%(dothxy,dotxhty,(dothxy-dotxhty)/dothxy))
             if abs((dothxy-dotxhty)/dothxy) > 5e-13:
                 error = True
         else:

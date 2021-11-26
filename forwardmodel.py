@@ -2535,10 +2535,10 @@ class model_output:
         # mixed-layer variables
         self.h          = np.zeros(tsteps)    # ABL height [m]
         
-        self.theta      = np.zeros(tsteps)    # initial mixed-layer potential temperature [K]
-        self.thetav     = np.zeros(tsteps)    # initial mixed-layer virtual potential temperature [K]
-        self.deltatheta = np.zeros(tsteps)    # initial potential temperature jump at h [K]
-        self.deltathetav= np.zeros(tsteps)    # initial virtual potential temperature jump at h [K]
+        self.theta      = np.zeros(tsteps)    # mixed-layer potential temperature [K]
+        self.thetav     = np.zeros(tsteps)    # mixed-layer virtual potential temperature [K]
+        self.deltatheta = np.zeros(tsteps)    # potential temperature jump at h [K]
+        self.deltathetav= np.zeros(tsteps)    # virtual potential temperature jump at h [K]
         self.wtheta     = np.zeros(tsteps)    # surface kinematic heat flux [K m s-1]
         self.wthetav    = np.zeros(tsteps)    # surface kinematic virtual heat flux [K m s-1]
         self.wthetae    = np.zeros(tsteps)    # entrainment kinematic heat flux [K m s-1]
@@ -2555,7 +2555,7 @@ class model_output:
         self.esatvar       = np.zeros(tsteps)    # mixed-layer saturated vapor pressure [Pa]
 
         self.CO2        = np.zeros(tsteps)    # mixed-layer CO2 [ppm]
-        self.deltaCO2   = np.zeros(tsteps)    # initial CO2 jump at h [ppm]
+        self.deltaCO2   = np.zeros(tsteps)    # CO2 jump at h [ppm]
         self.wCO2       = np.zeros(tsteps)    # surface total CO2 flux [mgCO2 m-2 s-1]
         self.wCO2A      = np.zeros(tsteps)    # surface assimilation CO2 flux [mgCO2 m-2 s-1]
         self.wCO2R      = np.zeros(tsteps)    # surface respiration CO2 flux [mgCO2 m-2 s-1]
@@ -2564,10 +2564,10 @@ class model_output:
         
         self.COS        = np.zeros(tsteps)    # mixed-layer COS [ppb]
         self.deltaCOS   = np.zeros(tsteps)    # mixed-layer COS jump at h [ppb]
-        self.wCOS       = np.zeros(tsteps)    # COS surface flux ppb m s-1
-        self.wCOSP      = np.zeros(tsteps)    # COS surface flux plant ppb m s-1
-        self.wCOSS      = np.zeros(tsteps)    # COS surface flux soil ppb m s-1
-        self.wCOSS_molm2s      = np.zeros(tsteps)    # COS surface flux soil mol m-2 s-1
+        self.wCOS       = np.zeros(tsteps)    # COS surface flux [ppb m s-1]
+        self.wCOSP      = np.zeros(tsteps)    # COS surface flux plant [ppb m s-1]
+        self.wCOSS      = np.zeros(tsteps)    # COS surface flux soil [ppb m s-1]
+        self.wCOSS_molm2s      = np.zeros(tsteps)    # COS surface flux soil [mol m-2 s-1]
         
         
         #canopy model 
@@ -2590,12 +2590,12 @@ class model_output:
             self.U_veg = np.zeros((tsteps,model.input.nr_nodes_veg)) #wind speed canopy model
             self.Ds_veg = np.zeros((tsteps,model.input.nr_nodes_veg)) #vapour pressure deficit (kPa) at the surface of the vegetation in the layers of the canopy model
         
-        self.u          = np.zeros(tsteps)    # initial mixed-layer u-wind speed [m s-1]
-        self.deltau     = np.zeros(tsteps)    # initial u-wind jump at h [m s-1]
+        self.u          = np.zeros(tsteps)    # mixed-layer u-wind speed [m s-1]
+        self.deltau     = np.zeros(tsteps)    # u-wind jump at h [m s-1]
         self.uw         = np.zeros(tsteps)    # surface momentum flux u [m2 s-2]
         
-        self.v          = np.zeros(tsteps)    # initial mixed-layer u-wind speed [m s-1]
-        self.deltav         = np.zeros(tsteps)    # initial u-wind jump at h [m s-1]
+        self.v          = np.zeros(tsteps)    # mixed-layer v-wind speed [m s-1]
+        self.deltav         = np.zeros(tsteps)    # v-wind jump at h [m s-1]
         self.vw         = np.zeros(tsteps)    # surface momentum flux v [m2 s-2]
 
         # diagnostic meteorological variables
@@ -2608,14 +2608,14 @@ class model_output:
 
         
         if model.sw_sl:
-            self.thetamh    = np.zeros(tsteps)    # pot temperature at measuring height [K]
+            self.thetamh    = np.zeros(tsteps)    # pot temperature at measuring height1 [K]
             self.thetamh2    = np.zeros(tsteps)    # pot temperature at measuring height2 [K]
             self.thetamh3    = np.zeros(tsteps)    # pot temperature at measuring height3 [K]
             self.thetamh4    = np.zeros(tsteps)    # pot temperature at measuring height4 [K]
             self.thetamh5    = np.zeros(tsteps)    # pot temperature at measuring height5 [K]
             self.thetamh6    = np.zeros(tsteps)    # pot temperature at measuring height6 [K]
             self.thetamh7    = np.zeros(tsteps)    # pot temperature at measuring height7 [K]
-            self.Tmh        = np.zeros(tsteps)    # temperature at measuring height [K]
+            self.Tmh        = np.zeros(tsteps)    # temperature at measuring height 1 [K]
             self.Tmh2        = np.zeros(tsteps)    # temperature at measuring height2 [K]
             self.Tmh3       = np.zeros(tsteps)    # temperature at measuring height3 [K]
             self.Tmh4       = np.zeros(tsteps)    # temperature at measuring height4 [K]
@@ -2626,10 +2626,10 @@ class model_output:
             self.COSmh2     = np.zeros(tsteps)    # COS at measuring height2 [ppb]
             self.COSmh3     = np.zeros(tsteps)    # COS at measuring height3 [ppb]
             self.COSmh4     = np.zeros(tsteps)    # COS at measuring height4 [ppb]
-            self.CO2mh      = np.zeros(tsteps)    # CO2 at measuring height [ppb]
-            self.CO2mh2     = np.zeros(tsteps)    # CO2 at measuring height2 [ppb]
-            self.CO2mh3     = np.zeros(tsteps)    # CO2 at measuring height3 [ppb]
-            self.CO2mh4     = np.zeros(tsteps)    # CO2 at measuring height4 [ppb]
+            self.CO2mh      = np.zeros(tsteps)    # CO2 at measuring height [ppm]
+            self.CO2mh2     = np.zeros(tsteps)    # CO2 at measuring height2 [ppm]
+            self.CO2mh3     = np.zeros(tsteps)    # CO2 at measuring height3 [ppm]
+            self.CO2mh4     = np.zeros(tsteps)    # CO2 at measuring height4 [ppm]
             self.COS2m      = np.zeros(tsteps)    # COS at 2m height [ppb]
             self.CO22m      = np.zeros(tsteps)    # CO2 at 2m height [ppm]
             self.COSsurf    = np.zeros(tsteps)    # COS at the surface [ppb]
@@ -2662,7 +2662,7 @@ class model_output:
         self.Lwin       = np.zeros(tsteps)    # incoming long wave radiation [W m-2]
         self.Lwout      = np.zeros(tsteps)    # outgoing long wave radiation [W m-2]
         self.Q          = np.zeros(tsteps)    # net radiation [W m-2]
-        self.sinlea     = np.zeros(tsteps)    #sine of solar elevation angle
+        self.sinlea     = np.zeros(tsteps)    #sine of solar elevation angle [-]
 
         # land surface variables
         self.ra         = np.zeros(tsteps)    # aerodynamic resistance [s m-1]

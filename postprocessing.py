@@ -4,6 +4,7 @@ Created on Mon Dec 16 13:52:00 2019
 
 @author: Bosman Peter
 """
+#This script should be adapted to the optimisation performed
 import numpy as np
 import copy as cp
 import matplotlib.pyplot as plt
@@ -28,6 +29,7 @@ plot_obsfit = False
 plot_1d_pdfs = False
 plot_2d_pdfs = False
 plot_pdf_panels = True
+print_estim_post_param_stdev = True
 plot_colored_corr_matr = True
 if plot_colored_corr_matr:
     showfullmatr = False
@@ -192,12 +194,20 @@ with open('Optstatsfile.txt','r') as StatsFile:
         if 'optimal state without ensemble:' in line:
             state = StatsFile.readline().split() #readline reads the next line
             opt_state = StatsFile.readline().split()
-            post_cor_matr = np.zeros((len(state),len(state)))
         elif 'optimal state with ensemble' in line:
             opt_state = StatsFile.readline().split()
             use_ensemble = True
+            post_cov_matr = np.zeros((len(state),len(state)))
+            post_cor_matr = np.zeros((len(state),len(state)))
         elif 'index member with best state:' in line:
             opt_sim_nr = int(StatsFile.readline().split()[-1]) #so go to next line, and take first part
+        elif 'estim post state covar matrix:' in line:
+            StatsFile.readline()
+            for i in range(len(state)):
+                line_to_use = StatsFile.readline().split()[1:]
+                for j in range(len(state)):
+                    post_cov_matr[i,j] = line_to_use[j]
+                StatsFile.readline()
         elif 'estim post state corr matrix:' in line:
             StatsFile.readline()
             for i in range(len(state)):
@@ -461,6 +471,11 @@ if use_ensemble:
                             while ('pdf2d_posterior_'+itemname+'.'+figformat).lower() in [x.lower() for x in os.listdir()]:
                                 itemname += '_'
                             plt.savefig('pp_pdf2d_posterior_'+itemname+'.'+figformat, format=figformat) 
+        if print_estim_post_param_stdev:
+            print('Estimated standard deviation posterior parameters:')
+            for i in range(len(state)):
+                print(state[i]+':')
+                print(np.sqrt(post_cov_matr[i,i]))
         if plot_colored_corr_matr:    
             plt.figure()
             sb.set(rc={'figure.figsize':(11,11)}) 
