@@ -27,7 +27,7 @@ use_backgr_in_cost = False #include the background (prior) part of the cost func
 write_to_f = True #write output and figures to files
 use_ensemble = False #use an ensemble of optimisations
 if use_ensemble:
-    nr_of_members = 2
+    nr_of_members = 2 #number of members in the ensemble of optimisations (including the one with unperturbed prior)
     use_covar_to_pert = False #whether to take prior covariance (if specified) into account when perturbing the ensemble 
     pert_non_state_param = True #perturb parameters that are not in the state
     est_post_pdf_covmatr = True #estimate the posterior pdf and covariance matrix of the state (and more)
@@ -540,35 +540,6 @@ if 'FracH' in state:
                 raise Exception('When including FracH in state and '+ item + ' in obsvarlist, an EnBalDiffObs_at' +item+'times value should correspond to every obs of ' + item)
             if type(optim.__dict__['EnBalDiffObs_at'+item+'times']) not in [np.ndarray,list]: #a check to see whether data is of a correct type
                 raise Exception('Please convert EnBalDiffObs_at'+item+'times data into type \'numpy.ndarray\' or list!')
-            #below some checks that happen later for the other observations, but we need to do the ones below here already since we use them earlier
-            if (not hasattr(optim,'obs_'+item) or item not in measurement_error): #a check to see wether all info is specified
-                raise Exception('Incomplete or no information on obs of ' + item)
-            if item not in obs_times:
-                raise Exception('Please specify the observation times of '+item+'.')
-            if type(measurement_error[item]) not in [np.ndarray,list]: #a check to see whether data is of a correct type
-                raise Exception('Please convert measurement_error data of '+item+' into type \'numpy.ndarray\' or list!')
-            if type(optim.__dict__['obs_'+item]) not in [np.ndarray,list]: #a check to see whether data is of a correct type
-                raise Exception('Please convert observation data of '+item+' into type \'numpy.ndarray\' or list!')
-            if type(obs_times[item]) not in [np.ndarray,list]:
-                raise Exception('Please convert observation time data of '+item+' into type \'numpy.ndarray\' or list!')
-            if use_weights and item in obs_weights:
-                if type(obs_weights[item]) not in [np.ndarray,list]:
-                    raise Exception('Please convert observation weight data of '+item+' into type \'numpy.ndarray\' or list!')
-                
-    for item in ['H','LE']:
-        if item in obsvarlist:
-            itoremove = []
-            for i in range(len(optim.__dict__['EnBalDiffObs_at'+item+'times'])):
-                if np.isnan(optim.__dict__['EnBalDiffObs_at'+item+'times'][i]):
-                    itoremove += [i]
-            optim.__dict__['EnBalDiffObs_at'+item+'times'] = np.delete(optim.__dict__['EnBalDiffObs_at'+item+'times'],itoremove) #exclude the nan obs. 
-            optim.__dict__['obs_'+item] = np.delete(optim.__dict__['obs_'+item],itoremove) #later in this script these (and other) obs are checked for nan
-            #Also EnBalDiffObs_atHtimes and EnBalDiffObs_atLEtimes are checked again later in this script, then for nans in the obs of H and LE respectively . So if a nan occurs in LE, the EnBalDiffObs_atLEtimes value
-            #at the time of the nan in LE will be discarded as well.
-            measurement_error[item] = np.delete(measurement_error[item],itoremove)
-            obs_times[item] = np.delete(obs_times[item],itoremove)
-            if item in obs_weights:
-                obs_weights[item] = np.delete(obs_weights[item],itoremove)
 
 mod_error = {} #model error
 repr_error = {} #representation error, see eq 11.11 in chapter inverse modelling Brasseur and Jacob 2017
@@ -646,23 +617,33 @@ for item in obsvarlist:
     if use_weights and item in obs_weights:
         if len(obs_times[item]) != len(obs_weights[item]):
             raise Exception('Error: size of weights and obstimes inconsistent for '+item+'!')
+    if len(set([round(num2, 8) for num2 in obs_times[item]])) != len([round(num2, 8) for num2 in obs_times[item]]):
+        raise Exception('Error: Observation times of '+item +', rounded to 8 decimal places, are not unique!')
     itoremove = []
     for i in range(len(optim.__dict__['obs_'+item])):
         if np.isnan(optim.__dict__['obs_'+item][i]):
             itoremove += [i]
+    if 'FracH' in state and item in ['H','LE']: #Check also for a nan in optim.__dict__['EnBalDiffObs_at'+item+'times'], than the corresponding obs are discarded as well
+        for j in range(len(optim.__dict__['obs_'+item])):
+            if np.isnan(optim.__dict__['EnBalDiffObs_at'+item+'times'][j]):
+                if j not in itoremove:
+                    itoremove += [j]
     optim.__dict__['obs_'+item] = np.delete(optim.__dict__['obs_'+item],itoremove) #exclude the nan obs
     measurement_error[item] = np.delete(measurement_error[item],itoremove) #as a side effect, this turns the array into an numpy.ndarray if not already the case (or gives error).
     if not estimate_model_err:
         if item in mod_error:
             if type(mod_error[item]) not in [np.ndarray,list]: #a check to see whether data is of a correct type
                 raise Exception('Please convert mod_error data of '+item+' into type \'numpy.ndarray\' or list!')
+            if len(obs_times[item]) != len(mod_error[item]):
+                raise Exception('Error: size of mod_error and obstimes inconsistent for '+item+'!')
             mod_error[item] = np.delete(mod_error[item],itoremove)
     repr_error[item] = np.delete(repr_error[item],itoremove)
     obs_times[item] = np.delete(obs_times[item],itoremove)#exclude the times,errors and weights as well (of the nan obs)
     if item in obs_weights:
         obs_weights[item] = np.delete(obs_weights[item],itoremove)
-    if 'FracH' in state and item in ['H','LE']: #This is in case of a nan in e.g. H that is not a nan in EnBalDiffObs_atHtimes yet!
-        optim.__dict__['EnBalDiffObs_at'+item+'times'] = np.delete(optim.__dict__['EnBalDiffObs_at'+item+'times'],itoremove) #exclude the nan obs 
+    if 'FracH' in state and item in ['H','LE']: #Remove the necessary entries in optim.__dict__['EnBalDiffObs_at'+item+'times'] as well
+        optim.__dict__['EnBalDiffObs_at'+item+'times'] = np.delete(optim.__dict__['EnBalDiffObs_at'+item+'times'],itoremove) #exclude the nan obs. If a nan occurs in LE, the EnBalDiffObs_atLEtimes value
+            #at the time of the nan in LE will be discarded as well. 
     orig_obs[item] = cp.deepcopy(optim.__dict__['obs_'+item])
     if perturb_truth_obs:
         if set_seed:
@@ -716,7 +697,7 @@ if estimate_model_err:
         if not hasattr(priorinput,param):
             raise Exception('Parameter \''+ param + '\' in me_paramdict for estimating the model error does not occur in priorinput')
     def run_mod_pert_par(counter,seed,modelinput,paramdict,obsvarlist,obstimes):
-        modelinput_mem = cp.deepcopy(priorinput) 
+        modelinput_mem = cp.deepcopy(modelinput) 
         if seed != None:
             if use_ensemble:
                 seed = seed + 3 * nr_of_members + counter#create a unique seed for every member and for anything in this file
@@ -824,9 +805,7 @@ for item in obsvarlist: #some stuff involving mod_error
     if not estimate_model_err:
         if item not in mod_error:
             mod_error[item] = np.zeros(len(measurement_error[item]))
-    if len(obs_times[item]) != len(mod_error[item]):
-        raise Exception('Error: size of mod_error and obstimes inconsistent for '+item+'!')
-    optim.__dict__['error_obs_' + item] = np.sqrt(np.array(measurement_error[item])**2 + np.array(mod_error[item])**2 + np.array(repr_error[item])**2)
+    optim.__dict__['error_obs_' + item] = np.sqrt(np.array(measurement_error[item])**2 + np.array(mod_error[item])**2 + np.array(repr_error[item])**2) #Eq 11.13 of Brasseur and Jacob 2017
 
 
 
@@ -904,7 +883,7 @@ if optim_method == 'bfgs':
             open('Gradfile.txt','a').write('{0:>25s}'.format('nan reached, no restart'))
         if (discard_nan_minims == False and len(optim.Statelist) > 0): #len(optim.Statelist) > 0 to check wether there is already a non-nan result in the optimisation, if not we choose nan as result
                 min_costf0 = np.min(optim.Costflist)
-                min_costf_ind = optim.Costflist.index(min(optim.Costflist)) #find the index number of the simulation where costf was minimal
+                min_costf_ind = optim.Costflist.index(min_costf0) #find the index number of the simulation where costf was minimal
                 state_opt0 = optim.Statelist[min_costf_ind]
         else:
             state_opt0 = np.array([np.nan for x in range(len(state))])
@@ -915,16 +894,15 @@ if optim_method == 'bfgs':
             open('Optimfile.txt','a').write('\nMinimisation aborted as it proceeded too slow') #\n to make it start on a new line
             open('Gradfile.txt','a').write('\nMinimisation aborted as it proceeded too slow')
         min_costf0 = np.min(optim.Costflist)
-        min_costf_ind = optim.Costflist.index(min(optim.Costflist)) #find the index number of the simulation where costf was minimal
+        min_costf_ind = optim.Costflist.index(min_costf0) #find the index number of the simulation where costf was minimal
         state_opt0 = optim.Statelist[min_costf_ind]
 elif optim_method == 'tnc':
     if imposeparambounds:
         bounds = []
         for i in range(len(state)):
-            for key in boundedvars:
-                if key == state[i]:
-                    bounds.append((boundedvars[key][0],boundedvars[key][1]))
-            if state[i] not in boundedvars:
+            if state[i] in boundedvars:
+                bounds.append((boundedvars[state[i]][0],boundedvars[state[i]][1]))
+            else:
                 bounds.append((None,None)) #bounds need something
     else:
         bounds = [(None,None) for item in state]
@@ -944,7 +922,7 @@ elif optim_method == 'tnc':
             open('Gradfile.txt','a').write('{0:>25s}'.format('nan reached, no restart'))
         if (discard_nan_minims == False and len(optim.Statelist) > 0): #len(optim.Statelist) > 0 to check wether there is already a non-nan result in the optimisation, if not we choose nan as result
             min_costf0 = np.min(optim.Costflist)
-            min_costf_ind = optim.Costflist.index(min(optim.Costflist)) #find the index number of the simulation where costf was minimal
+            min_costf_ind = optim.Costflist.index(min_costf0) #find the index number of the simulation where costf was minimal
             state_opt0 = optim.Statelist[min_costf_ind]
         else:
             state_opt0 = np.array([np.nan for x in range(len(state))])
@@ -956,7 +934,7 @@ elif optim_method == 'tnc':
             open('Optimfile.txt','a').write('\nMinimisation aborted as it proceeded too slow') #\n to make it start on a new line
             open('Gradfile.txt','a').write('\nMinimisation aborted as it proceeded too slow')
         min_costf0 = np.min(optim.Costflist)
-        min_costf_ind = optim.Costflist.index(min(optim.Costflist)) #find the index number of the simulation where costf was minimal
+        min_costf_ind = optim.Costflist.index(min_costf0) #find the index number of the simulation where costf was minimal
         state_opt0 = optim.Statelist[min_costf_ind]
     if not hasattr(optim,'stop'):
         for i in range(maxnr_of_restarts):
@@ -978,7 +956,7 @@ elif optim_method == 'tnc':
                         open('Gradfile.txt','a').write('\nnan reached, no restart')
                     if discard_nan_minims == False:
                         min_costf0 = np.min(optim.Costflist)
-                        min_costf_ind = optim.Costflist.index(min(optim.Costflist)) 
+                        min_costf_ind = optim.Costflist.index(min_costf0) 
                         state_opt0 = optim.Statelist[min_costf_ind]
                     else:
                         state_opt0 = np.array([np.nan for x in range(len(state))])
@@ -990,7 +968,7 @@ elif optim_method == 'tnc':
                         open('Optimfile.txt','a').write('\nMinimisation aborted as it proceeded too slow') #\n to make it start on a new line
                         open('Gradfile.txt','a').write('\nMinimisation aborted as it proceeded too slow')
                     min_costf0 = np.min(optim.Costflist)
-                    min_costf_ind = optim.Costflist.index(min(optim.Costflist)) 
+                    min_costf_ind = optim.Costflist.index(min_costf0) 
                     state_opt0 = optim.Statelist[min_costf_ind]
                 min_costf0 = optim.cost_func(state_opt0,inputcopy,state,obs_times,obs_weights)
     if write_to_f:
@@ -1014,7 +992,7 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
                 if state[j] in boundedvars:
                     counter_while_loop = 1
                     while (priorinput_mem.__dict__[state[j]] < boundedvars[state[j]][0] or priorinput_mem.__dict__[state[j]] > boundedvars[state[j]][1]): #lower than lower bound or higher than upper bound
-                        priorinput_mem.__dict__[state[j]] =  cp.deepcopy(priorinput.__dict__[state[j]])#so to make it within the bounds
+                        priorinput_mem.__dict__[state[j]] =  cp.deepcopy(priorinput.__dict__[state[j]])#try to make parameter within the bounds
                         rand_nr_norm_distr = np.random.normal(0,np.sqrt(b_cov[j,j]))
                         priorinput_mem.__dict__[state[j]] += rand_nr_norm_distr
                         if counter_while_loop >= 100:
@@ -1056,7 +1034,7 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
             elif non_state_paramdict[param]['distr'] == 'triangular':
                 rand_nr = np.random.triangular(non_state_paramdict[param]['leftbound'],non_state_paramdict[param]['mode'],non_state_paramdict[param]['rightbound'])
             else:
-                raise Exception('Problem for estimating model error: unknown distribtion for '+param)
+                raise Exception('Problem for perturbing non-state parameters: unknown distribtion for '+param)
             priorinput_mem.__dict__[param] += rand_nr
             non_state_pparamvals[param] = priorinput_mem.__dict__[param]
     priormodel_mem = fwdm.model(priorinput_mem)
@@ -1066,6 +1044,7 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
     optim_mem.print = print_status_dur_ens
     Hx_prior_mem = {}
     PertDict = {} #To be passed as argument to min_func etc.
+    PertDict_to_return = {} #The Perturbations dictionary to return in the return statement of the function. Cannot simply return PertDict, since it would return an empty dict when pert_obs_ens is True
     for item in obsvarlist:
         Hx_prior_mem[item] = priormodel_mem.out.__dict__[item]
         optim_mem.__dict__['obs_'+item] = cp.deepcopy(optim.__dict__['obs_'+item]) #the truth obs
@@ -1078,7 +1057,7 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
                 rand_nr_list = ([np.random.normal(0,optim_mem.__dict__['error_obs_' + item][i]) for i in range(len(measurement_error[item]))])
             else:
                 rand_nr_list = ([np.random.normal(0,measurement_error[item][i]) for i in range(len(measurement_error[item]))])
-            PertDict[item] = rand_nr_list
+            PertDict_to_return[item] = rand_nr_list #Not PertDict, since than Hx_min_sy would additionally get perturbed
             optim_mem.__dict__['obs_'+item] += rand_nr_list
             if plot_perturbed_obs:
                 unsca = 1 #a scale for plotting the obs with different units
@@ -1104,6 +1083,8 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
                             itemname += '_'
                         #Windows cannnot have a file 'fig_obs_H_mem1.png' and 'fig_obs_h_mem1.png' in the same folder. The while loop can also handle e.g. the combination of variables Abc, ABC and abc                
                         plt.savefig('fig_obs_'+itemname+'_mem'+str(counter)+'.'+figformat, format=figformat)                        
+    if pert_Hx_min_sy_ens:
+        PertDict_to_return = cp.deepcopy(PertDict) #The Perturbations dictionary to return is the same as PertDict in this case
     obs_sca_cf_mem = {}
     optim_mem.pstate = [] #needed also for use in the inverse_modelling object
     for item in state:
@@ -1166,7 +1147,7 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
                 open('Gradfile'+str(counter)+'.txt','a').write('{0:>25s}'.format('\nnan reached, no restart'))
             if (discard_nan_minims == False and len(optim_mem.Statelist) > 0): #len(optim_mem.Statelist) > 0 to check wether there is already a non-nan result in the optimisation, if not we choose nan as result
                 min_costf_mem = np.min(optim_mem.Costflist)
-                min_costf_mem_ind = optim_mem.Costflist.index(min(optim_mem.Costflist)) #find the index number of the simulation where costf was minimal
+                min_costf_mem_ind = optim_mem.Costflist.index(min_costf_mem) #find the index number of the simulation where costf was minimal
                 state_opt_mem = optim_mem.Statelist[min_costf_mem_ind]
             else:
                 state_opt_mem = np.array([np.nan for x in range(len(state))])
@@ -1177,7 +1158,7 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
                 open('Optimfile'+str(counter)+'.txt','a').write('\nMinimisation aborted as it proceeded too slow') #\n to make it start on a new line
                 open('Gradfile'+str(counter)+'.txt','a').write('\nMinimisation aborted as it proceeded too slow')
             min_costf_mem = np.min(optim_mem.Costflist)
-            min_costf_mem_ind = optim_mem.Costflist.index(min(optim_mem.Costflist)) #find the index number of the simulation where costf was minimal
+            min_costf_mem_ind = optim_mem.Costflist.index(min_costf_mem) #find the index number of the simulation where costf was minimal
             state_opt_mem = optim_mem.Statelist[min_costf_mem_ind]
     elif optim_method == 'tnc':
         try:
@@ -1194,7 +1175,7 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
                 open('Gradfile'+str(counter)+'.txt','a').write('{0:>25s}'.format('\nnan reached, no restart'))
             if (discard_nan_minims == False and len(optim_mem.Statelist) > 0): #len(optim_mem.Statelist) > 0 to check wether there is already a non-nan result in the optimisation, if not we choose nan as result
                 min_costf_mem = np.min(optim_mem.Costflist)
-                min_costf_mem_ind = optim_mem.Costflist.index(min(optim_mem.Costflist)) #find the index number of the simulation where costf was minimal
+                min_costf_mem_ind = optim_mem.Costflist.index(min_costf_mem) #find the index number of the simulation where costf was minimal
                 state_opt_mem = optim_mem.Statelist[min_costf_mem_ind]
             else:
                 state_opt_mem = np.array([np.nan for x in range(len(state))])
@@ -1206,7 +1187,7 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
                 open('Optimfile'+str(counter)+'.txt','a').write('\nMinimisation aborted as it proceeded too slow') #\n to make it start on a new line
                 open('Gradfile'+str(counter)+'.txt','a').write('\nMinimisation aborted as it proceeded too slow')
             min_costf_mem = np.min(optim_mem.Costflist)
-            min_costf_mem_ind = optim_mem.Costflist.index(min(optim_mem.Costflist)) #find the index number of the simulation where costf was minimal
+            min_costf_mem_ind = optim_mem.Costflist.index(min_costf_mem) #find the index number of the simulation where costf was minimal
             state_opt_mem = optim_mem.Statelist[min_costf_mem_ind]
         if not hasattr(optim_mem,'stop'):
             for i in range(maxnr_of_restarts):
@@ -1228,7 +1209,7 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
                             open('Gradfile'+str(counter)+'.txt','a').write('\nnan reached, no restart')
                         if discard_nan_minims == False:
                             min_costf_mem = np.min(optim_mem.Costflist)
-                            min_costf_mem_ind = optim_mem.Costflist.index(min(optim_mem.Costflist)) #find the index number of the simulation where costf was minimal
+                            min_costf_mem_ind = optim_mem.Costflist.index(min_costf_mem) #find the index number of the simulation where costf was minimal
                             state_opt_mem = optim_mem.Statelist[min_costf_mem_ind]
                         else:
                             state_opt_mem = np.array([np.nan for x in range(len(state))])
@@ -1240,13 +1221,13 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
                             open('Optimfile'+str(counter)+'.txt','a').write('\nMinimisation aborted as it proceeded too slow') #\n to make it start on a new line
                             open('Gradfile'+str(counter)+'.txt','a').write('\nMinimisation aborted as it proceeded too slow')
                         min_costf_mem = np.min(optim_mem.Costflist)
-                        min_costf_mem_ind = optim_mem.Costflist.index(min(optim_mem.Costflist)) #find the index number of the simulation where costf was minimal
+                        min_costf_mem_ind = optim_mem.Costflist.index(min_costf_mem) #find the index number of the simulation where costf was minimal
                         state_opt_mem = optim_mem.Statelist[min_costf_mem_ind]
                     min_costf_mem = optim_mem.cost_func(state_opt_mem,inputcopy_mem,state,obs_times,obs_weights,PertDict) 
     CostParts = optim_mem.cost_func(state_opt_mem,inputcopy_mem,state,obs_times,obs_weights,PertDict,True)
     if write_to_f:
         open('Optimfile'+str(counter)+'.txt','a').write('{0:>25s}'.format('\n finished'))
-    return min_costf_mem,state_opt_mem,optim_mem.pstate,non_state_pparamvals,CostParts,PertDict
+    return min_costf_mem,state_opt_mem,optim_mem.pstate,non_state_pparamvals,CostParts,PertDict_to_return
 
 #chi squared denominator to be used later
 if use_weights:
@@ -1276,7 +1257,7 @@ if use_ensemble:
             max_num_cores_ = -1
         else:
             max_num_cores_ = max_num_cores
-        result_array = Parallel(n_jobs=max_num_cores_)(delayed(run_ensemble_member)(i,seedvalue,non_state_paramdict)  for i in range(1,nr_of_members)) #, prefer="threads" makes it work, but probably not multiprocess. None is for the seed
+        result_array = Parallel(n_jobs=max_num_cores_)(delayed(run_ensemble_member)(i,seedvalue,non_state_paramdict)  for i in range(1,nr_of_members)) #, prefer="threads" makes it work, but probably not multiprocess. 
         #the above returns a list of tuples
         for j in range(1,nr_of_members):
             ensemble[j]['min_costf'] = result_array[j-1][0] #-1 due to the fact that the zeroth ensemble member is not part of the result_array, while it is part of ensemble
@@ -1303,6 +1284,7 @@ if use_ensemble:
     if est_post_pdf_covmatr:
         mean_state_post = np.zeros(len(state))
         mean_state_prior = np.zeros(len(state))
+        pvar_state_ens = np.zeros(len(state)) #variance of the prior state elements calculated from the ensemble excl member 0
         chi_sq = np.zeros(len(ensemble))
         success_ens = np.zeros(len(ensemble), dtype=bool) #True or False wether optimisation successful
         for i in range(len(ensemble)):
@@ -1312,7 +1294,8 @@ if use_ensemble:
                     success_ens[i] = True
         if np.sum(success_ens[1:]) > 1:
             for i in range(len(state)):
-                seq = np.array([x['state_opt'][i] for x in ensemble[1:]]) #iterate over the dictionaries,gives array. We exclude the first optimisation, since it biases the sampling as we choose it ourselves.
+                seq = np.array([x['state_opt'][i] for x in ensemble[1:]]) #iterate over the dictionaries,gives array. We exclude the first optimisation, since it biases the sampling,
+                #as we choose the prior ourselves (unperturbed prior, not drawn from a distribution).
                 seq_suc = np.array([seq[x] for x in range(len(seq)) if success_ens[1:][x]])
                 mean_state_post[i] = np.mean(seq_suc) #np.nanmean not necessary since we filter already for successful optimisations
                 nbins = np.linspace(np.min(seq_suc), np.max(seq_suc), nr_bins + 1)
@@ -1324,9 +1307,10 @@ if use_ensemble:
                     pdfy[k] = n[k]
                 fig = plt.figure()
                 plt.plot(pdfx,pdfy, linestyle='-', linewidth=2,color='red',label='post')
-                seq_p = np.array([x['pstate'][i] for x in ensemble[1:]]) #iterate over the dictionaries,gives array . We exclude the first optimisation, since it biases the sampling as we choose it ourselves.
+                seq_p = np.array([x['pstate'][i] for x in ensemble[1:]]) #iterate over the dictionaries,gives array . We exclude the first optimisation
                 seq_suc_p = np.array([seq_p[x] for x in range(len(seq_p)) if success_ens[1:][x]])
                 mean_state_prior[i] = np.mean(seq_suc_p)
+                pvar_state_ens[i] = np.var(seq_suc_p,ddof=1)
                 nbins_p = np.linspace(np.min(seq_suc_p), np.max(seq_suc_p), nr_bins + 1)
                 n_p, bins_p = np.histogram(seq_suc_p, nbins_p, density=1)
                 pdfx = np.zeros(n_p.size)
@@ -1369,7 +1353,7 @@ if use_ensemble:
                 nonstparamlist = []
                 for param in non_state_paramdict:
                     fig = plt.figure()
-                    seq_ns = np.array([x['nonstateppars'][param] for x in ensemble[1:]]) #iterate over the dictionaries,gives array . We exclude the first optimisation, since it biases the sampling as we choose it ourselves.
+                    seq_ns = np.array([x['nonstateppars'][param] for x in ensemble[1:]]) #iterate over the dictionaries,gives array . We exclude the first optimisation, since it biases the sampling
                     seq_suc_ns = np.array([seq_ns[x] for x in range(len(seq_ns)) if success_ens[1:][x]])
                     mean_nonstate_p[param] = np.mean(seq_suc_ns)
                     nbins_ns = np.linspace(np.min(seq_suc_ns), np.max(seq_suc_ns), nr_bins + 1)
@@ -1451,13 +1435,13 @@ if write_to_f:
         open('Optstatsfile.txt','a').write('{0:>51s}'.format(str(chi_sq_ens)))
         if opt_sim_nr != 0:
             filename = 'Optimfile'+str(opt_sim_nr)+'.txt'
+            with open(filename,'r') as LowestCfFile:
+                header_end = LowestCfFile.readline().split()[-1]
+                if header_end != 'Costf':
+                    raise Exception(filename +' does not have \'Costf\' as last column')
+                prior_costf_ens = LowestCfFile.readline().split()[-1]
         else:
-            filename = 'Optimfile_0.txt'
-        with open(filename,'r') as LowestCfFile:
-            header_end = LowestCfFile.readline().split()[-1]
-            if header_end != 'Costf':
-                raise Exception('Optimfile'+str(opt_sim_nr)+'.txt does not have \'Costf\' as last column')
-            prior_costf_ens = LowestCfFile.readline().split()[-1]
+            prior_costf_ens = prior_costf
         open('Optstatsfile.txt','a').write('{0:>50s}'.format(str(prior_costf_ens)))
         open('Optstatsfile.txt','a').write('{0:>50s}'.format(str(ensemble[opt_sim_nr]['min_costf'])))
     open('Optstatsfile.txt','a').write('\n\n')
@@ -1552,9 +1536,9 @@ if write_to_f:
         if paramboundspenalty:
             open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(CP_best_st_obsmem0['penalty'])))
         open('Optstatsfile.txt','a').write('\n')    
-    if use_ensemble or use_backgr_in_cost:
+    if use_ensemble or use_backgr_in_cost: #priorvar only defined if use_backgr_in_cost or if use_ensemble
         open('Optstatsfile.txt','a').write('\n')
-        open('Optstatsfile.txt','a').write('{0:>32s}'.format('Normalised deviation to unper-'))
+        open('Optstatsfile.txt','a').write('{0:>32s}'.format('Normalised deviation from unper-'))
         open('Optstatsfile.txt','a').write('{0:>32s}'.format('\n    turbed prior for best state:'))
         reldev = np.zeros(len(state))
         for i in range(len(state)):
@@ -1584,14 +1568,14 @@ if write_to_f:
             if round(optimalmodel.out.t[ti] * 3600,8) in [round(num, 8) for num in obs_times[obsvar]]:
                 outp_at_obstimes[obsvar] += [optimalmodel.out.__dict__[obsvar][ti]]
                 outp_at_obstimes_pr[obsvar] += [priormodel.out.__dict__[obsvar][ti]]
-        numerator = np.var(outp_at_obstimes[obsvar])
+        numerator = np.var(outp_at_obstimes[obsvar])#degrees of freedom not important, when numerator and denominator have same degrees of freedom
         numerator_pr = np.var(outp_at_obstimes_pr[obsvar])
         obs_to_use[obsvar] = cp.deepcopy(optim.__dict__['obs_'+obsvar])
         obs_to_use_pr[obsvar] = cp.deepcopy(optim.__dict__['obs_'+obsvar])
         if 'obs_sca_cf_'+obsvar in state:
             obs_to_use[obsvar] *= optimalinput.__dict__['obs_sca_cf_'+obsvar]
             obs_to_use_pr[obsvar] *= priorinput.__dict__['obs_sca_cf_'+obsvar]
-        elif 'FracH' in state:
+        elif 'FracH' in state: #obs_sca_cf_H or obs_sca_cf_LE will not be in the state together with FracH, the script would raise an Exception in that case
             if obsvar == 'H':
                 obs_to_use[obsvar] = cp.deepcopy(optim.__dict__['obs_H']) + optimalstate[state.index('FracH')] * optim.EnBalDiffObs_atHtimes
                 obs_to_use_pr[obsvar] = cp.deepcopy(optim.__dict__['obs_H']) + optim.pstate[state.index('FracH')] * optim.EnBalDiffObs_atHtimes
@@ -1734,10 +1718,7 @@ if write_to_f:
                 open('Optstatsfile.txt','a').write('\n')
                 open('Optstatsfile.txt','a').write('{0:>6s}'.format(' '))
                 for i in range(len(state)):
-                    pstate_seq = np.array([x['pstate'][i] for x in ensemble[1:]])
-                    pstate_seq_suc = np.array([pstate_seq[x] for x in range(len(pstate_seq)) if success_ens[1:][x]])
-                    priorvar_state_i = np.var(pstate_seq_suc,ddof=1)
-                    ratio = post_cov_matr[i][i]/priorvar_state_i
+                    ratio = post_cov_matr[i][i]/pvar_state_ens[i]
                     open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(ratio))) 
             else:
                 open('Optstatsfile.txt','a').write('Not enough successful optimisations (selected criterion chi squared <= '+str(succes_opt_crit)+') to estimate posterior error covariance matrix \n')
