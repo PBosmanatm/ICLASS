@@ -20,42 +20,42 @@ style.use('classic')
 ####### settings #############
 ##############################
 nr_bins = 15 #for 1d-pdf
-nr_bins2d = nr_bins
-interp_pdf = False
+nr_bins2d = nr_bins #for 2d-pdf
+interp_pdf = False #interpolate in 2d pdfs
 if interp_pdf:
     nr_bins_int = 200 #nr of bins after interpolation
-remove_prev = True
-plot_obsfit = False
-plot_1d_pdfs = False
-plot_2d_pdfs = False
-plot_pdf_panels = True
-print_estim_post_param_stdev = True
-plot_colored_corr_matr = True
+remove_prev = True #remove everything starting with 'pp_'
+plot_obsfit = False #plot fit with observations
+plot_1d_pdfs = False #plot 1d-pdf
+plot_2d_pdfs = False #plot 2d_pdfs
+plot_pdf_panels = True #plot figure panel with pdfs
+print_estim_post_param_stdev = True #print estimated standard deviation of posterior parameters
+plot_colored_corr_matr = True #plot a colored correlation matrix
 if plot_colored_corr_matr:
-    showfullmatr = False
+    showfullmatr = False #show the full symmetric matrix, or show only one half
     TakeSubSample = True #Include another correl matrix based on subsample
     if TakeSubSample:
         Start = 0 #the index where to start, default is 0
         SelectStep = 2 #The step size to sample the ensemble
-plot_co2profiles = False
-plot_manual_fitpanels = False
-plot_auto_fitpanel = True
-plot_enbal_panel = True
+plot_co2profiles = False #plot co2 mixing ratios at multiple heights in one plot
+plot_manual_fitpanels = False #panels of figures, showing obs and model
+plot_auto_fitpanels = True  #a panel of figures, showing obs and model. More automated, number of rows and nr of columns are specified by two variables 
+plot_enbal_panel = True #plot a figure panel with observations corrected for the energy balnce error using FracH 
 plotfontsize = 12 #plot font size, except for legend
-legendsize = plotfontsize - 1
+legendsize = plotfontsize - 1 #legend size of (some) plots
 figformat = 'eps'#the format in which you want figure output, e.g. 'png'
-load_stored_objects = True
+load_stored_objects = True #load objects stored using the Pickle module
 if load_stored_objects:
-    storefolder_objects = 'pickle_objects' 
+    storefolder_objects = 'pickle_objects' #the folder where to load these objects from 
 load_second_optim = False #load a second optimisation (not just a second ensemble member)
 if load_second_optim:
     if load_stored_objects:
         storefolder_objects2 = '../5param2obs/pickle_objects'
-    plot_two_optim_man_fitpanel =True
+    plot_two_optim_man_fitpanel =True #figure panel showing obs and model. Involving two optimisations (not just a second ensemble member)
 ##############################
 ####### end settings #########
 ##############################
-MultiWordHeaders = ['minimum costf', 'chi squared']
+MultiWordHeaders = ['minimum costf', 'chi squared']#Used while reading Optstatsfile.txt
 if load_stored_objects:
     if storefolder_objects not in os.listdir():
         raise Exception('Unexisting folder specified for storefolder_objects')
@@ -193,16 +193,18 @@ with open('Optstatsfile.txt','r') as StatsFile:
     for index, line in enumerate(StatsFile):
         if 'optimal state without ensemble:' in line:
             state = StatsFile.readline().split() #readline reads the next line
-            opt_state = StatsFile.readline().split()
+            opt_state0 = StatsFile.readline().split()
         elif 'optimal state with ensemble' in line:
             opt_state = StatsFile.readline().split()
             use_ensemble = True
             post_cov_matr = np.zeros((len(state),len(state)))
             post_cor_matr = np.zeros((len(state),len(state)))
         elif 'index member with best state:' in line:
-            opt_sim_nr = int(StatsFile.readline().split()[-1]) #so go to next line, and take first part
+            opt_sim_nr = int(StatsFile.readline().split()[-1]) #so go to next line, split, take last part and make an int
         elif 'estim post state covar matrix:' in line:
-            StatsFile.readline()
+            line_to_check = StatsFile.readline()
+            if 'Warning' in line_to_check:
+                StatsFile.readline()
             for i in range(len(state)):
                 line_to_use = StatsFile.readline().split()[1:]
                 for j in range(len(state)):
@@ -230,7 +232,7 @@ with open('Optstatsfile.txt','r') as StatsFile:
                 if headers[wordind] in state and StateStartIndFound == False:
                     StateStartInd = columncounter
                     StateStartIndFound = True
-                if headers[wordind] == 'successful':
+                elif headers[wordind] == 'successful':
                     SuccesColumnInd = columncounter
                     SuccesColumn = True
                 if wordind != range(len(headers))[-1]: #cause than wordind+1 as gives an IndexError
@@ -255,7 +257,7 @@ with open('Optstatsfile.txt','r') as StatsFile:
                 line_to_use = StatsFile.readline().split()
                 memberdict = {}
                 try:
-                    if float(line_to_use[0]) - membernr != 1:
+                    if float(line_to_use[0]) - membernr != 1: #membernr is here the member number of the previous line
                         continueread = False
                 except (IndexError,ValueError) as e:
                     continueread = False
@@ -290,18 +292,14 @@ with open('Optstatsfile.txt','r') as StatsFile:
             i = StateStartInd_p
             for item in state:
                 memberdict_p[item] = float(line_to_use[i])
-                i += 1
-            if ensemble[membernr_p]['successful'] == 'True':
-                memberdict_p['successful'] = True
-            else:
-                memberdict_p['successful'] = False   
+                i += 1   
             ensemble_p = np.append(ensemble_p,memberdict_p)
             continueread = True
             while continueread:
                 line_to_use = StatsFile.readline().split()
                 memberdict_p = {}
                 try:
-                    if float(line_to_use[0]) - membernr_p != 1:
+                    if float(line_to_use[0]) - membernr_p != 1: #membernr_p is here the member number of the previous line
                         continueread = False
                 except (IndexError,ValueError) as e:
                     continueread = False
@@ -310,10 +308,6 @@ with open('Optstatsfile.txt','r') as StatsFile:
                     for item in state:
                         memberdict_p[item] = float(line_to_use[i])
                         i += 1
-                    if ensemble[membernr_p]['successful'] == 'True':
-                        memberdict_p['successful'] = True
-                    else:
-                        memberdict_p['successful'] = False                       
                     ensemble_p = np.append(ensemble_p,memberdict_p)
                     membernr_p += 1
                     
@@ -322,7 +316,7 @@ for item in state:
     if item not in disp_units_par:
         disp_units_par[item] = ''  
 
-if use_ensemble:    
+if use_ensemble and SuccesColumn:  #if SuccesColumn, it means est_post_pdf_covmatr was set to True  
     mean_state_post = np.zeros(len(state))
     success_ens = np.array([x['successful'] for x in ensemble[0:]],dtype=bool)
     succes_state_ens = np.zeros(len(state),dtype=list)
@@ -816,7 +810,7 @@ if plot_enbal_panel:
     plt.savefig('pp_fig_enbalpanel.eps', format='eps')
     plt.rc('font', size=plotfontsize) #reset plot font size
 
-if plot_auto_fitpanel:    
+if plot_auto_fitpanels:    
     #Below is a more automatised panel plot:
     plt.rc('font', size=17)
     plotvars = ['h','qmh','wCO2','Tmh']  #first the var for 0,0 than 0,1 than 1,0 than 1,1

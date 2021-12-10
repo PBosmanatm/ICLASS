@@ -165,7 +165,7 @@ priormodinput.CO2        = 422.      # initial mixed-layer CO2 [ppm]
 priormodinput.deltaCO2   = -44.      # initial CO2 jump at h [ppm]
 priormodinput.deltaCOS   = 50.      # initial COS jump at h [ppb]
 priormodinput.gammaCO2   = 0.        # free atmosphere CO2 lapse rate [ppm m-1]
-priormodinput.gammaCOS   = 1.        # free atmosphere CO2 lapse rate [ppb m-1]
+priormodinput.gammaCOS   = 1.        # free atmosphere COS lapse rate [ppb m-1]
 priormodinput.advCO2     = 0.        # advection of CO2 [ppm s-1]
 priormodinput.advCOS     = 0.        # advection of COS [ppb s-1]
 priormodinput.wCO2       = 0.        # surface total CO2 flux [mgCO2 m-2 s-1]
@@ -175,8 +175,8 @@ priormodinput.u          = 6.        # initial mixed-layer u-wind speed [m s-1]
 priormodinput.deltau     = 4.        # initial u-wind jump at h [m s-1]
 priormodinput.gammau     = 0.        # free atmosphere u-wind speed lapse rate [s-1]
 priormodinput.advu       = 0.        # advection of u-wind [m s-2]
-priormodinput.v          = -4.0      # initial mixed-layer u-wind speed [m s-1]
-priormodinput.deltav     = 4.0       # initial u-wind jump at h [m s-1]
+priormodinput.v          = -4.0      # initial mixed-layer v-wind speed [m s-1]
+priormodinput.deltav     = 4.0       # initial v-wind jump at h [m s-1]
 priormodinput.gammav     = 0.        # free atmosphere v-wind speed lapse rate [s-1]
 priormodinput.advv       = 0.        # advection of v-wind [m s-2]
 priormodinput.sw_sl      = True     # surface layer switch
@@ -225,6 +225,7 @@ priormodinput.sw_model_stable_con = True
 priormodinput.sw_use_ribtol = True
 priormodinput.sw_advfp = True #prescribed advection to take place over full profile (also in Free troposphere), only in ML if FALSE
 
+#soil COS model
 priormodinput.soilCOSmodeltype   = None #can be set to None or 'Sun_Ogee'
 priormodinput.uptakemodel = 'Ogee'
 priormodinput.sw_soilmoisture    = 'simple'
@@ -1397,7 +1398,7 @@ optimalmodel.run(checkpoint=False,updatevals_surf_lay=True,delete_at_end=False)
 if use_ensemble:
     if pert_non_state_param and opt_sim_nr != 0:
         optimalinput_onsp = cp.deepcopy(optimalinput)#onsp means optimal non-state params
-        for item in nonstparamlist:
+        for item in non_state_paramdict:
             optimalinput_onsp.__dict__[item] = ensemble[opt_sim_nr]['nonstateppars'][item]
         optimalmodel_onsp = fwdm.model(optimalinput_onsp) 
         optimalmodel_onsp.run(checkpoint=False,updatevals_surf_lay=True,delete_at_end=False)
@@ -1736,7 +1737,7 @@ if write_to_f:
             open('Optstatsfile.txt','a').write('{0:>25s}'.format(item))
         if pert_non_state_param: 
             open('Optstatsfile.txt','a').write('{0:>32s}'.format('perturbed non-state params:'))
-            for param in nonstparamlist: 
+            for param in non_state_paramdict: 
                 open('Optstatsfile.txt','a').write('{0:>25s}'.format(param))
         open('Optstatsfile.txt','a').write('\n')
         i = 0
@@ -1752,10 +1753,10 @@ if write_to_f:
             if pert_non_state_param: 
                 open('Optstatsfile.txt','a').write('{0:>32s}'.format(' '))
                 if i != 0:
-                    for param in nonstparamlist:
+                    for param in non_state_paramdict:
                         open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(item['nonstateppars'][param])))                
                 else:
-                    for param in nonstparamlist:
+                    for param in non_state_paramdict:
                         open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(priorinput.__dict__[param])))
             open('Optstatsfile.txt','a').write('\n')
             i += 1

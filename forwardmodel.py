@@ -122,7 +122,7 @@ class model:
 #        self.use_rsl = False #use roughness sublayer
 #        if hasattr(self.input,'use_rsl'):
 #            self.use_rsl = self.input.use_rsl
-        self.sw_advfp = False #switch for prescribed advection to take place over full profile (also in Free troposphere), only in ML if FALSE
+        self.sw_advfp = False #switch for prescribed advection to take place over full profile (also in Free troposphere), only in ML if False
         if hasattr(self.input,'sw_advfp'):
             self.sw_advfp = self.input.sw_advfp
         self.sw_printwarnings = True #print or hide warnings
@@ -133,7 +133,7 @@ class model:
             self.sw_useWilson  = self.input.sw_useWilson  #switch to use Wilson or Businger Dyer for flux gradient relationships
         self.sw_model_stable_con = True
         if hasattr(self.input,'sw_model_stable_con'):
-            self.sw_model_stable_con = self.input.sw_model_stable_con #switch to use Businger Dyer or return nan for flux gradient relationships in stable conditions
+            self.sw_model_stable_con = self.input.sw_model_stable_con #switch to use Businger Dyer or return nan for psih and psim for flux gradient relationships in stable conditions
 
         # A-Gs constants and settings
         # Plant type:       -C3-     -C4-
@@ -312,7 +312,7 @@ class model:
         self.CO2tend        = None                  # tendency of CO2 humidity [ppm]
         self.COStend        = None                  # tendency of COS [ppb]
         self.deltaCO2tend   = None                  # tendency of CO2 jump at h [ppm s-1]
-        self.deltaCOStend   = None                  # tendency of CO2 jump at h [ppb s-1]
+        self.deltaCOStend   = None                  # tendency of COS jump at h [ppb s-1]
         self.utend          = None                  # tendency of u-wind [m s-1 s-1]
         self.deltautend     = None                  # tendency of u-wind jump at h [m s-1 s-1]
         self.vtend          = None                  # tendency of v-wind [m s-1 s-1]
@@ -329,7 +329,7 @@ class model:
             self.Cs         = self.input.Cs         # drag coefficient for scalars [-]
         else:
             self.Cs         = 1e12                  # drag coefficient for scalars [-]
-        #Cm is calculated before it used, no need to specify it here, even though this was done in the original CLASS from 2019
+        #Cm is calculated before it used, no need to specify it here, the output only stores the variable if self.sw_sl is True (in the original CLASS from 2019, there was a statement self.Cm         = 1e12 in the init function, and Cm was alsways stored).
         self.L          = None                  # Obukhov length [m]
         self.Rib        = None                  # bulk Richardson number [-]
         self.ra         = None                  # aerodynamic resistance [s m-1]
@@ -345,7 +345,7 @@ class model:
         self.Lwin       = None                  # incoming long wave radiation [W m-2]
         self.Lwout      = None                  # outgoing long wave radiation [W m-2]
         self.sinlea     = None
-        self.Q          = self.input.Q          # net radiation [W m-2], this value is not used if sw_rad == True. But if sw_rad == False and sw_ls == True, the model will crash as Swin is None...
+        self.Q          = self.input.Q          # net radiation [W m-2], this value is not used if sw_rad == True. But if sw_rad == False and sw_ls == True and ls_type    = 'ags', the model will crash as Swin is None.
         self.dFz        = self.input.dFz        # cloud top radiative divergence [W m-2] 
   
         # initialize land surface
@@ -542,7 +542,7 @@ class model:
         self.deltaCO2   = self.input.deltaCO2       # initial CO2 jump at h [ppm]
         self.deltaCOS   = self.input.deltaCOS       # initial COS jump at h [ppb]
         self.gammaCO2   = self.input.gammaCO2   # free atmosphere CO2 lapse rate [ppm m-1]
-        self.gammaCOS   = self.input.gammaCOS   # free atmosphere CO2 lapse rate [ppb m-1]
+        self.gammaCOS   = self.input.gammaCOS   # free atmosphere COS lapse rate [ppb m-1]
         self.advCO2     = self.input.advCO2     # advection of CO2 [ppm s-1]
         self.advCOS     = self.input.advCOS     # advection of COS [ppb s-1]
         fac = self.mair / (self.rho*self.mco2)  # Conversion factor mgCO2 m-2 s-1 to ppm m s-1
@@ -1044,7 +1044,6 @@ class model:
             for variablename in the_locals: #note that the self variables are not included
                 if str(variablename) != 'self':
                     self.vars_rml.update({variablename: the_locals[variablename]})
-                #self.vars_rml.update({variablename: the_locals[variablename]})
 
                
     def integrate_mixed_layer(self):
@@ -1223,7 +1222,7 @@ class model:
 #        cq             = (1. + self.Cs * ueff * self.rs) ** -1.
 #        self.qsurf     = (1. - cq) * self.q + cq * qsatsurf_rsl
         self.qsurf     = self.q + self.wq / (self.Cs * ueff)#3.45,3.43 rewritten
-        self.esurf = self.qsurf * self.Ps / 0.622
+        self.esurf = self.qsurf * self.Ps / 0.622 #3.4 introduction atmosphere reader
         self.thetavsurf = self.thetasurf * (1. + 0.61 * self.qsurf) #0.61 is 1-Rw/Rd. eq 59 microhh reference paper
         
         self.zsl       = 0.1 * self.h #surface layer 10% of boundary layer
@@ -1237,7 +1236,7 @@ class model:
             self.Rib  = min(self.Rib, 0.2)
             self.L     = self.ribtol(self.Rib, self.zsl, self.z0m, self.z0h, iterationnumber,call_from_init)
         else: #more simple
-            self.L     = self.thetav * self.ustar**3 /(self.k * self.g * -1 * self.wthetav)
+            self.L     = self.thetav * self.ustar**3 /(self.k * self.g * -1 * self.wthetav) #can be derived from 3.19 AVSI
             if self.wthetav ==0 :
                 if self.sw_printwarnings:
                     print('zero virt temp flux')
@@ -1742,7 +1741,7 @@ class model:
         if self.ags_C_mode == 'MXL':
             self.wCOSP   = - 1 / (1 / gctCOS + self.ra) * self.COS #plant flux COS in ppb m s-1
         elif self.ags_C_mode == 'surf':
-            self.wCOSP   = - 1 / (1 / gctCOS + self.ra) * self.COSsurf #plant flux COS
+            self.wCOSP   = - 1 / (1 / gctCOS + self.ra) * self.COSsurf #plant flux COS in ppb m s-1
         else:
             raise Exception('wrong ags_C_mode switch')
         if(self.soilCOSmodeltype == 'Sun_Ogee'): 
@@ -2718,7 +2717,7 @@ class model_input:
         self.CO2        = None  # initial mixed-layer potential temperature [K]
         self.deltaCO2   = None  # initial temperature jump at h [K]
         self.gammaCO2   = None  # free atmosphere potential temperature lapse rate [K m-1]
-        self.gammaCOS   = None
+        self.gammaCOS   = None  # free atmosphere COS lapse rate [ppb m-1]
         self.advCO2     = None  # advection of heat [K s-1]
         self.wCO2       = None  # surface total CO2 flux [mgCO2 m-2 s-1]
         self.wCOS       = None  # surface kinematic COS flux [ppb m s-1]
@@ -2729,8 +2728,8 @@ class model_input:
         self.gammau     = None  # free atmosphere u-wind speed lapse rate [s-1]
         self.advu       = None  # advection of u-wind [m s-2]
 
-        self.v          = None  # initial mixed-layer u-wind speed [m s-1]
-        self.deltav     = None  # initial u-wind jump at h [m s-1]
+        self.v          = None  # initial mixed-layer v-wind speed [m s-1]
+        self.deltav     = None  # initial v-wind jump at h [m s-1]
         self.gammav     = None  # free atmosphere v-wind speed lapse rate [s-1]
         self.advv       = None  # advection of v-wind [m s-2]
 

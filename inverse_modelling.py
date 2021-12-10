@@ -1566,7 +1566,7 @@ class inverse_modelling:
         R10,E0 = checkpoint['ags_R10'],checkpoint['ags_E0']
         self.Output_tl_ags = {}
         # output:  wCO2A   wCO2R  wCO2 rs 
-        # Select index for plap.nt type
+        # Select index for plant type
         if(model.c3c4 == 'c3'):
             c = 0
         elif(model.c3c4 == 'c4'):

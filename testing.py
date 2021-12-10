@@ -31,7 +31,7 @@ adjointtest_run_land_surface = False
 gradtest_run_land_surface = False
 adjointtest_int_land_surface = False
 gradtest_int_land_surface = False
-adjointtest_statistics = True
+adjointtest_statistics = False
 gradtest_statistics = False
 adjointtest_run_soil_COS_mod = False
 gradtest_run_soil_COS_mod = False
@@ -43,9 +43,9 @@ adjointtest_jarvis_stewart = False
 gradtest_jarvis_stewart = False
 manual_adjointtest = False
 adjointtest = False #this is over the full model run, so multiple timesteps normally (specify time settings in input)
-gradtest = False #this is over the full model run, so multiple timesteps normally (specify time settings in input)
+gradtest = True #this is over the full model run, so multiple timesteps normally (specify time settings in input)
 test_from_ref_paper = False
-#gradient tests require the variable save_vars_indict to be set to true
+#gradient tests require the variable save_vars_indict (run function in forwardmodel.py) to be set to true, will be done automatically
 
 #setting for printing
 printmode = 'absolute' #the way the derivatives are printed for the gradient tests, 'relative' or 'absolute'
@@ -114,8 +114,8 @@ testinput.u          = 6.        # initial mixed-layer u-wind speed [m s-1]
 testinput.deltau     = 4.        # initial u-wind jump at h [m s-1]
 testinput.gammau     = 0.000001        # free atmosphere u-wind speed lapse rate [s-1]
 testinput.advu       = 0.        # advection of u-wind [m s-2]
-testinput.v          = -4.0      # initial mixed-layer u-wind speed [m s-1]
-testinput.deltav     = 4.0       # initial u-wind jump at h [m s-1]
+testinput.v          = -4.0      # initial mixed-layer v-wind speed [m s-1]
+testinput.deltav     = 4.0       # initial v-wind jump at h [m s-1]
 testinput.gammav     = 0.        # free atmosphere v-wind speed lapse rate [s-1]
 testinput.advv       = 0.        # advection of v-wind [m s-2]
 testinput.sw_sl      = True     # surface layer switch
@@ -123,13 +123,12 @@ testinput.ustar      = 0.8       # surface friction velocity [m s-1]
 testinput.z0m        = 0.1      # roughness length for momentum [m]
 testinput.z0h        = 0.1     # roughness length for scalars [m]
 testinput.sw_rad     = True     # radiation switch
-testinput.Q          = 200  #net radiation [W m-2], only if sw_rad == False, but even than it does not do anything
+testinput.Q          = 200  #net radiation [W m-2], not relevant if sw_rad == False
 testinput.lat        = 31.97     # latitude [deg]
 testinput.lon        = 0     # longitude [deg]
 testinput.doy        = 150.      # day of the year [-]
 testinput.tstart     = 10*3600/3600#11*3600/3600   # time of the day [h UTC]
 testinput.cc         = 0.6       # cloud cover fraction [-]
-#testinput.Q          = 600.      # net radiation [W m-2] 
 testinput.dFz        = 0.0002        # cloud top radiative divergence [W m-2] 
 testinput.sw_ls      = True    # land surface switch
 testinput.ls_type    = 'ags'     # land-surface parameterization ('js' for Jarvis-Stewart or 'ags' for A-Gs)
