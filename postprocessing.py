@@ -26,17 +26,19 @@ if interp_pdf:
     nr_bins_int = 200 #nr of bins after interpolation
 remove_prev = True #remove everything starting with 'pp_'
 plot_obsfit = False #plot fit with observations
-plot_1d_pdfs = False #plot 1d-pdf
-plot_2d_pdfs = False #plot 2d_pdfs
-plot_pdf_panels = True #plot figure panel with pdfs
+constr_succes_state_ens = True#used in e.g. plot_1d_pdfs, can be turned off if unused to reduce number of calculations 
+if constr_succes_state_ens:
+    plot_1d_pdfs = False #plot 1d-pdf
+    plot_2d_pdfs = False #plot 2d_pdfs
+    plot_pdf_panels = True #plot figure panel with pdfs
+    plot_colored_corr_matr = True #plot a colored correlation matrix
+    if plot_colored_corr_matr:
+        showfullmatr = False #show the full symmetric matrix, or show only one half
+        TakeSubSample = True #Include another correl matrix based on subsample
+        if TakeSubSample:
+            Start = 0 #the index where to start, default is 0
+            SelectStep = 2 #The step size to sample the ensemble
 print_estim_post_param_stdev = True #print estimated standard deviation of posterior parameters
-plot_colored_corr_matr = True #plot a colored correlation matrix
-if plot_colored_corr_matr:
-    showfullmatr = False #show the full symmetric matrix, or show only one half
-    TakeSubSample = True #Include another correl matrix based on subsample
-    if TakeSubSample:
-        Start = 0 #the index where to start, default is 0
-        SelectStep = 2 #The step size to sample the ensemble
 plot_co2profiles = False #plot co2 mixing ratios at multiple heights in one plot
 plot_manual_fitpanels = False #panels of figures, showing obs and model
 plot_auto_fitpanels = True  #a panel of figures, showing obs and model. More automated, number of rows and nr of columns are specified by two variables 
@@ -197,21 +199,22 @@ with open('Optstatsfile.txt','r') as StatsFile:
         elif 'optimal state with ensemble' in line:
             opt_state = StatsFile.readline().split()
             use_ensemble = True
-            post_cov_matr = np.zeros((len(state),len(state)))
-            post_cor_matr = np.zeros((len(state),len(state)))
         elif 'index member with best state:' in line:
             opt_sim_nr = int(StatsFile.readline().split()[-1]) #so go to next line, split, take last part and make an int
         elif 'estim post state covar matrix:' in line:
             line_to_check = StatsFile.readline()
-            if 'Warning' in line_to_check:
-                StatsFile.readline()
-            for i in range(len(state)):
-                line_to_use = StatsFile.readline().split()[1:]
-                for j in range(len(state)):
-                    post_cov_matr[i,j] = line_to_use[j]
-                StatsFile.readline()
-        elif 'estim post state corr matrix:' in line:
+            if not ('Not enough successful optimisations' in line_to_check):
+                if 'Warning' in line_to_check:
+                    StatsFile.readline()
+                post_cov_matr = np.zeros((len(state),len(state)))
+                for i in range(len(state)):
+                    line_to_use = StatsFile.readline().split()[1:]
+                    for j in range(len(state)):
+                        post_cov_matr[i,j] = line_to_use[j]
+                    StatsFile.readline()
+        elif 'estim post state corr matrix:' in line: #If there are not enough succesful optimisations, the line 'estim post state corr matrix:' will not be present 
             StatsFile.readline()
+            post_cor_matr = np.zeros((len(state),len(state)))
             for i in range(len(state)):
                 line_to_use = StatsFile.readline().split()[1:]
                 for j in range(len(state)):
@@ -316,16 +319,25 @@ for item in state:
     if item not in disp_units_par:
         disp_units_par[item] = ''  
 
-if use_ensemble and SuccesColumn:  #if SuccesColumn, it means est_post_pdf_covmatr was set to True  
-    mean_state_post = np.zeros(len(state))
+if (use_ensemble and SuccesColumn):  #if SuccesColumn, it means est_post_pdf_covmatr was set to True  
     success_ens = np.array([x['successful'] for x in ensemble[0:]],dtype=bool)
-    succes_state_ens = np.zeros(len(state),dtype=list)
-
-    if np.sum(success_ens[1:]) > 1:
+    if print_estim_post_param_stdev and (np.sum(success_ens[1:]) > 1):
+        print('Estimated standard deviation posterior parameters:')
+        for i in range(len(state)):
+            print(state[i]+':')
+            print(np.sqrt(post_cov_matr[i,i]))
+    if np.sum(success_ens[1:]) > 1 and constr_succes_state_ens:
+        mean_state_post = np.zeros(len(state))
+        mean_state_prior = np.zeros(len(state))
+        succes_state_ens = np.zeros(len(state),dtype=list)
+        seq_suc_p = np.zeros(len(state),dtype=list)
         for i in range(len(state)):
             seq = np.array([x[state[i]] for x in ensemble[1:]]) #iterate over the dictionaries,gives array. We exclude the first optimisation, since it biases the sampling as we choose it ourselves.
             succes_state_ens[i] = np.array([seq[x] for x in range(len(seq)) if success_ens[1:][x]])
             mean_state_post[i] = np.mean(succes_state_ens[i]) #np.nanmean not necessary since we filter already for successful optimisations
+            seq_p = np.array([x[state[i]] for x in ensemble_p[1:]]) #iterate over the dictionaries,gives array . We exclude the first optimisation, since it biases the sampling as we choose it ourselves.
+            seq_suc_p[i] = np.array([seq_p[x] for x in range(len(seq_p)) if success_ens[1:][x]])
+            mean_state_prior[i] = np.mean(seq_suc_p[i])
             if plot_1d_pdfs:
                 nbins = np.linspace(np.min(succes_state_ens[i]), np.max(succes_state_ens[i]), nr_bins + 1)
                 n, bins = np.histogram(succes_state_ens[i], nbins, density=1)
@@ -336,12 +348,8 @@ if use_ensemble and SuccesColumn:  #if SuccesColumn, it means est_post_pdf_covma
                     pdfy[k] = n[k]
                 fig = plt.figure()
                 plt.plot(pdfx,pdfy, linestyle='-', linewidth=2,color='red',label='post')
-                mean_state_prior = np.zeros(len(state))
-                seq_p = np.array([x[state[i]] for x in ensemble_p[1:]]) #iterate over the dictionaries,gives array . We exclude the first optimisation, since it biases the sampling as we choose it ourselves.
-                seq_suc_p = np.array([seq_p[x] for x in range(len(seq_p)) if success_ens[1:][x]])
-                mean_state_prior[i] = np.mean(seq_suc_p)
-                nbins_p = np.linspace(np.min(seq_suc_p), np.max(seq_suc_p), nr_bins + 1)
-                n_p, bins_p = np.histogram(seq_suc_p, nbins_p, density=1)
+                nbins_p = np.linspace(np.min(seq_suc_p[i]), np.max(seq_suc_p[i]), nr_bins + 1)
+                n_p, bins_p = np.histogram(seq_suc_p[i], nbins_p, density=1)
                 pdfx = np.zeros(n_p.size)
                 pdfy = np.zeros(n_p.size)
                 for k in range(n_p.size):
@@ -366,6 +374,7 @@ if use_ensemble and SuccesColumn:  #if SuccesColumn, it means est_post_pdf_covma
             plotvars = ['advtheta','gammaq']
             fig, ax = plt.subplots(1,2,figsize=(24,8))
             succes_state_ens_var0 = succes_state_ens[state.index(plotvars[0])]
+            seq_suc_p_var0 = seq_suc_p[state.index(plotvars[0])]
             mean_state_post_var0 = np.mean(succes_state_ens_var0) #np.nanmean not necessary since we filter already for successful optimisations
             nbins = np.linspace(np.min(succes_state_ens_var0), np.max(succes_state_ens_var0), nr_bins + 1)
             n, bins = np.histogram(succes_state_ens_var0, nbins, density=1)
@@ -375,11 +384,8 @@ if use_ensemble and SuccesColumn:  #if SuccesColumn, it means est_post_pdf_covma
                 pdfx[k] = 0.5*(bins[k]+bins[k+1])
                 pdfy[k] = n[k]
             ax[0].plot(pdfx,pdfy, linestyle='-', linewidth=2,color='red',label='post')
-            seq_p = np.array([x[plotvars[0]] for x in ensemble_p[1:]]) #iterate over the dictionaries,gives array . We exclude the first optimisation, since it biases the sampling as we choose it ourselves.
-            seq_suc_p = np.array([seq_p[x] for x in range(len(seq_p)) if success_ens[1:][x]])
-            mean_state_prior = np.mean(seq_suc_p)
-            nbins_p = np.linspace(np.min(seq_suc_p), np.max(seq_suc_p), nr_bins + 1)
-            n_p, bins_p = np.histogram(seq_suc_p, nbins_p, density=1)
+            nbins_p = np.linspace(np.min(seq_suc_p_var0), np.max(seq_suc_p_var0), nr_bins + 1)
+            n_p, bins_p = np.histogram(seq_suc_p_var0, nbins_p, density=1)
             pdfx = np.zeros(n_p.size)
             pdfy = np.zeros(n_p.size)
             for k in range(n_p.size):
@@ -388,11 +394,12 @@ if use_ensemble and SuccesColumn:  #if SuccesColumn, it means est_post_pdf_covma
             ax[0].ticklabel_format(axis="both", style="sci", scilimits=(0,0))
             ax[0].plot(pdfx,pdfy, linestyle='dashed', linewidth=2,color='gold',label='prior')
             ax[0].axvline(mean_state_post_var0, linestyle='-',linewidth=2,color='red',label = 'mean post')
-            ax[0].axvline(mean_state_prior, linestyle='dashed',linewidth=2,color='gold',label = 'mean prior')
+            ax[0].axvline(mean_state_prior[state.index(plotvars[0])], linestyle='dashed',linewidth=2,color='gold',label = 'mean prior')
             ax[0].set_xlabel(disp_nms_par[plotvars[0]] + ' ('+ disp_units_par[plotvars[0]] +')')
             ax[0].set_ylabel('Probability density (-)')  
             
             succes_state_ens_var1 = succes_state_ens[state.index(plotvars[1])]
+            seq_suc_p_var1 = seq_suc_p[state.index(plotvars[1])]
             mean_state_post_var1 = np.mean(succes_state_ens_var1) #np.nanmean not necessary since we filter already for successful optimisations
             nbins = np.linspace(np.min(succes_state_ens_var1), np.max(succes_state_ens_var1), nr_bins + 1)
             n, bins = np.histogram(succes_state_ens_var1, nbins, density=1)
@@ -402,11 +409,8 @@ if use_ensemble and SuccesColumn:  #if SuccesColumn, it means est_post_pdf_covma
                 pdfx[k] = 0.5*(bins[k]+bins[k+1])
                 pdfy[k] = n[k]
             ax[1].plot(pdfx,pdfy, linestyle='-', linewidth=2,color='red',label='post')
-            seq_p = np.array([x[plotvars[1]] for x in ensemble_p[1:]]) #iterate over the dictionaries,gives array . We exclude the first optimisation, since it biases the sampling as we choose it ourselves.
-            seq_suc_p = np.array([seq_p[x] for x in range(len(seq_p)) if success_ens[1:][x]])
-            mean_state_prior = np.mean(seq_suc_p)
-            nbins_p = np.linspace(np.min(seq_suc_p), np.max(seq_suc_p), nr_bins + 1)
-            n_p, bins_p = np.histogram(seq_suc_p, nbins_p, density=1)
+            nbins_p = np.linspace(np.min(seq_suc_p_var1), np.max(seq_suc_p_var1), nr_bins + 1)
+            n_p, bins_p = np.histogram(seq_suc_p_var1, nbins_p, density=1)
             pdfx = np.zeros(n_p.size)
             pdfy = np.zeros(n_p.size)
             for k in range(n_p.size):
@@ -415,7 +419,7 @@ if use_ensemble and SuccesColumn:  #if SuccesColumn, it means est_post_pdf_covma
             ax[1].ticklabel_format(axis="both", style="sci", scilimits=(0,0))
             ax[1].plot(pdfx,pdfy, linestyle='dashed', linewidth=2,color='gold',label='prior')
             ax[1].axvline(mean_state_post_var1, linestyle='-',linewidth=2,color='red',label = 'mean post')
-            ax[1].axvline(mean_state_prior, linestyle='dashed',linewidth=2,color='gold',label = 'mean prior')
+            ax[1].axvline(mean_state_prior[state.index(plotvars[1])], linestyle='dashed',linewidth=2,color='gold',label = 'mean prior')
             ax[1].set_xlabel(disp_nms_par[plotvars[1]] + ' ('+ disp_units_par[plotvars[1]] +')')
             #ax[1].set_ylabel('Probability density (-)')             
             ax[1].legend(loc=0, frameon=True,prop={'size':21}) 
@@ -450,7 +454,6 @@ if use_ensemble and SuccesColumn:  #if SuccesColumn, it means est_post_pdf_covma
                             y_1dpdf_int = np.linspace(np.min(y_1dpdf),np.max(y_1dpdf),nr_bins_int)
                             interpfunc = interp.interp2d(x_1dpdf,y_1dpdf,n)
                             n_int = interpfunc(x_1dpdf_int,y_1dpdf_int)
-                        if interp_pdf:
                             plot = plt.contourf(x_1dpdf_int,y_1dpdf_int,n_int,levels = nr_bins_int)
                         else:
                             plot = plt.contourf(x_1dpdf,y_1dpdf,n,levels = nr_bins2d)
@@ -461,15 +464,10 @@ if use_ensemble and SuccesColumn:  #if SuccesColumn, it means est_post_pdf_covma
                         if not ('pdf2d_posterior_'+state[i]+'_'+state[j]+'.'+figformat).lower() in [x.lower() for x in os.listdir()]: 
                             plt.savefig('pp_pdf2d_posterior_'+state[i]+'_'+state[j]+'.'+figformat, format=figformat)
                         else:
-                            itemname = state[i]+'_'+state[j]
+                            itemname = state[i]+'_'+state[j]+'_'
                             while ('pdf2d_posterior_'+itemname+'.'+figformat).lower() in [x.lower() for x in os.listdir()]:
                                 itemname += '_'
                             plt.savefig('pp_pdf2d_posterior_'+itemname+'.'+figformat, format=figformat) 
-        if print_estim_post_param_stdev:
-            print('Estimated standard deviation posterior parameters:')
-            for i in range(len(state)):
-                print(state[i]+':')
-                print(np.sqrt(post_cov_matr[i,i]))
         if plot_colored_corr_matr:    
             plt.figure()
             sb.set(rc={'figure.figsize':(11,11)}) 
@@ -483,8 +481,8 @@ if use_ensemble and SuccesColumn:  #if SuccesColumn, it means est_post_pdf_covma
             mask = None
             if not showfullmatr:
                 mask = np.triu(np.ones(len(post_cor_matr)),k=1)
-            post_cor_matr = np.round(post_cor_matr,2)
-            plot = sb.heatmap(post_cor_matr,annot=True,xticklabels=disp_nms_state,yticklabels = disp_nms_state, cmap="RdBu_r",cbar_kws={'label': 'Correlation (-)'}, linewidths=0.7,annot_kws={"size": 10.2 },mask = mask) 
+            post_cor_matr_r = np.round(post_cor_matr,2) #_r to indicate rounded
+            plot = sb.heatmap(post_cor_matr_r,annot=True,xticklabels=disp_nms_state,yticklabels = disp_nms_state, cmap="RdBu_r",cbar_kws={'label': 'Correlation (-)'}, linewidths=0.7,annot_kws={"size": 10.2 },mask = mask) 
             plot.set_facecolor('white')
             plot.tick_params(labelsize=11)
             plt.ylim((len(state), 0))
@@ -505,8 +503,8 @@ if use_ensemble and SuccesColumn:  #if SuccesColumn, it means est_post_pdf_covma
                 print(len(succes_state_ens_for_cor[0]))
                 sb.set(rc={'figure.figsize':(11,11)}) 
                 sb.set(font_scale=1.05)  
-                post_cor_matr_ss = np.round(post_cor_matr_ss,2)
-                plot = sb.heatmap(post_cor_matr_ss,annot=True,xticklabels=disp_nms_state,yticklabels = disp_nms_state, cmap="RdBu_r",cbar_kws={'label': 'Correlation (-)'}, linewidths=0.7,annot_kws={"size": 10.2 },mask = mask) 
+                post_cor_matr_ss_r = np.round(post_cor_matr_ss,2)
+                plot = sb.heatmap(post_cor_matr_ss_r,annot=True,xticklabels=disp_nms_state,yticklabels = disp_nms_state, cmap="RdBu_r",cbar_kws={'label': 'Correlation (-)'}, linewidths=0.7,annot_kws={"size": 10.2 },mask = mask) 
                 plot.set_facecolor('white')
                 plot.tick_params(labelsize=11)
                 plt.ylim((len(state), 0))
@@ -520,8 +518,9 @@ if use_ensemble and SuccesColumn:  #if SuccesColumn, it means est_post_pdf_covma
                 plt.figure()
                 sb.set(rc={'figure.figsize':(11,11)}) 
                 sb.set(font_scale=1.05)  
-                post_cor_matr_diff = np.round(post_cor_matr_ss-post_cor_matr,2)
-                plot = sb.heatmap(post_cor_matr_diff,annot=True,xticklabels=disp_nms_state,yticklabels = disp_nms_state, cmap="RdBu_r",cbar_kws={'label': 'Diff in Correlation (-)'}, linewidths=0.7,annot_kws={"size": 10.2 },mask = mask) 
+                post_cor_matr_diff = post_cor_matr_ss-post_cor_matr
+                post_cor_matr_diff_r = np.round(post_cor_matr_diff,2)
+                plot = sb.heatmap(post_cor_matr_diff_r,annot=True,xticklabels=disp_nms_state,yticklabels = disp_nms_state, cmap="RdBu_r",cbar_kws={'label': 'Diff in correlation (-)'}, linewidths=0.7,annot_kws={"size": 10.2 },mask = mask) 
                 plot.set_facecolor('white')
                 plot.tick_params(labelsize=11)
                 plt.ylim((len(state), 0))
@@ -538,7 +537,7 @@ if use_ensemble and SuccesColumn:  #if SuccesColumn, it means est_post_pdf_covma
                 plt.rcParams.update(plt.rcParamsDefault)
                 style.use('classic')
                 plt.rc('font', size=plotfontsize) #plot font size
-    
+
 if plot_obsfit:
     for i in range(len(obsvarlist)):
         unsca = 1 #a scale for plotting the obs with different units
@@ -612,7 +611,10 @@ if plot_co2profiles:
     
     fig = plt.figure()
     i = 0
-    for ti in range(int(30*60/priorinput.dt),priormodel.tsteps,120):
+    startind = 30*60/priorinput.dt
+    if not (int(startind) == startind):
+        raise Exception('Invalid starting index for CO2 profiles')
+    for ti in range(int(startind),priormodel.tsteps,120): #int since a float is not allowed as a starting number for range
         color = colorlist[i]
         plt.plot(priormodel.out.__dict__['CO2mh'][ti],profileheights[3], linestyle=' ', marker='o',color=color,label = 'pmod t='+str((priorinput.tstart*3600+ti*priorinput.dt)/3600))
         plt.plot(priormodel.out.__dict__['CO2mh2'][ti],profileheights[2], linestyle=' ', marker='o',color=color)
@@ -637,7 +639,7 @@ if plot_co2profiles:
     
     fig = plt.figure()
     i = 0
-    for ti in range(int(30*60/priorinput.dt),priormodel.tsteps,120):
+    for ti in range(int(startind),priormodel.tsteps,120):
         color = colorlist[i]
         plt.plot(optimalmodel.out.__dict__['CO2mh'][ti],profileheights[3], linestyle=' ', marker='o',color=color,label = 'mod t='+str((priorinput.tstart*3600+ti*priorinput.dt)/3600))
         plt.plot(optimalmodel.out.__dict__['CO2mh2'][ti],profileheights[2], linestyle=' ', marker='o',color=color)
