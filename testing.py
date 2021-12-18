@@ -249,7 +249,7 @@ if adjointtest_surf_lay:
     adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='desurf',y_variable='adesurf',HTy_variables=testHTy,printmode=printmodeadj)
     adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='dthetavsurf',y_variable='adthetavsurf',HTy_variables=testHTy,printmode=printmodeadj)
     adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='dzsl',y_variable='adzsl',HTy_variables=testHTy,printmode=printmodeadj)
-    if testinput.sw_use_ribtol:
+    if testmodel.sw_use_ribtol:
         adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='dRib_dthetav',y_variable='adRib_dthetav',HTy_variables=testHTy,printmode=printmodeadj)
         adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='dRib_dzsl',y_variable='adRib_dzsl',HTy_variables=testHTy,printmode=printmodeadj)
         adjoint_modelling.adjoint_test_surf_lay(testmodel,x_variables=testx,Hx_variable='dRib_dthetavsurf',y_variable='adRib_dthetavsurf',HTy_variables=testHTy,printmode=printmodeadj)
@@ -538,7 +538,7 @@ if gradtest_surf_lay:
     adjoint_modelling.grad_test_run_surface_layer(testmodel,testlist_rsl,'esurf',testdstate_rsl,'desurf',printmode)
     adjoint_modelling.grad_test_run_surface_layer(testmodel,testlist_rsl,'thetavsurf',testdstate_rsl,'dthetavsurf',printmode)
     adjoint_modelling.grad_test_run_surface_layer(testmodel,testlist_rsl,'zsl',testdstate_rsl,'dzsl',printmode)
-    if testinput.sw_use_ribtol:
+    if testmodel.sw_use_ribtol:
         adjoint_modelling.grad_test_run_surface_layer(testmodel,testlist_rsl,'Rib',testdstate_rsl,'dRib',printmode) 
         adjoint_modelling.grad_test_run_surface_layer(testmodel,testlist_rsl,'L',testdstate_rsl,'dL',printmode) 
     else:
@@ -850,7 +850,7 @@ if adjointtest_ags:
     adjoint_modelling.adjoint_test_ags(testmodel,x_variables=['dE0','dTsoil','dwg','dR10'],Hx_variable='dwCO2R',y_variable='adwCO2R',HTy_variables=['adE0','adTsoil','adwg','adR10'],printmode=printmodeadj)
     adjoint_modelling.adjoint_test_ags(testmodel,x_variables=testx,Hx_variable='dwCO2',y_variable='adwCO2',HTy_variables=testHTy,printmode=printmodeadj)
     adjoint_modelling.adjoint_test_ags(testmodel,x_variables=testx,Hx_variable='dwCOSP',y_variable='adwCOSP',HTy_variables=testHTy,printmode=printmodeadj)
-    if testinput.soilCOSmodeltype == 'Sun_Ogee':
+    if testmodel.soilCOSmodeltype == 'Sun_Ogee':
         adjoint_modelling.adjoint_test_ags(testmodel,x_variables=testx,Hx_variable='dwCOSS_molm2s',y_variable='adwCOSS_molm2s',HTy_variables=testHTy,printmode=printmodeadj)
     adjoint_modelling.adjoint_test_ags(testmodel,x_variables=testx,Hx_variable='dwCOSS',y_variable='adwCOSS',HTy_variables=testHTy,printmode=printmodeadj)
     adjoint_modelling.adjoint_test_ags(testmodel,x_variables=testx,Hx_variable='dwCOS',y_variable='adwCOS',HTy_variables=testHTy,printmode=printmodeadj)
@@ -1035,7 +1035,7 @@ if gradtest_ags:
     adjoint_modelling.grad_test_ags(testmodel,['E0','wg','Tsoil','R10'],'wCO2R',{'dE0':1.0,'dwg':1.0,'dTsoil':1.0,'dR10':1.0},'dwCO2R',printmode)
     adjoint_modelling.grad_test_ags(testmodel,testlist_ags,'wCO2',testdstate_ags,'dwCO2',printmode)
     adjoint_modelling.grad_test_ags(testmodel,testlist_ags,'wCOSP',testdstate_ags,'dwCOSP',printmode)
-    if testinput.soilCOSmodeltype == 'Sun_Ogee':
+    if testmodel.soilCOSmodeltype == 'Sun_Ogee':
         adjoint_modelling.grad_test_ags(testmodel,testlist_ags,'wCOSS_molm2s',testdstate_ags,'dwCOSS_molm2s',printmode)
     adjoint_modelling.grad_test_ags(testmodel,testlist_ags,'wCOSS',testdstate_ags,'dwCOSS',printmode)
     adjoint_modelling.grad_test_ags(testmodel,testlist_ags,'wCOS',testdstate_ags,'dwCOS',printmode)
@@ -1946,7 +1946,7 @@ if adjointtest:
     testHTy = list(sorted(set(testHTy + cp.deepcopy(testHTy_ils))))
     testx = list(sorted(set(testx + cp.deepcopy(testx_iml)))) #set to remove duplicates
     testHTy = list(sorted(set(testHTy + cp.deepcopy(testHTy_iml))))
-    if testinput.soilCOSmodeltype != None:
+    if testmodel.soilCOSmodeltype != None:
         testx = list(sorted(set(testx + cp.deepcopy(testx_rsCm)))) #set to remove duplicates
         testHTy = list(sorted(set(testHTy + cp.deepcopy(testHTy_rsCm))))
     testx = list(sorted(set(testx + cp.deepcopy(testx_sto)))) #set to remove duplicates
@@ -2485,7 +2485,7 @@ if adjointtest:
             adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dv',y_variable='adv',HTy_variables=testHTy,Hx_dict='Output_tl_iml',printmode=printmodeadj)
             adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='ddeltav',y_variable='addeltav',HTy_variables=testHTy,Hx_dict='Output_tl_iml',printmode=printmodeadj)
     #run soil COS mod
-    if testinput.soilCOSmodeltype   == 'Sun_Ogee':
+    if testmodel.soilCOSmodeltype   == 'Sun_Ogee':
         adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dC_air',y_variable='adC_air',HTy_variables=testHTy,Hx_dict='Output_tl_rsCm',printmode=printmodeadj)
         adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dT_nodes',y_variable='adT_nodes',HTy_variables=testHTy,Hx_dict='Output_tl_rsCm',printmode=printmodeadj)
         adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='ds_moist',y_variable='ads_moist',HTy_variables=testHTy,Hx_dict='Output_tl_rsCm',printmode=printmodeadj)
@@ -2616,8 +2616,9 @@ if gradtest:
     testdstate.update(testdstate_rr) #automaticaly no duplicates in dictionary
     testlist = list(set(testlist + cp.deepcopy(testlist_rsl))) #set to remove duplicates
     testdstate.update(testdstate_rsl)
-    testlist = list(set(testlist + cp.deepcopy(testlist_js))) #set to remove duplicates
-    testdstate.update(testdstate_js)
+    if testinput.ls_type == 'js':
+        testlist = list(set(testlist + cp.deepcopy(testlist_js))) #set to remove duplicates
+        testdstate.update(testdstate_js)
     testlist = list(set(testlist + cp.deepcopy(testlist_ags))) #set to remove duplicates
     testdstate.update(testdstate_ags)
     testlist = list(set(testlist + cp.deepcopy(testlist_rls))) #set to remove duplicates
@@ -2628,8 +2629,9 @@ if gradtest:
     testdstate.update(testdstate_ils)
     testlist = list(set(testlist + cp.deepcopy(testlist_iml))) #set to remove duplicates
     testdstate.update(testdstate_iml)
-    testlist = list(set(testlist + cp.deepcopy(testlist_rsCm))) #set to remove duplicates
-    testdstate.update(testdstate_rsCm)
+    if testmodel.soilCOSmodeltype   == 'Sun_Ogee':
+        testlist = list(set(testlist + cp.deepcopy(testlist_rsCm))) #set to remove duplicates
+        testdstate.update(testdstate_rsCm)
     testlist = list(set(testlist + cp.deepcopy(testlist_sto))) #set to remove duplicates
     testdstate.update(testdstate_sto)
     testlist = list(set(testlist + cp.deepcopy(testlist_rc))) #set to remove duplicates
@@ -2672,7 +2674,7 @@ if gradtest:
         adjoint_modelling.grad_test(testinput,testlist,'qsurf',testdstate,'dqsurf','rsl',printmode)
         adjoint_modelling.grad_test(testinput,testlist,'esurf',testdstate,'desurf','rsl',printmode)
         adjoint_modelling.grad_test(testinput,testlist,'thetavsurf',testdstate,'dthetavsurf','rsl',printmode)
-        if testinput.sw_use_ribtol:
+        if testmodel.sw_use_ribtol:
             adjoint_modelling.grad_test(testinput,testlist,'Rib',testdstate,'dRib','rsl',printmode)
         adjoint_modelling.grad_test(testinput,testlist,'L',testdstate,'dL','rsl',printmode)
         adjoint_modelling.grad_test(testinput,testlist,'Cm',testdstate,'dCm','rsl',printmode)
@@ -2823,7 +2825,7 @@ if gradtest:
             adjoint_modelling.grad_test(testinput,testlist,'deltav',testdstate,'ddeltav','iml',printmode)
         adjoint_modelling.grad_test(testinput,testlist,'dz_h',testdstate,'ddz_h','iml',printmode)
 
-    if testinput.soilCOSmodeltype   == 'Sun_Ogee':
+    if testmodel.soilCOSmodeltype   == 'Sun_Ogee':
         #run soil COS mod
         adjoint_modelling.grad_test(testinput,testlist,'C_air',testdstate,'dC_air','rsCm',printmode)
         adjoint_modelling.grad_test(testinput,testlist,'T_nodes',testdstate,'dT_nodes','rsCm',printmode)

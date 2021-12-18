@@ -77,6 +77,8 @@ if write_to_f:
     wr_obj_to_pickle_files = True #write certain variables to files for possible postprocessing later
     figformat = 'eps' #the format in which you want figure output, e.g. 'png'
 plot_errbars = False #plot error bars in the figures
+if plot_errbars:
+    plot_errbars_at_sca_obs = True #The y-location where to plot the error bars in the observation fit figures, if True the error bars will be placed around the scaled observations (if obs scales are used).
 plotfontsize = 12 #plot font size, except for legend 
 legendsize = plotfontsize - 1
 ######################################
@@ -227,20 +229,20 @@ priormodinput.sw_advfp = True #prescribed advection to take place over full prof
 
 #soil COS model
 priormodinput.soilCOSmodeltype   = None #can be set to None or 'Sun_Ogee'
-priormodinput.uptakemodel = 'Ogee'
-priormodinput.sw_soilmoisture    = 'simple'
-priormodinput.sw_soiltemp    = 'simple'
-priormodinput.kH_type         = 'Sun'
-priormodinput.Diffus_type     = 'Sun'
-priormodinput.b_sCOSm = 5.3
-priormodinput.fCA = 3e4
-priormodinput.nr_nodes     = 26
-priormodinput.s_moist_opt  = 0.20
-priormodinput.Vspmax        = 1.e-10
-priormodinput.Q10             = 3.
-priormodinput.layer1_2division = 0.3
-priormodinput.write_soilCOS_to_f = False
-priormodinput.nr_nodes_for_filewr = 5
+#priormodinput.uptakemodel = 'Ogee' #if soilCOSmodeltype is set to None, the other soil COS model settings in this section are irrelevant 
+#priormodinput.sw_soilmoisture    = 'simple'
+#priormodinput.sw_soiltemp    = 'simple'
+#priormodinput.kH_type         = 'Sun'
+#priormodinput.Diffus_type     = 'Sun'
+#priormodinput.b_sCOSm = 5.3
+#priormodinput.fCA = 3e4
+#priormodinput.nr_nodes     = 26
+#priormodinput.s_moist_opt  = 0.20
+#priormodinput.Vspmax        = 1.e-10
+#priormodinput.Q10             = 3.
+#priormodinput.layer1_2division = 0.3
+#priormodinput.write_soilCOS_to_f = False
+#priormodinput.nr_nodes_for_filewr = 5
 
 ###############################################
 ###### end user input: prior model param ######
@@ -250,16 +252,6 @@ priormodinput.nr_nodes_for_filewr = 5
 priormodel = fwdm.model(priormodinput)
 priormodel.run(checkpoint=True,updatevals_surf_lay=True,delete_at_end=False,save_vars_indict=False) #delete_at_end should be false, to keep tsteps of model
 priorinput = cp.deepcopy(priormodinput) 
-
-
-
-#run testmodel to initialise properly
-#What works well is the following:
-#obsvarlist=['h','q']
-#state=['theta','h','deltatheta']
-#truthinput.deltatheta = 1
-#truthinput.theta = 288
-#truthinput.h = 400
 
 #################################################################################
 ###### user input: state, list of used pseudo-obs and non-model priorinput ######
@@ -320,12 +312,12 @@ if use_backgr_in_cost or use_ensemble:
     priorvar['FracH'] = 0.3**2
     #below we can specify covariances as well, for the background information matrix. If covariances are not specified, they are taken as 0
     #e.g. priorcovar['gammatheta,gammaq'] = 5.
-#    from scipy.stats import truncnorm
-#    priorvar_norm['alpha'] = 0.2**2
-#    priorvar['alpha'] = truncnorm.stats(optim.boundedvars['alpha'][0], optim.boundedvars['alpha'][1], loc=priorinput.alpha, scale=np.sqrt(priorvar_norm['alpha']), moments=’v’)
 ###########################################################
 ###### end user input: prior variance/covar (if used) #####
 ###########################################################  
+#    from scipy.stats import truncnorm
+#    priorvar_norm['alpha'] = 0.2**2
+#    priorvar['alpha'] = truncnorm.stats(optim.boundedvars['alpha'][0], optim.boundedvars['alpha'][1], loc=priorinput.alpha, scale=np.sqrt(priorvar_norm['alpha']), moments=’v’)    
     for thing in priorvar:
         if thing not in priorinput.__dict__:
             raise Exception('Parameter \''+thing +'\' specified in priorvar, but does not exist in priorinput')
@@ -381,17 +373,17 @@ if imposeparambounds or paramboundspenalty:
 #    boundedvars['h'] = [50,3200]
 #    boundedvars['wtheta'] = [0.05,0.6]
 #    boundedvars['gammatheta'] = [0.002,0.018]
-##    boundedvars['gammatheta2'] = [0.002,0.018]
+#    boundedvars['gammatheta2'] = [0.002,0.018]
 #    boundedvars['gammaq'] = [-9e-6,9e-6]
-#    boundedvars['z0m'] = [0.0001,5]
-#    boundedvars['z0h'] = [0.0001,5]
+    boundedvars['z0m'] = [0.000001,None]
+    boundedvars['z0h'] = [0.000001,None]
 #    boundedvars['q'] = [0.002,0.020]
 #    boundedvars['divU'] = [0,1e-4]
 #    boundedvars['fCA'] = [0.1,1e8]
 #    boundedvars['CO2'] = [100,1000]
 #    boundedvars['ustar'] = [0.01,50]
 #    boundedvars['wq'] = [0,0.1] #negative flux seems problematic because L going to very small values
-##    boundedvars['FracH'] = [0,1]
+#    boundedvars['FracH'] = [0,1]
 #############################################################
 ###### end user input: parameter bounds  ####################
 #############################################################  
@@ -410,18 +402,18 @@ truthinput = cp.deepcopy(priorinput)
 ###### user input: set the 'truth' ############
 ###############################################
 #Items not specified here are taken over from priorinput
-#truthinput.alfa_plant = 1.
 truthinput.alpha = 0.20
-#truthinput.deltatheta = 1
-#truthinput.theta = 288
 truthinput.h = 350
 truthinput.sca_sto = 1.0
 truthinput.gammatheta = 0.003
 truthinput.wg = 0.27
-#truthinput.advtheta = 0.0002
-#truthinput.advq = 0.0000002
-#truthinput.gammatheta = 0.006
-#truthinput.wg = 0.17
+#truthinput.CO2 = 422
+#truthinput.advCO2 = 0.0
+#truthinput.gammaq = -1e-6
+#truthinput.z0m = 0.02
+#truthinput.z0h = 0.02
+#truthinput.deltatheta = 1
+#truthinput.theta = 288
 if 'FracH' in state:
     truthinput.FracH = 0.35
 ###################################################
@@ -453,7 +445,7 @@ for item in obsvarlist:
             obs_weights[item] = [1.0 for j in range(len(optim.__dict__['obs_'+item]))]
     if item == 'q':
         measurement_error[item] = [0.0004 for number in range(len(obs_times[item]))]
-        disp_units[item] = 'g/kg'
+        disp_units[item] = 'g kg$^{-1}$'
     if item == 'Tmh':
         measurement_error[item] = [0.65 for number in range(len(obs_times[item]))]
     if item == 'Ts':
@@ -1782,8 +1774,12 @@ for i in range(len(obsvarlist)):
         unsca = 1000
     fig = plt.figure()
     if plot_errbars:
-        plt.errorbar(obs_times[obsvarlist[i]]/3600,unsca*orig_obs[obsvarlist[i]],yerr=unsca*optim.__dict__['error_obs_'+obsvarlist[i]],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
-        plt.errorbar(obs_times[obsvarlist[i]]/3600,unsca*orig_obs[obsvarlist[i]],yerr=unsca*measurement_error[obsvarlist[i]],ecolor='black',fmt='None',label = '$\sigma_{I}$')
+        if ('obs_sca_cf_'+obsvarlist[i] in state) and plot_errbars_at_sca_obs:
+            y_loc = optimalinput.__dict__['obs_sca_cf_'+obsvarlist[i]]*unsca*optim.__dict__['obs_'+obsvarlist[i]]
+        else:
+            y_loc = unsca*orig_obs[obsvarlist[i]]
+        plt.errorbar(obs_times[obsvarlist[i]]/3600,y_loc,yerr=unsca*optim.__dict__['error_obs_'+obsvarlist[i]],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
+        plt.errorbar(obs_times[obsvarlist[i]]/3600,y_loc,yerr=unsca*measurement_error[obsvarlist[i]],ecolor='black',fmt='None',label = '$\sigma_{I}$')
     plt.plot(priormodel.out.t,unsca*priormodel.out.__dict__[obsvarlist[i]], ls='dashed', marker='None',color='gold',linewidth = 2.0,label = 'prior')
     plt.plot(priormodel.out.t,unsca*optimalmodel.out.__dict__[obsvarlist[i]], linestyle='-', marker='None',color='red',linewidth = 2.0,label = 'post')
     if use_ensemble:

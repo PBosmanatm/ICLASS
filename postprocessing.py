@@ -43,7 +43,7 @@ plot_co2profiles = False #plot co2 mixing ratios at multiple heights in one plot
 plot_manual_fitpanels = False #panels of figures, showing obs and model
 plot_auto_fitpanels = True  #a panel of figures, showing obs and model. More automated, number of rows and nr of columns are specified by two variables 
 plot_enbal_panel = True #plot a figure panel with observations corrected for the energy balnce error using FracH 
-plotfontsize = 12 #plot font size, except for legend
+plotfontsize = 12 #plot font size (for some figures), except for legend
 legendsize = plotfontsize - 1 #legend size of (some) plots
 figformat = 'eps'#the format in which you want figure output, e.g. 'png'
 load_stored_objects = True #load objects stored using the Pickle module
@@ -54,6 +54,8 @@ if load_second_optim:
     if load_stored_objects:
         storefolder_objects2 = '../5param2obs/pickle_objects'
     plot_two_optim_man_fitpanel =True #figure panel showing obs and model. Involving two optimisations (not just a second ensemble member)
+if plot_obsfit or plot_auto_fitpanels:
+    plot_errbars_at_sca_obs = True #The y-location where to plot the error bars in the observation fit figures, if True the error bars will be placed around the scaled observations (if obs scales are used).
 ##############################
 ####### end settings #########
 ##############################
@@ -435,7 +437,7 @@ if (use_ensemble and SuccesColumn):  #if SuccesColumn, it means est_post_pdf_cov
             size=20, fontweight='bold',ha='left', va='top')
             plt.subplots_adjust(left=0.05, right=0.96, top=0.93, bottom=0.10,wspace=0.1)
             plt.savefig('pp_pdfpanel_posterior.'+figformat, format=figformat)
-            plt.rc('font', size=plotfontsize) #plot font size
+            plt.rc('font', size=plotfontsize) #reset plot font size
         if plot_2d_pdfs:
             nbins = [nr_bins2d,nr_bins2d]
             for i in range(len(state)):
@@ -491,7 +493,7 @@ if (use_ensemble and SuccesColumn):  #if SuccesColumn, it means est_post_pdf_cov
             #Now reset the plot params:
             plt.rcParams.update(plt.rcParamsDefault)
             style.use('classic')
-            plt.rc('font', size=plotfontsize) #plot font size
+            plt.rc('font', size=plotfontsize) #reset plot font size
                        
             if TakeSubSample:
                 succes_state_ens_for_cor = np.zeros((len(state),len(succes_state_ens[0][Start::SelectStep])),dtype=float)
@@ -536,7 +538,7 @@ if (use_ensemble and SuccesColumn):  #if SuccesColumn, it means est_post_pdf_cov
                 #Now reset the plot params:
                 plt.rcParams.update(plt.rcParamsDefault)
                 style.use('classic')
-                plt.rc('font', size=plotfontsize) #plot font size
+                plt.rc('font', size=plotfontsize) #reset plot font size
 
 if plot_obsfit:
     for i in range(len(obsvarlist)):
@@ -544,8 +546,12 @@ if plot_obsfit:
         if (disp_units[obsvarlist[i]] == 'g/kg' or disp_units[obsvarlist[i]] == 'g kg$^{-1}$') and (obsvarlist[i] == 'q' or obsvarlist[i].startswith('qmh')): #q can be plotted differently for clarity
             unsca = 1000
         fig = plt.figure()
-        plt.errorbar(obs_times[obsvarlist[i]]/3600,unsca*optim.__dict__['obs_'+obsvarlist[i]],yerr=unsca*optim.__dict__['error_obs_'+obsvarlist[i]],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
-        plt.errorbar(obs_times[obsvarlist[i]]/3600,unsca*optim.__dict__['obs_'+obsvarlist[i]],yerr=unsca*measurement_error[obsvarlist[i]],ecolor='black',fmt='None',label = '$\sigma_{I}$')
+        if ('obs_sca_cf_'+obsvarlist[i] in state) and plot_errbars_at_sca_obs:
+            y_loc = optimalinput.__dict__['obs_sca_cf_'+obsvarlist[i]]*unsca*optim.__dict__['obs_'+obsvarlist[i]]
+        else:
+            y_loc = unsca*optim.__dict__['obs_'+obsvarlist[i]]
+        plt.errorbar(obs_times[obsvarlist[i]]/3600,y_loc,yerr=unsca*optim.__dict__['error_obs_'+obsvarlist[i]],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
+        plt.errorbar(obs_times[obsvarlist[i]]/3600,y_loc,yerr=unsca*measurement_error[obsvarlist[i]],ecolor='black',fmt='None',label = '$\sigma_{I}$')
         plt.plot(priormodel.out.t,unsca*priormodel.out.__dict__[obsvarlist[i]], ls='dashed', marker='None',color='gold',linewidth = 2.0,label = 'prior')
         plt.plot(priormodel.out.t,unsca*optimalmodel.out.__dict__[obsvarlist[i]], linestyle='-', marker='None',color='red',linewidth = 2.0,label = 'post')
         if use_ensemble:
@@ -633,7 +639,7 @@ if plot_co2profiles:
         plt.plot(optim.obs_CO2mh3[ti],profileheights[1], linestyle=' ', marker=marker,color=color)
         plt.plot(optim.obs_CO2mh4[ti],profileheights[0], linestyle=' ', marker=marker,color=color)
         i += 1
-    plt.legend(fontsize=8,loc=0)  
+    plt.legend(fontsize=legendsize,loc=0)  #plt.legend(fontsize=8,loc=0)
     plt.subplots_adjust(left=0.17, right=0.92, top=0.96, bottom=0.15,wspace=0.1)
     plt.savefig('pp_fig_'+'CO2'+'_profile_prior.'+figformat, format=figformat)
     
@@ -658,7 +664,7 @@ if plot_co2profiles:
         plt.plot(optim.obs_CO2mh3[ti],profileheights[1], linestyle=' ', marker=marker,color=color)
         plt.plot(optim.obs_CO2mh4[ti],profileheights[0], linestyle=' ', marker=marker,color=color)
         i += 1
-    plt.legend(fontsize=8,loc=0)  
+    plt.legend(fontsize=legendsize,loc=0)  
     plt.subplots_adjust(left=0.17, right=0.92, top=0.96, bottom=0.15,wspace=0.1)
     plt.savefig('pp_fig_'+'CO2'+'_profile.'+figformat, format=figformat)
 
@@ -699,7 +705,7 @@ if plot_manual_fitpanels:
                 xycoords=('axes fraction', 'axes fraction'),
                 textcoords='offset points',
                 size=20, fontweight='bold',ha='left', va='top')
-    plt.savefig('pp_fig_fitpanelsimple.eps', format='eps')
+    plt.savefig('pp_fig_fitpanel1.'+figformat, format=figformat)
     
     plt.rc('font', size=17)       
     plotvars = ['h','qmh','wCO2','Tmh']  #first the var for 0,0 than 0,1 than 1,0 than 1,1
@@ -767,7 +773,7 @@ if plot_manual_fitpanels:
                 xycoords=('axes fraction', 'axes fraction'),
                 textcoords='offset points',
                 size=16, fontweight='bold',ha='left', va='top')
-    plt.savefig('pp_fig_fitpanel.eps', format='eps')
+    plt.savefig('pp_fig_fitpanel2.'+figformat, format=figformat)
     plt.rc('font', size=plotfontsize) #reset plot font size
     
 if plot_enbal_panel:
@@ -809,7 +815,7 @@ if plot_enbal_panel:
                 xycoords=('axes fraction', 'axes fraction'),
                 textcoords='offset points',
                 size=20, fontweight='bold',ha='left', va='top')
-    plt.savefig('pp_fig_enbalpanel.eps', format='eps')
+    plt.savefig('pp_fig_enbalpanel.'+figformat, format=figformat)
     plt.rc('font', size=plotfontsize) #reset plot font size
 
 if plot_auto_fitpanels:    
@@ -826,8 +832,12 @@ if plot_auto_fitpanels:
     k = 0
     for i in range(nr_rows):
         for j in range(nr_cols):
-            ax[i,j].errorbar(obs_times[plotvars[k]]/3600,unsca[k]*optim.__dict__['obs_'+plotvars[k]],yerr=unsca[k]*optim.__dict__['error_obs_'+plotvars[k]],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
-            ax[i,j].errorbar(obs_times[plotvars[k]]/3600,unsca[k]*optim.__dict__['obs_'+plotvars[k]],yerr=unsca[k]*measurement_error[plotvars[k]],ecolor='black',fmt='None',label = '$\sigma_{I}$')
+            if ('obs_sca_cf_'+plotvars[k] in state) and plot_errbars_at_sca_obs:
+                y_loc = optimalinput.__dict__['obs_sca_cf_'+plotvars[k]]*unsca[k]*optim.__dict__['obs_'+plotvars[k]]
+            else:
+                y_loc = unsca[k]*optim.__dict__['obs_'+plotvars[k]]
+            ax[i,j].errorbar(obs_times[plotvars[k]]/3600,y_loc,yerr=unsca[k]*optim.__dict__['error_obs_'+plotvars[k]],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
+            ax[i,j].errorbar(obs_times[plotvars[k]]/3600,y_loc,yerr=unsca[k]*measurement_error[plotvars[k]],ecolor='black',fmt='None',label = '$\sigma_{I}$')
             ax[i,j].plot(priormodel.out.t,unsca[k]*priormodel.out.__dict__[plotvars[k]], ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
             ax[i,j].plot(optimalmodel.out.t,unsca[k]*optimalmodel.out.__dict__[plotvars[k]], linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
             ax[i,j].plot(obs_times[plotvars[k]]/3600,unsca[k]*optim.__dict__['obs_'+plotvars[k]], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs')
@@ -842,10 +852,9 @@ if plot_auto_fitpanels:
             size=16, fontweight='bold', ha='left', va='top')
             k += 1
     ax[1,1].legend(loc=0, frameon=False,prop={'size':19})
-    plt.savefig('pp_fig_fitpanel_auto.eps', format='eps')
+    plt.savefig('pp_fig_fitpanel_auto1.'+figformat, format=figformat)
     
     #And another one
-    plt.rc('font', size=17)
     plotvars = ['Tmh2','Tmh7','CO2mh','CO2mh2']  #first the var for 0,0 than 0,1 than 1,0 than 1,1
     annotatelist = ['(a)','(b)','(c)','(d)']
     unsca = np.ones(len(plotvars)) #a scale for plotting the obs with different units
@@ -857,8 +866,12 @@ if plot_auto_fitpanels:
     k = 0
     for i in range(nr_rows):
         for j in range(nr_cols):
-            ax[i,j].errorbar(obs_times[plotvars[k]]/3600,unsca[k]*optim.__dict__['obs_'+plotvars[k]],yerr=unsca[k]*optim.__dict__['error_obs_'+plotvars[k]],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
-            ax[i,j].errorbar(obs_times[plotvars[k]]/3600,unsca[k]*optim.__dict__['obs_'+plotvars[k]],yerr=unsca[k]*measurement_error[plotvars[k]],ecolor='black',fmt='None',label = '$\sigma_{I}$')
+            if ('obs_sca_cf_'+plotvars[k] in state) and plot_errbars_at_sca_obs:
+                y_loc = optimalinput.__dict__['obs_sca_cf_'+plotvars[k]]*unsca[k]*optim.__dict__['obs_'+plotvars[k]]
+            else:
+                y_loc = unsca[k]*optim.__dict__['obs_'+plotvars[k]]
+            ax[i,j].errorbar(obs_times[plotvars[k]]/3600,y_loc,yerr=unsca[k]*optim.__dict__['error_obs_'+plotvars[k]],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
+            ax[i,j].errorbar(obs_times[plotvars[k]]/3600,y_loc,yerr=unsca[k]*measurement_error[plotvars[k]],ecolor='black',fmt='None',label = '$\sigma_{I}$')
             ax[i,j].plot(priormodel.out.t,unsca[k]*priormodel.out.__dict__[plotvars[k]], ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
             ax[i,j].plot(optimalmodel.out.t,unsca[k]*optimalmodel.out.__dict__[plotvars[k]], linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
             ax[i,j].plot(obs_times[plotvars[k]]/3600,unsca[k]*optim.__dict__['obs_'+plotvars[k]], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs')
@@ -873,32 +886,34 @@ if plot_auto_fitpanels:
             size=16, fontweight='bold', ha='left', va='top')
             k += 1
     ax[1,1].legend(loc=0, frameon=False,prop={'size':19})
-    plt.savefig('pp_fig_fitpanel_auto2.eps', format='eps')
+    plt.savefig('pp_fig_fitpanel_auto2.'+figformat, format=figformat)
+    plt.rc('font', size=plotfontsize) #reset plot font size
     
     
 if load_second_optim:
     if plot_two_optim_man_fitpanel:
         plt.rc('font', size=17)
         fig, ax = plt.subplots(2,2,figsize=(16,12))
+        unsca_q = 1000 #plot in g/kg
         ax[0,0].plot(priormodel.out.t,priormodel.out.h, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
         ax[0,0].plot(optimalmodel.out.t,optimalmodel.out.h, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
         ax[0,0].plot(obs_times['h']/3600,optim.__dict__['obs_'+'h'], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs')
         ax[0,0].set_ylabel('boundary layer height (m)')
         ax[0,0].set_xlabel('time (h)')
-        ax[0,1].plot(priormodel.out.t,1000*priormodel.out.q, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
-        ax[0,1].plot(optimalmodel.out.t,1000*optimalmodel.out.q, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
-        ax[0,1].plot(obs_times['q']/3600,1000*optim.__dict__['obs_'+'q'], linestyle=' ', marker='*',color = 'black',ms=10, label = 'obs')
-        ax[0,1].set_ylabel('specific humidity (g/kg)')
+        ax[0,1].plot(priormodel.out.t,unsca_q*priormodel.out.q, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+        ax[0,1].plot(optimalmodel.out.t,unsca_q*optimalmodel.out.q, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+        ax[0,1].plot(obs_times['q']/3600,unsca_q*optim.__dict__['obs_'+'q'], linestyle=' ', marker='*',color = 'black',ms=10, label = 'obs')
+        ax[0,1].set_ylabel('specific humidity (g kg$^{-1}$)')
         ax[0,1].set_xlabel('time (h)')
         ax[1,0].plot(priormodel2.out.t,priormodel2.out.h, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
         ax[1,0].plot(optimalmodel2.out.t,optimalmodel2.out.h, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
         ax[1,0].plot(obs_times2['h']/3600,optim2.__dict__['obs_'+'h'], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs')
         ax[1,0].set_ylabel('boundary layer height (m)')
         ax[1,0].set_xlabel('time (h)')
-        ax[1,1].plot(priormodel2.out.t,1000*priormodel2.out.q, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
-        ax[1,1].plot(optimalmodel2.out.t,1000*optimalmodel2.out.q, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
-        ax[1,1].plot(obs_times2['q']/3600,1000*optim2.__dict__['obs_'+'q'], linestyle=' ', marker='*',color = 'black',ms=10, label = 'obs')
-        ax[1,1].set_ylabel('specific humidity (g/kg)')
+        ax[1,1].plot(priormodel2.out.t,unsca_q*priormodel2.out.q, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+        ax[1,1].plot(optimalmodel2.out.t,unsca_q*optimalmodel2.out.q, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+        ax[1,1].plot(obs_times2['q']/3600,unsca_q*optim2.__dict__['obs_'+'q'], linestyle=' ', marker='*',color = 'black',ms=10, label = 'obs')
+        ax[1,1].set_ylabel('specific humidity (g kg$^{-1}$)')
         ax[1,1].set_xlabel('time (h)')
         ax[1,1].legend(loc=0, frameon=False,prop={'size':21})
         ax[0,0].annotate('(a)',
@@ -921,5 +936,6 @@ if load_second_optim:
                 xycoords=('axes fraction', 'axes fraction'),
                 textcoords='offset points',
                 size=16, fontweight='bold',ha='left', va='top')
-        plt.savefig('pp_fig_fitpaneltwo_optims.eps', format='eps')
+        plt.savefig('pp_fig_fitpaneltwo_optims.'+figformat, format=figformat)
+        plt.rc('font', size=plotfontsize) #reset plot font size
                     

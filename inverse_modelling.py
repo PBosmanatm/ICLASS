@@ -546,7 +546,7 @@ class inverse_modelling:
         #statistics
         self.dtheta,self.dq,self.dwtheta,self.dwq,self.ddeltatheta,self.ddeltaq,self.dh = 0,0,0,0,0,0,0
         #run_soil_COS_mod
-        if self.model.input.soilCOSmodeltype == 'Sun_Ogee':
+        if self.model.soilCOSmodeltype == 'Sun_Ogee':
             self.dmol_rat_ocs_atm,self.dairtemp,self.dfCA,self.dVspmax = 0,0,0,0
             self.dC_soilair_current = np.zeros(self.model.input.nr_nodes)
             self.dQ10,self.db_sCOSm = 0,0
@@ -625,7 +625,7 @@ class inverse_modelling:
             for i in range(model.nr_of_surf_lay_its): 
                 self.tl_run_surface_layer(model,checkpoint_init[i])
         if(model.sw_ls):
-            if self.model.input.soilCOSmodeltype == 'Sun_Ogee':
+            if self.model.soilCOSmodeltype == 'Sun_Ogee':
                 #the tangent linear belonging to the initialisation of the soil_COS_mod object
                 #note that we can make the call here already, since tl_run_land_surface does not calculate the variables we need as input
                 self.tl_init_soil_COS_mod(model,checkpoint_init[0])
@@ -1841,7 +1841,7 @@ class inverse_modelling:
             dwCOSP  = COSsurf * (1 / gctCOS + ra)**(-2) * (-1 * gctCOS**(-2) * dgctCOS + self.dra) + -1 / (1 / gctCOS + ra) * self.dCOSsurf
         else:
             raise Exception('wrong ags_C_mode switch')
-        if(model.input.soilCOSmodeltype == 'Sun_Ogee'):
+        if(model.soilCOSmodeltype == 'Sun_Ogee'):
             self.dmol_rat_ocs_atm = self.dCOSsurf #this is because COSsurf is given as argument to the function, while mol_rat_ocs_atm is used in the soil COS model
             self.dairtemp = self.dTsurf
             #self.dwsat = self.dwsat #not needed, but to show it goes for all the arguments, but e.g. this has an identical name
@@ -3260,42 +3260,43 @@ class inverse_modelling:
         self.adp_lcl = 0
         self.adlcl_new = 0
         
-        #run_soil_COS_mod       
-        self.adC_soilair_next = np.zeros(self.model.input.nr_nodes)
-        self.adC_soilair_current = np.zeros(self.model.input.nr_nodes)
-        self.adOCS_fluxes = np.zeros(self.model.input.nr_nodes)
-        self.adCOS_netuptake_soilsun = 0
-        self.adconduct = np.zeros(self.model.input.nr_nodes)
-        self.adC_soilair = np.zeros(self.model.input.nr_nodes)
-        self.adinvmatreq12 = np.zeros((self.model.input.nr_nodes,self.model.input.nr_nodes))
-        self.admatr_3_eq12 = np.zeros(self.model.input.nr_nodes)
-        self.admatr_2_eq12 = np.zeros(self.model.input.nr_nodes)
-        self.adsource = np.zeros(self.model.input.nr_nodes)
-        self.adA_matr = np.zeros((self.model.input.nr_nodes,self.model.input.nr_nodes))
-        self.adB_matr = np.zeros((self.model.input.nr_nodes,self.model.input.nr_nodes))
-        self.adeta = np.zeros(self.model.input.nr_nodes)
-        self.adkH = np.zeros(self.model.input.nr_nodes)
-        self.ads_moist = np.zeros(self.model.input.nr_nodes)
-        self.ads_uptake = np.zeros(self.model.input.nr_nodes)
-        self.ads_prod = np.zeros(self.model.input.nr_nodes)
-        self.adD_a_0 = 0
-        self.addiffus = np.zeros(self.model.input.nr_nodes)
-        self.addiffus_nodes = np.zeros(self.model.input.nr_nodes)
-        self.adD_a = 0
-        self.addiffus_nodes_dwsat = np.zeros(self.model.input.nr_nodes)
-        self.addiffus_nodes_ds_moist = np.zeros(self.model.input.nr_nodes)
-        self.addiffus_nodes_db_sCOSm = np.zeros(self.model.input.nr_nodes)
-        self.addiffus_nodes_dT_nodes = np.zeros(self.model.input.nr_nodes)
-        self.adT_nodes = np.zeros(self.model.input.nr_nodes)
-        self.adb_sCOSm = 0
-        self.adVspmax = 0
-        self.adQ10 = 0
-        self.adktot = np.zeros(self.model.input.nr_nodes)
-        self.adfCA = 0
-        self.adxCA = np.zeros(self.model.input.nr_nodes)
-        self.admol_rat_ocs_atm = 0
-        self.adairtemp = 0
-        self.adC_air = 0
+        #run_soil_COS_mod   
+        if self.model.soilCOSmodeltype == 'Sun_Ogee':
+            self.adC_soilair_next = np.zeros(self.model.input.nr_nodes)
+            self.adC_soilair_current = np.zeros(self.model.input.nr_nodes)
+            self.adOCS_fluxes = np.zeros(self.model.input.nr_nodes)
+            self.adCOS_netuptake_soilsun = 0
+            self.adconduct = np.zeros(self.model.input.nr_nodes)
+            self.adC_soilair = np.zeros(self.model.input.nr_nodes)
+            self.adinvmatreq12 = np.zeros((self.model.input.nr_nodes,self.model.input.nr_nodes))
+            self.admatr_3_eq12 = np.zeros(self.model.input.nr_nodes)
+            self.admatr_2_eq12 = np.zeros(self.model.input.nr_nodes)
+            self.adsource = np.zeros(self.model.input.nr_nodes)
+            self.adA_matr = np.zeros((self.model.input.nr_nodes,self.model.input.nr_nodes))
+            self.adB_matr = np.zeros((self.model.input.nr_nodes,self.model.input.nr_nodes))
+            self.adeta = np.zeros(self.model.input.nr_nodes)
+            self.adkH = np.zeros(self.model.input.nr_nodes)
+            self.ads_moist = np.zeros(self.model.input.nr_nodes)
+            self.ads_uptake = np.zeros(self.model.input.nr_nodes)
+            self.ads_prod = np.zeros(self.model.input.nr_nodes)
+            self.adD_a_0 = 0
+            self.addiffus = np.zeros(self.model.input.nr_nodes)
+            self.addiffus_nodes = np.zeros(self.model.input.nr_nodes)
+            self.adD_a = 0
+            self.addiffus_nodes_dwsat = np.zeros(self.model.input.nr_nodes)
+            self.addiffus_nodes_ds_moist = np.zeros(self.model.input.nr_nodes)
+            self.addiffus_nodes_db_sCOSm = np.zeros(self.model.input.nr_nodes)
+            self.addiffus_nodes_dT_nodes = np.zeros(self.model.input.nr_nodes)
+            self.adT_nodes = np.zeros(self.model.input.nr_nodes)
+            self.adb_sCOSm = 0
+            self.adVspmax = 0
+            self.adQ10 = 0
+            self.adktot = np.zeros(self.model.input.nr_nodes)
+            self.adfCA = 0
+            self.adxCA = np.zeros(self.model.input.nr_nodes)
+            self.admol_rat_ocs_atm = 0
+            self.adairtemp = 0
+            self.adC_air = 0
         
         #run_cumulus
         self.adCOS2_h = 0
@@ -3523,7 +3524,7 @@ class inverse_modelling:
         if(model.sw_ls):
             #statement self.tl_run_land_surface(model,checkpoint)
             self.adj_run_land_surface(checkpoint_init[0],model)
-            if self.model.input.soilCOSmodeltype == 'Sun_Ogee':
+            if self.model.soilCOSmodeltype == 'Sun_Ogee':
                 self.adj_init_soil_COS_mod(checkpoint_init[0],model)
         if(model.sw_sl):
             for i in range(model.nr_of_surf_lay_its-1,-1,-1): #model.nr_of_surf_lay_its-1 because index model.nr_of_surf_lay_its does not exist
@@ -5428,7 +5429,7 @@ class inverse_modelling:
         self.adwCOSP += self.adwCOS
         self.adwCOSS += self.adwCOS
         self.adwCOS = 0
-        if(model.input.soilCOSmodeltype == 'Sun_Ogee'):
+        if(model.soilCOSmodeltype == 'Sun_Ogee'):
             #statement dwCOSS = dwCOSS_molm2s / model.rho * model.mair * 1.e-3 * 1.e9
             self.adwCOSS_molm2s += 1. / model.rho * model.mair * 1.e-3 * 1.e9 * self.adwCOSS
             self.adwCOSS = 0

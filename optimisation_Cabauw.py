@@ -76,6 +76,8 @@ if write_to_f:
     wr_obj_to_pickle_files = True #write certain variables to files for possible postprocessing later
     figformat = 'eps' #the format in which you want figure output, e.g. 'png'
 plot_errbars = True #plot error bars in the figures
+if plot_errbars:
+    plot_errbars_at_sca_obs = True #The y-location where to plot the error bars in the observation fit figures, if True the error bars will be placed around the scaled observations (if obs scales are used).
 plotfontsize = 12 #plot font size, except for legend
 legendsize = plotfontsize - 1
 ######################################
@@ -2516,7 +2518,6 @@ if write_to_f:
                 open('Optstatsfile.txt','a').write('{0:>25s}'.format(str(param)))
             open('Optstatsfile.txt','a').write('\n')
             i += 1
-
            
 for i in range(len(obsvarlist)): #Note that only the obs of member 0 (the real obs) are plotted here 
     unsca = 1 #a scale for plotting the obs with different units
@@ -2524,8 +2525,12 @@ for i in range(len(obsvarlist)): #Note that only the obs of member 0 (the real o
         unsca = 1000
     fig = plt.figure()
     if plot_errbars:
-        plt.errorbar(obs_times[obsvarlist[i]]/3600,unsca*optim.__dict__['obs_'+obsvarlist[i]],yerr=unsca*optim.__dict__['error_obs_'+obsvarlist[i]],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
-        plt.errorbar(obs_times[obsvarlist[i]]/3600,unsca*optim.__dict__['obs_'+obsvarlist[i]],yerr=unsca*measurement_error[obsvarlist[i]],ecolor='black',fmt='None',label = '$\sigma_{I}$')
+        if ('obs_sca_cf_'+obsvarlist[i] in state) and plot_errbars_at_sca_obs:
+            y_loc = optimalinput.__dict__['obs_sca_cf_'+obsvarlist[i]]*unsca*optim.__dict__['obs_'+obsvarlist[i]]
+        else:
+            y_loc = unsca*optim.__dict__['obs_'+obsvarlist[i]]
+        plt.errorbar(obs_times[obsvarlist[i]]/3600,y_loc,yerr=unsca*optim.__dict__['error_obs_'+obsvarlist[i]],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
+        plt.errorbar(obs_times[obsvarlist[i]]/3600,y_loc,yerr=unsca*measurement_error[obsvarlist[i]],ecolor='black',fmt='None',label = '$\sigma_{I}$')
     plt.plot(priormodel.out.t,unsca*priormodel.out.__dict__[obsvarlist[i]], ls='dashed', marker='None',color='gold',linewidth = 2.0,label = 'prior')
     plt.plot(priormodel.out.t,unsca*optimalmodel.out.__dict__[obsvarlist[i]], linestyle='-', marker='None',color='red',linewidth = 2.0,label = 'post')
     if use_ensemble:
