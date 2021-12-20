@@ -1,0 +1,39 @@
+nr of obs       number of params to optimise  post chi squared without ensemble       prior costf without ensemble        post costf without ensemble
+       80                                  2              7.359962839600286e-17                  444.5211162408123              5.887970271680228e-15
+
+ optimal state without ensemble:
+                              h                    alpha
+              349.9999973831618      0.20000000026586523
+      post costf parts of member
+         with lowest post costf:
+                              h                        q
+         2.8152079493880706e-15    3.072762322292156e-15
+    chi squared for those parts:
+          7.038019873470177e-17     7.68190580573039e-17
+     costf parts prior member 0:
+                              h                        q
+             384.72506300293173       59.796053237880514
+
+     model_variance/obs_variance
+                 for best state:
+                              h                        q
+             1.0000000011430126       1.0000000011909742
+     model_variance/obs_variance
+                      for prior:
+                              h                        q
+             0.3583493570148028      0.34114515292706504
+        Mean bias error(mod-obs)
+                 for best state:
+                              h                        q
+        -3.4183157993084023e-07  -3.3337598523766608e-12
+ Mean bias error prior(mod-obs):
+                              h                        q
+            -207.71894373712098    0.0004615660466295286
+         Root mean squared error
+                 for best state:
+                              h                        q
+          8.389290717021422e-07    3.505859279715691e-12
+         Root mean squared error
+                      for prior:
+                              h                        q
+               310.131046092991    0.0004890646306486721
