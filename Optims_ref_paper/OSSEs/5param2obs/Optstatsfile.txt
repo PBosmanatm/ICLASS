@@ -1,0 +1,39 @@
+nr of obs       number of params to optimise  post chi squared without ensemble       prior costf without ensemble        post costf without ensemble
+       80                                  5              8.568212841331022e-08                  739.5539741172663              6.854570273064817e-06
+
+ optimal state without ensemble:
+                              h                    alpha                  sca_sto                       wg               gammatheta
+              349.9704652301888      0.19974746510655378       0.9640068387311601      0.30597793330926837    0.0030016607847676373
+      post costf parts of member
+         with lowest post costf:
+                              h                        q
+         5.0236523927407845e-06   1.8309178803240314e-06
+    chi squared for those parts:
+          1.255913098185196e-07    4.577294700810079e-08
+     costf parts prior member 0:
+                              h                        q
+              679.3406250012782       60.213349115988066
+
+     model_variance/obs_variance
+                 for best state:
+                              h                        q
+             1.0000249890643549        1.000202495169742
+     model_variance/obs_variance
+                      for prior:
+                              h                        q
+            0.21742970999321234       0.2614585479098576
+        Mean bias error(mod-obs)
+                 for best state:
+                              h                        q
+          -0.004412295683964373  -2.0905654488784233e-09
+ Mean bias error prior(mod-obs):
+                              h                        q
+            -289.68292781071267    0.0004602249118590652
+         Root mean squared error
+                 for best state:
+                              h                        q
+             0.0354388642338492    8.557845243573949e-08
+         Root mean squared error
+                      for prior:
+                              h                        q
+             412.11061166914834    0.0004907681697746424
