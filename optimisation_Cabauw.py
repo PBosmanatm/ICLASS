@@ -1317,8 +1317,8 @@ else:
             mod_error['Swout'][j] = 15
         else:
             mod_error['Swout'][j] = 3.0
-#specify the representation error here, if nothing specified it is assumed 0
-#e.g. repr_error['theta'] = [0.3 for j in range(len(measurement_error['theta']))]
+#specify the representation error here, if nothing specified it is assumed 0 #e.g. :
+#repr_error['theta'] = [0.3 for j in range(len(measurement_error['theta']))]
 ########################################################################
 ###### end user input: model and representation error ##################
 ######################################################################## 

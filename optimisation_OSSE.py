@@ -375,8 +375,8 @@ if imposeparambounds or paramboundspenalty:
 #    boundedvars['gammatheta'] = [0.002,0.018]
 #    boundedvars['gammatheta2'] = [0.002,0.018]
 #    boundedvars['gammaq'] = [-9e-6,9e-6]
-    boundedvars['z0m'] = [0.000001,None]
-    boundedvars['z0h'] = [0.000001,None]
+    boundedvars['z0m'] = [0.0000001,None]
+    boundedvars['z0h'] = [0.0000001,None]
 #    boundedvars['q'] = [0.002,0.020]
 #    boundedvars['divU'] = [0,1e-4]
 #    boundedvars['fCA'] = [0.1,1e8]
@@ -549,8 +549,8 @@ else:
     pass
     #in case you want to specify directly the model errors (estimate_model_err = False), specify them here:
     #e.g. mod_error['theta'] = [0.5 for j in range(len(measurement_error['theta']))]
-#specify the representation error here, if nothing specified it is assumed 0
-#e.g. repr_error['theta'] = [0.3 for j in range(len(measurement_error['theta']))]
+#specify the representation error here, if nothing specified it is assumed 0 #e.g. :
+#repr_error['theta'] = [0.3 for j in range(len(measurement_error['theta']))]
 ########################################################################
 ###### end user input: model and representation error ##################
 ########################################################################
@@ -1864,3 +1864,55 @@ if write_to_f:
 #    plt.xlabel('timestep')
 #    plt.legend(prop={'size':legendsize})
 
+#plt.rc('font', size=17)
+#fig, ax = plt.subplots(2,2,figsize=(16,12))
+#ax[0,0].plot(priormodel.out.t,priormodel.out.__dict__['h'], ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+#ax[0,0].plot(optimalmodel.out.t,optimalmodel.out.__dict__['h'], linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+#ax[0,0].plot(obs_times['h']/3600,optim.__dict__['obs_'+'h'], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs')
+#ax[0,0].errorbar(obs_times['h']/3600,optim.__dict__['obs_'+'h'],yerr=optim.__dict__['error_obs_'+'h'],ecolor='black',fmt='None')
+#ax[0,0].set_ylabel('boundary-layer height (m)')
+#ax[0,0].set_xlabel('time (h)')
+#ax[0,1].plot(priormodel.out.t,1000*priormodel.out.q, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+#ax[0,1].plot(optimalmodel.out.t,1000*optimalmodel.out.q, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+#ax[0,1].plot(obs_times['q']/3600,1000*optim.__dict__['obs_q'], linestyle=' ', marker='*',color = 'black',ms=10, label = 'obs')
+#ax[0,1].errorbar(obs_times['q']/3600,1000*optim.__dict__['obs_'+'q'],yerr=1000*optim.__dict__['error_obs_'+'q'],ecolor='black',fmt='None')
+#ax[0,1].set_ylabel('specific humidity ('+disp_units['q']+')')
+#ax[0,1].set_xlabel('time (h)')
+#
+#ax[1,0].plot(priormodel.out.t,priormodel.out.__dict__['wCO2'], ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+#ax[1,0].plot(optimalmodel.out.t,optimalmodel.out.__dict__['wCO2'], linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+#ax[1,0].plot(obs_times['wCO2']/3600,optim.__dict__['obs_'+'wCO2'], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs')
+#ax[1,0].errorbar(obs_times['wCO2']/3600,optim.__dict__['obs_'+'wCO2'],yerr=optim.__dict__['error_obs_'+'wCO2'],ecolor='black',fmt='None')
+#ax[1,0].set_ylabel('CO$_2$ flux (ppm ms$^{-1}$)')
+#ax[1,0].set_xlabel('time (h)')
+#ax[1,1].plot(priormodel.out.t,priormodel.out.Tmh, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+#ax[1,1].plot(optimalmodel.out.t,optimalmodel.out.Tmh, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+#ax[1,1].plot(obs_times['Tmh']/3600,optim.__dict__['obs_Tmh'], linestyle=' ', marker='*',color = 'black',ms=10, label = 'obs')
+#ax[1,1].errorbar(obs_times['Tmh']/3600,optim.__dict__['obs_'+'Tmh'],yerr=optim.__dict__['error_obs_'+'Tmh'],ecolor='black',fmt='None')
+#ax[1,1].set_ylabel('2-m temperature (K)')
+#ax[1,1].set_xlabel('time (h)')
+#ax[1,1].legend(loc=0, frameon=False,prop={'size':17})
+#
+#ax[0,0].annotate('(a)',
+#            xy=(0.00, 1.07), xytext=(0,0),
+#            xycoords=('axes fraction', 'axes fraction'),
+#            textcoords='offset points',
+#            size=16, fontweight='bold', ha='left', va='top')
+#ax[0,1].annotate('(b)',
+#            xy=(0.00, 1.07), xytext=(0,0),
+#            xycoords=('axes fraction', 'axes fraction'),
+#            textcoords='offset points',
+#            size=16, fontweight='bold',ha='left', va='top')
+#ax[1,0].annotate('(c)',
+#            xy=(0.00, 1.07), xytext=(0,0),
+#            xycoords=('axes fraction', 'axes fraction'),
+#            textcoords='offset points',
+#            size=16, fontweight='bold',ha='left', va='top')
+#ax[1,1].annotate('(d)',
+#            xy=(0.00, 1.07), xytext=(0,0),
+#            xycoords=('axes fraction', 'axes fraction'),
+#            textcoords='offset points',
+#            size=16, fontweight='bold',ha='left', va='top')
+#if write_to_f:
+#    plt.savefig('fig_fitpanel.'+figformat, format=figformat)
+#plt.rc('font', size=plotfontsize)
