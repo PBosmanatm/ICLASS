@@ -802,6 +802,7 @@ if imposeparambounds or paramboundspenalty:
     boundedvars['z0h'] = [0.0001,5]
     boundedvars['FracH'] = [0,1]
     boundedvars['R10'] = [0,15]
+    boundedvars['advq'] = [-5/3600/1000,15/3600/1000] #15/3600/1000 means upper bound set to 15 g/kg/hour
 #    boundedvars['wtheta'] = [0.05,0.6]
 #    boundedvars['divU'] = [0,1e-4]
 #    boundedvars['fCA'] = [0.1,1e8]

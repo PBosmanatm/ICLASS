@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 """
-Created on Mon Dec 16 13:52:00 2019
-
 @author: Bosman Peter
 """
 #This script should be adapted to the optimisation performed
@@ -484,7 +482,7 @@ if (use_ensemble and SuccesColumn):  #if SuccesColumn, it means est_post_pdf_cov
             if not showfullmatr:
                 mask = np.triu(np.ones(len(post_cor_matr)),k=1)
             post_cor_matr_r = np.round(post_cor_matr,2) #_r to indicate rounded
-            plot = sb.heatmap(post_cor_matr_r,annot=True,xticklabels=disp_nms_state,yticklabels = disp_nms_state, cmap="RdBu_r",cbar_kws={'label': 'Correlation (-)'}, linewidths=0.7,annot_kws={"size": 10.2 },mask = mask) 
+            plot = sb.heatmap(post_cor_matr_r,annot=True,xticklabels=disp_nms_state,yticklabels = disp_nms_state, cmap="RdBu_r",cbar_kws={'label': 'Correlation (-)'}, linewidths=0.7,annot_kws={"size": 8.9 },mask = mask) 
             plot.set_facecolor('white')
             plot.tick_params(labelsize=11)
             plt.ylim((len(state), 0))
@@ -506,7 +504,7 @@ if (use_ensemble and SuccesColumn):  #if SuccesColumn, it means est_post_pdf_cov
                 sb.set(rc={'figure.figsize':(11,11)}) 
                 sb.set(font_scale=1.05)  
                 post_cor_matr_ss_r = np.round(post_cor_matr_ss,2)
-                plot = sb.heatmap(post_cor_matr_ss_r,annot=True,xticklabels=disp_nms_state,yticklabels = disp_nms_state, cmap="RdBu_r",cbar_kws={'label': 'Correlation (-)'}, linewidths=0.7,annot_kws={"size": 10.2 },mask = mask) 
+                plot = sb.heatmap(post_cor_matr_ss_r,annot=True,xticklabels=disp_nms_state,yticklabels = disp_nms_state, cmap="RdBu_r",cbar_kws={'label': 'Correlation (-)'}, linewidths=0.7,annot_kws={"size": 8.9 },mask = mask) 
                 plot.set_facecolor('white')
                 plot.tick_params(labelsize=11)
                 plt.ylim((len(state), 0))
@@ -522,7 +520,7 @@ if (use_ensemble and SuccesColumn):  #if SuccesColumn, it means est_post_pdf_cov
                 sb.set(font_scale=1.05)  
                 post_cor_matr_diff = post_cor_matr_ss-post_cor_matr
                 post_cor_matr_diff_r = np.round(post_cor_matr_diff,2)
-                plot = sb.heatmap(post_cor_matr_diff_r,annot=True,xticklabels=disp_nms_state,yticklabels = disp_nms_state, cmap="RdBu_r",cbar_kws={'label': 'Diff in correlation (-)'}, linewidths=0.7,annot_kws={"size": 10.2 },mask = mask) 
+                plot = sb.heatmap(post_cor_matr_diff_r,annot=True,xticklabels=disp_nms_state,yticklabels = disp_nms_state, cmap="RdBu_r",cbar_kws={'label': 'Diff in correlation (-)'}, linewidths=0.7,annot_kws={"size": 8.9 },mask = mask) 
                 plot.set_facecolor('white')
                 plot.tick_params(labelsize=11)
                 plt.ylim((len(state), 0))
