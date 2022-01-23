@@ -1,0 +1,4 @@
+                   sim_nr                 advtheta                     advq                   advCO2               deltatheta               gammatheta                   deltaq                   gammaq                 deltaCO2                 gammaCO2                  sca_sto                    alpha                    FracH                       wg                      R10                     data               background                    Costf
+                        1   -0.0010290059692293935   -6.005549953070465e-07    0.0003273492729618033       2.1687966130941074    0.0054784453804685085    0.0006667751036011561  -4.1419571111383385e-06       -85.88548879380218       0.0174908269407315       0.8306347342550776      0.31775551884718706       0.6556588340374437      0.35706737634313884      0.07124429470101173                      nan                      0.0                      nan 
+nan reached, no restart               
+ finished

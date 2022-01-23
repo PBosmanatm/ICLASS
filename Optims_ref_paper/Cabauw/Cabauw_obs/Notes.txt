@@ -1,0 +1,3 @@
+The units of FCED in file cabsurf_surface_flux_200309-24-25-26 are mg CO2/m2/s, Jordi checked this.
+Jordi confirmed data for temperature and pressure for sep 2003 is in UTC
+The co2 mixing ratio measurements were made at 27.0; 67.0; 127.0 and 207.0 m height. (from mail Arnoud Frumau and ICOS website)
