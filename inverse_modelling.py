@@ -3471,7 +3471,7 @@ class inverse_modelling:
                     self.__dict__[item] += forcing[i][item] 
                 else:
                     self.__dict__['adout_'+item] += forcing[i][item] #takes the storing into account by looking at the adout variables
-            #The statement avove takes care of the forcings
+            #The statement above takes care of the forcings
             if(model.sw_ml):
                 self.adj_integrate_mixed_layer(checkpoint[i],model)
             if(model.sw_ls):

@@ -228,7 +228,7 @@ priormodinput.sw_use_ribtol = True
 priormodinput.sw_advfp = True #prescribed advection to take place over full profile (also in Free troposphere), only in ML if FALSE
 
 #soil COS model
-priormodinput.soilCOSmodeltype   = None #can be set to None or 'Sun_Ogee'
+priormodinput.soilCOSmodeltype   = None #can be set to None or 'Sun_Ogee' (for version reference paper only to None)
 #priormodinput.uptakemodel = 'Ogee' #if soilCOSmodeltype is set to None, the other soil COS model settings in this section are irrelevant 
 #priormodinput.sw_soilmoisture    = 'simple'
 #priormodinput.sw_soiltemp    = 'simple'

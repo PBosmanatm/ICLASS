@@ -33,8 +33,8 @@ adjointtest_int_land_surface = False
 gradtest_int_land_surface = False
 adjointtest_statistics = False
 gradtest_statistics = False
-adjointtest_run_soil_COS_mod = False
-gradtest_run_soil_COS_mod = False
+adjointtest_run_soil_COS_mod = False #leave this off in version reference paper
+gradtest_run_soil_COS_mod = False #leave this off in version reference paper
 adjointtest_store = False
 gradtest_store = False
 adjointtest_run_cumulus = False
@@ -90,8 +90,8 @@ testinput.fc         = 1.e-4     # Coriolis parameter [m s-1]
 testinput.theta      = 288.      # initial mixed-layer potential temperature [K]
 testinput.deltatheta = 1.0       # initial temperature jump at h [K]
 testinput.gammatheta = 0.006     # free atmosphere potential temperature lapse rate [K m-1]
-testinput.gammatheta2= 0.008     # free atmosphere potential temperature lapse rate [K m-1]
-testinput.htrans     = 900
+testinput.gammatheta2= 0.008     # free atmosphere potential temperature lapse rate 2 [K m-1]
+testinput.htrans     = 900       #above this height [m], use gammatheta2, otherwise gammatheta
 testinput.advtheta   = 0.0001        # advection of heat [K s-1]
 testinput.beta       = 0.2       # entrainment ratio for virtual heat [-]
 testinput.wtheta     = 0.1       # surface kinematic heat flux [K m s-1]
@@ -149,7 +149,7 @@ testinput.C2ref      = 1.8
 testinput.LAI        = 2.        # leaf area index [-]
 testinput.gD         = 0.0       # correction factor transpiration for VPD [-]
 testinput.rsmin      = 110.      # minimum resistance transpiration [s m-1]
-testinput.rssoilmin  = 50.       # minimun resistance soil evaporation [s m-1]
+testinput.rssoilmin  = 50.       # minimum resistance soil evaporation [s m-1]
 testinput.alpha      = 0.25      # surface albedo [-]
 testinput.Ts         = 290.      # initial surface temperature [K]
 testinput.Wmax       = 0.0002    # thickness of water layer on wet vegetation [m]
@@ -159,8 +159,8 @@ testinput.c3c4       = 'c3'      # Plant type ('c3' or 'c4')
 testinput.sw_cu      = True     # Cumulus parameterization switch
 testinput.dz_h       = 150.      # Transition layer thickness [m]
 testinput.Cs         = 1e12      # drag coefficient for scalars [-]
-testinput.PARfract = 0.5 #fraction of shortwave radiation at the surface that is PAR (-)
-testinput.R10 = 0.23
+testinput.PARfract = 0.5 #fraction of incoming shortwave radiation that is PAR (at the vegetation) [-]
+testinput.R10 = 0.23     # respiration at 10 C [mg CO2 m-2 s-1]
 testinput.E0 = 53.3e3    #activation energy [53.3 kJ kmol-1]
 testinput.sw_dynamicsl_border = False
 testinput.sw_model_stable_con = True
@@ -186,7 +186,7 @@ testinput.sw_printwarnings = True
 #testinput.wq         = testinput.wq_input[0]     # surface kinematic moisture flux [kg kg-1 m s-1]
 #testinput.wtheta     = testinput.wtheta_input[0]  +0.001     # surface kinematic heat flux [K m s-1]
 
-testinput.soilCOSmodeltype   = None #can be set to None or 'Sun_Ogee'
+testinput.soilCOSmodeltype   = None #can be set to None or 'Sun_Ogee' (for version reference paper only to None)
 testinput.uptakemodel = 'Ogee'
 testinput.sw_soilmoisture    = 'simple'
 testinput.sw_soiltemp    = 'simple'
@@ -1888,6 +1888,8 @@ if gradtest_jarvis_stewart: #
     adjoint_modelling.grad_test_jarvis_stewart(testmodel,testlist,'rs',testdstate,'drs',printmode)
 
 if adjointtest:
+    if hasattr(adjoint_modelling,'failed_adj_test_list'):
+        adjoint_modelling.failed_adj_test_list = [] #reset list of vars where test fails
     print('initialisation tests:') #to see wether variable properly initialised to zero in tl and adjoint (start this test with empty memory)
     adjoint_modelling.adjoint_test(testmodel,x_variables=['dtheta'],Hx_variable='dthetav',y_variable='adthetav',HTy_variables=['adtheta'],Hx_dict='Output_tl_stat',printmode=printmodeadj)
     adjoint_modelling.adjoint_test(testmodel,x_variables=['dq'],Hx_variable='dthetav',y_variable='adthetav',HTy_variables=['adq'],Hx_dict='Output_tl_stat',printmode=printmodeadj)
@@ -2607,9 +2609,7 @@ if gradtest:
     testdstate_ts = {}
     for item in testlist_ts:
         testdstate_ts['d'+item] = np.ones(testmodel.tsteps)
-    #adjoint_modelling.grad_test(testinput,['wtheta'],'thetasurf',{'dwtheta':1.0},'dthetasurf','rsl')
-    #adjoint_modelling.grad_test(testinput,['sca_sto'],'COSmh',{'dsca_sto':1.0},'dCOSmh','rsl')
-    
+        
     testlist = cp.deepcopy(testlist_stat)
     testdstate = cp.deepcopy(testdstate_stat)
     testlist = list(set(testlist + cp.deepcopy(testlist_rr))) #set to remove duplicates
@@ -2640,7 +2640,11 @@ if gradtest:
     testdstate.update(testdstate_ts)
 #    testlist = ['wtheta_input']
 #    testdstate = {'dwtheta_input':np.ones(testmodel.tsteps)}
-    
+    if hasattr(adjoint_modelling,'failed_grad_test_list'):
+        adjoint_modelling.failed_grad_test_list = [] #reset list of vars where test fails
+    #adjoint_modelling.grad_test(testinput,['wtheta'],'thetasurf',{'dwtheta':1.0},'dthetasurf','rsl')
+    #adjoint_modelling.grad_test(testinput,['sca_sto'],'COSmh',{'dsca_sto':1.0},'dCOSmh','rsl')
+
 #     #statistics
     adjoint_modelling.grad_test(testinput,testlist,'thetav',testdstate,'dthetav','stat',printmode)
     adjoint_modelling.grad_test(testinput,testlist,'wthetav',testdstate,'dwthetav','stat',printmode)

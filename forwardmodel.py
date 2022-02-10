@@ -202,7 +202,7 @@ class model:
                 if hasattr(self.input,'PARfract'):
                     self.PARfract = self.input.PARfract
                 else:
-                    self.PARfract = 0.5 #fraction of incoming shortwave radiation that is PAR (at the vegetation)
+                    self.PARfract = 0.5 #fraction of incoming shortwave radiation that is PAR (at the vegetation) [-]
 
         self.mco2       =  44.;                 # molecular weight CO2 [g mol -1]
         self.mcos       =  12. + 16. + 32.07;   # molecular weight COS [g mol -1]
@@ -238,7 +238,7 @@ class model:
         self.gammatheta = self.input.gammatheta # free atmosphere potential temperature lapse rate [K m-1]
         if hasattr(self.input,'gammatheta2'):
             self.gammatheta2 = self.input.gammatheta2
-            self.htrans = self.input.htrans #above this height, use gammatheta2, otherwise gammatheta
+            self.htrans = self.input.htrans #above this height [m], use gammatheta2, otherwise gammatheta
         else:
             self.gammatheta2 = self.gammatheta #if gammatheta2 not given, take equal to gammatheta
             self.htrans = 1000000. #the value does not matter, we just need a value for it
@@ -272,7 +272,7 @@ class model:
         self.lcl        = None                  # Lifting condensation level [m]
 
         # Virtual temperatures and fluxes
-        self.thetav     = None                  # initial mixed-layer potential temperature [K]
+        self.thetav     = None                  # initial mixed-layer virtual potential temperature [K]
         self.deltathetav= None                  # initial virtual temperature jump at h [K]
         self.wthetav    = None                  # surface kinematic virtual heat flux [K m s-1]
         self.wthetave   = None                  # entrainment kinematic virtual heat flux [K m s-1]
@@ -329,7 +329,7 @@ class model:
             self.Cs         = self.input.Cs         # drag coefficient for scalars [-]
         else:
             self.Cs         = 1e12                  # drag coefficient for scalars [-]
-        #Cm is calculated before it used, no need to specify it here, the output only stores the variable if self.sw_sl is True (in the original CLASS from 2019, there was a statement self.Cm         = 1e12 in the init function, and Cm was alsways stored).
+        #Cm is calculated before it used, no need to specify it here, the output only stores the variable if self.sw_sl is True (in the original CLASS from 2019, there was a statement self.Cm         = 1e12 in the init function, and Cm was always stored).
         self.L          = None                  # Obukhov length [m]
         self.Rib        = None                  # bulk Richardson number [-]
         self.ra         = None                  # aerodynamic resistance [s m-1]
@@ -405,7 +405,7 @@ class model:
         if hasattr(self.input,'ags_C_mode'): #only if using the normal a-gs, not if using the canopy model
             self.ags_C_mode = self.input.ags_C_mode # which mixing ratios to use in ags, 'surf' or 'MXL'
             if self.ags_C_mode == 'surf' and self.sw_sl == False:
-                raise Exception('When ags_C_mode set to surf, turn on the surface layer')
+                raise Exception('When ags_C_mode set to \'surf\', turn on the surface layer')
         else:
             self.ags_C_mode = 'MXL'
  
@@ -1284,8 +1284,8 @@ class model:
         self.CO22m =      self.CO2surf - self.wCO2 / ustar / self.k * (np.log(2. / self.z0h) - self.psih(2. / self.L) + self.psih(self.z0h / self.L))
         self.CO2mh =     self.CO2surf - self.wCO2 / ustar / self.k * (np.log(self.CO2measuring_height / self.z0h) - self.psih(self.CO2measuring_height / self.L) + self.psih(self.z0h / self.L))
         self.CO2mh2 =     self.CO2surf - self.wCO2 / ustar / self.k * (np.log(self.CO2measuring_height2 / self.z0h) - self.psih(self.CO2measuring_height2 / self.L) + self.psih(self.z0h / self.L))
-        self.CO2mh3 =     self.CO2surf - self.wCO2 / ustar / self.k * (np.log(self.CO2measuring_height3 / self.z0h) - self.psih(self.CO2measuring_height3 / self.L) + self.psih(self.z0h / self.L)) #CO2 mixing ratio at measuring height 3
-        self.CO2mh4 =     self.CO2surf - self.wCO2 / ustar / self.k * (np.log(self.CO2measuring_height4 / self.z0h) - self.psih(self.CO2measuring_height4 / self.L) + self.psih(self.z0h / self.L)) #CO2 mixing ratio at measuring height 4
+        self.CO2mh3 =     self.CO2surf - self.wCO2 / ustar / self.k * (np.log(self.CO2measuring_height3 / self.z0h) - self.psih(self.CO2measuring_height3 / self.L) + self.psih(self.z0h / self.L)) #CO2 mixing ratio at measurement height 3
+        self.CO2mh4 =     self.CO2surf - self.wCO2 / ustar / self.k * (np.log(self.CO2measuring_height4 / self.z0h) - self.psih(self.CO2measuring_height4 / self.L) + self.psih(self.z0h / self.L)) #CO2 mixing ratio at measurement height 4
         self.u2m    = - self.uw     / ustar / self.k * (np.log(2. / self.z0m) - self.psim(2. / self.L) + self.psim(self.z0m / self.L)) #3.42 with 3.17 (-uw = ustar**2 but u is total wind in AVSI...)
         self.v2m    = - self.vw     / ustar / self.k * (np.log(2. / self.z0m) - self.psim(2. / self.L) + self.psim(self.z0m / self.L)) #vstar?? ustar cannot be equal to both uw and vw!!
         self.esat2m = 0.611e3 * np.exp(17.2694 * (self.T2m - 273.16) / (self.T2m - 35.86)) #intro atm
@@ -2607,40 +2607,40 @@ class model_output:
 
         
         if model.sw_sl:
-            self.thetamh    = np.zeros(tsteps)    # pot temperature at measuring height1 [K]
-            self.thetamh2    = np.zeros(tsteps)    # pot temperature at measuring height2 [K]
-            self.thetamh3    = np.zeros(tsteps)    # pot temperature at measuring height3 [K]
-            self.thetamh4    = np.zeros(tsteps)    # pot temperature at measuring height4 [K]
-            self.thetamh5    = np.zeros(tsteps)    # pot temperature at measuring height5 [K]
-            self.thetamh6    = np.zeros(tsteps)    # pot temperature at measuring height6 [K]
-            self.thetamh7    = np.zeros(tsteps)    # pot temperature at measuring height7 [K]
-            self.Tmh        = np.zeros(tsteps)    # temperature at measuring height 1 [K]
-            self.Tmh2        = np.zeros(tsteps)    # temperature at measuring height2 [K]
-            self.Tmh3       = np.zeros(tsteps)    # temperature at measuring height3 [K]
-            self.Tmh4       = np.zeros(tsteps)    # temperature at measuring height4 [K]
-            self.Tmh5       = np.zeros(tsteps)    # temperature at measuring height5 [K]
-            self.Tmh6       = np.zeros(tsteps)    # temperature at measuring height6 [K]
-            self.Tmh7       = np.zeros(tsteps)    # temperature at measuring height7 [K]
-            self.COSmh      = np.zeros(tsteps)    # COS at measuring height [ppb]
-            self.COSmh2     = np.zeros(tsteps)    # COS at measuring height2 [ppb]
-            self.COSmh3     = np.zeros(tsteps)    # COS at measuring height3 [ppb]
-            self.COSmh4     = np.zeros(tsteps)    # COS at measuring height4 [ppb]
-            self.CO2mh      = np.zeros(tsteps)    # CO2 at measuring height [ppm]
-            self.CO2mh2     = np.zeros(tsteps)    # CO2 at measuring height2 [ppm]
-            self.CO2mh3     = np.zeros(tsteps)    # CO2 at measuring height3 [ppm]
-            self.CO2mh4     = np.zeros(tsteps)    # CO2 at measuring height4 [ppm]
+            self.thetamh    = np.zeros(tsteps)    # pot temperature at measurement height1 [K]
+            self.thetamh2    = np.zeros(tsteps)    # pot temperature at measurement height2 [K]
+            self.thetamh3    = np.zeros(tsteps)    # pot temperature at measurement height3 [K]
+            self.thetamh4    = np.zeros(tsteps)    # pot temperature at measurement height4 [K]
+            self.thetamh5    = np.zeros(tsteps)    # pot temperature at measurement height5 [K]
+            self.thetamh6    = np.zeros(tsteps)    # pot temperature at measurement height6 [K]
+            self.thetamh7    = np.zeros(tsteps)    # pot temperature at measurement height7 [K]
+            self.Tmh        = np.zeros(tsteps)    # temperature at measurement height 1 [K]
+            self.Tmh2        = np.zeros(tsteps)    # temperature at measurement height2 [K]
+            self.Tmh3       = np.zeros(tsteps)    # temperature at measurement height3 [K]
+            self.Tmh4       = np.zeros(tsteps)    # temperature at measurement height4 [K]
+            self.Tmh5       = np.zeros(tsteps)    # temperature at measurement height5 [K]
+            self.Tmh6       = np.zeros(tsteps)    # temperature at measurement height6 [K]
+            self.Tmh7       = np.zeros(tsteps)    # temperature at measurement height7 [K]
+            self.COSmh      = np.zeros(tsteps)    # COS at measurement height [ppb]
+            self.COSmh2     = np.zeros(tsteps)    # COS at measurement height2 [ppb]
+            self.COSmh3     = np.zeros(tsteps)    # COS at measurement height3 [ppb]
+            self.COSmh4     = np.zeros(tsteps)    # COS at measurement height4 [ppb]
+            self.CO2mh      = np.zeros(tsteps)    # CO2 at measurement height [ppm]
+            self.CO2mh2     = np.zeros(tsteps)    # CO2 at measurement height2 [ppm]
+            self.CO2mh3     = np.zeros(tsteps)    # CO2 at measurement height3 [ppm]
+            self.CO2mh4     = np.zeros(tsteps)    # CO2 at measurement height4 [ppm]
             self.COS2m      = np.zeros(tsteps)    # COS at 2m height [ppb]
             self.CO22m      = np.zeros(tsteps)    # CO2 at 2m height [ppm]
             self.COSsurf    = np.zeros(tsteps)    # COS at the surface [ppb]
             self.CO2surf    = np.zeros(tsteps)    # CO2 at the surface [ppm]
             self.Tsurf      = np.zeros(tsteps)    # Temp at the surface [K]
-            self.qmh        = np.zeros(tsteps)    # specific humidity at measuring height [kg kg-1]
-            self.qmh2       = np.zeros(tsteps)    # specific humidity at measuring height 2 [kg kg-1]
-            self.qmh3       = np.zeros(tsteps)    # specific humidity at measuring height 3 [kg kg-1]
-            self.qmh4       = np.zeros(tsteps)    # specific humidity at measuring height 4 [kg kg-1]
-            self.qmh5       = np.zeros(tsteps)    # specific humidity at measuring height 5 [kg kg-1]
-            self.qmh6       = np.zeros(tsteps)    # specific humidity at measuring height 6 [kg kg-1]
-            self.qmh7       = np.zeros(tsteps)    # specific humidity at measuring height 7 [kg kg-1]
+            self.qmh        = np.zeros(tsteps)    # specific humidity at measurement height [kg kg-1]
+            self.qmh2       = np.zeros(tsteps)    # specific humidity at measurement height 2 [kg kg-1]
+            self.qmh3       = np.zeros(tsteps)    # specific humidity at measurement height 3 [kg kg-1]
+            self.qmh4       = np.zeros(tsteps)    # specific humidity at measurement height 4 [kg kg-1]
+            self.qmh5       = np.zeros(tsteps)    # specific humidity at measurement height 5 [kg kg-1]
+            self.qmh6       = np.zeros(tsteps)    # specific humidity at measurement height 6 [kg kg-1]
+            self.qmh7       = np.zeros(tsteps)    # specific humidity at measurement height 7 [kg kg-1]
             self.Cm         = np.zeros(tsteps)    # drag coefficient for momentum []
                 
             
