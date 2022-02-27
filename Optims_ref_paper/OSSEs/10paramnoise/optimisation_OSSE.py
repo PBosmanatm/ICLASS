@@ -1889,7 +1889,7 @@ ax[1,1].plot(priormodel.out.t,priormodel.out.Tmh, ls='dashed', marker='None',col
 ax[1,1].plot(optimalmodel.out.t,optimalmodel.out.Tmh, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
 ax[1,1].plot(obs_times['Tmh']/3600,optim.__dict__['obs_Tmh'], linestyle=' ', marker='*',color = 'black',ms=10, label = 'obs')
 ax[1,1].errorbar(obs_times['Tmh']/3600,optim.__dict__['obs_'+'Tmh'],yerr=optim.__dict__['error_obs_'+'Tmh'],ecolor='black',fmt='None')
-ax[1,1].set_ylabel('2-m temperature (K)')
+ax[1,1].set_ylabel('2 m temperature (K)')
 ax[1,1].set_xlabel('time (h)')
 ax[1,1].legend(loc=0, frameon=False,prop={'size':17})
 
