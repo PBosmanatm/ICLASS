@@ -14,7 +14,7 @@ if set_seed:
     seedvalue = 18 #the chosen value of the seed. No floating point numbers and no negative numbers 
     np.random.seed(seedvalue)
 
-#what to run:
+#what to run (set to True what you want to run):
 adjointtest_surf_lay = False #an adjoint test of the surface layer module, without time integration
 gradtest_surf_lay = False
 adjointtest_ribtol = False
@@ -42,7 +42,7 @@ gradtest_run_cumulus = False
 adjointtest_jarvis_stewart = False
 gradtest_jarvis_stewart = False
 manual_adjointtest = False
-adjointtest = False #this is over the full model run, so multiple timesteps normally (specify time settings in input)
+adjointtest = True #this is over the full model run, so multiple timesteps normally (specify time settings in input)
 gradtest = True #this is over the full model run, so multiple timesteps normally (specify time settings in input)
 test_from_ref_paper = False
 #gradient tests require the variable save_vars_indict (run function in forwardmodel.py) to be set to true, will be done automatically
@@ -77,7 +77,6 @@ testinput.qmeasuring_height7 = 4.
 testinput.gciCOS = 0.2 /(1.2*1000) * 28.9
 testinput.sca_sto = 0.6
 testinput.ags_C_mode = 'MXL' 
-testinput.sw_useWilson  = False
 testinput.dt         = 60       # time step [s]
 testinput.runtime    = 300   # total run time [s]
 testinput.sw_ml      = True      # mixed-layer model switch
@@ -165,6 +164,7 @@ testinput.E0 = 53.3e3    #activation energy [53.3 kJ kmol-1]
 testinput.sw_dynamicsl_border = False
 testinput.sw_model_stable_con = True
 testinput.sw_use_ribtol = True
+testinput.sw_useWilson  = False
 testinput.sw_advfp = False
 testinput.sw_printwarnings = True
 
@@ -2020,7 +2020,7 @@ if adjointtest:
         adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dqsurf',y_variable='adqsurf',HTy_variables=testHTy,Hx_dict='Output_tl_rsl',printmode=printmodeadj)
         adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dthetavsurf',y_variable='adthetavsurf',HTy_variables=testHTy,Hx_dict='Output_tl_rsl',printmode=printmodeadj)
         adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dzsl',y_variable='adzsl',HTy_variables=testHTy,Hx_dict='Output_tl_rsl',printmode=printmodeadj)
-        if testinput.sw_use_ribtol:
+        if testmodel.sw_use_ribtol:
             adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dRib_dthetav',y_variable='adRib_dthetav',HTy_variables=testHTy,Hx_dict='Output_tl_rsl',printmode=printmodeadj)
             adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dRib_dzsl',y_variable='adRib_dzsl',HTy_variables=testHTy,Hx_dict='Output_tl_rsl',printmode=printmodeadj)
             adjoint_modelling.adjoint_test(testmodel,x_variables=testx,Hx_variable='dRib_dthetavsurf',y_variable='adRib_dthetavsurf',HTy_variables=testHTy,Hx_dict='Output_tl_rsl',printmode=printmodeadj)
@@ -2565,6 +2565,9 @@ if gradtest:
         testdstate_rr['d'+item] = 1.0
     testlist_rsl = ['u','v','theta','wtheta','h','wCOS','COS','wCO2','CO2','ustar','q','wq','Cs','COSmeasuring_height','z0m','z0h']
     testdstate_rsl = {'du':1.0,'dv':1.0,'dtheta':1.0,'dwtheta':1.0,'dh':1.0,'dwCOS':1.0,'dCOS':1.0,'dwCO2':1.0,'dCO2':1.0,'dustar_start':1.0,'dq':1.0,'dwq':1.0,'dCs_start':1.0,'dCOSmeasuring_height':1.0,'dz0m':1.0,'dz0h':1.0} 
+    if not hasattr(testinput,'COSmeasuring_height'):
+        testlist_rsl.remove('COSmeasuring_height')
+        del testdstate_rsl['dCOSmeasuring_height']
     testlist_rml = ['h','deltatheta','ustar','deltaq','deltaCO2','deltaCOS','wtheta','advtheta','wq',
                 'wCO2','advCO2','wCOS','advCOS','dz_h','gammatheta','gammatheta2','gammaq','gammaCO2','gammaCOS','u','v','advu','advv','fc','deltau','deltav','gammau','gammav','dFz','beta','divU'] #
     testdstate_rml = {}
@@ -2575,6 +2578,9 @@ if gradtest:
     testlist_rls = ['u','v','theta','q','wfc','wwilt','wg','LAI','Wmax','cveg','Lambda','Tsoil','rsmin','wsat','w2','T2','rssoilmin','CGsat','b','a','p','C1sat','C2ref','Q']
     testdstate_rls = {'du':1.0,'dv':1.0,'dtheta':1.0,'dq':1.0,'dwfc':1.0,'dwwilt':1.0,'dwg':1.0,'dLAI':1.0,'dWmax':1.0,'dcveg':1.0,
                   'dLambda':1.0,'dTsoil':1.0,'drsmin':1.0,'dwsat':1.0,'dw2':1.0,'dT2':1.0,'drssoilmin':1.0,'dCGsat':1.0,'db':1.0,'da':1.0,'dp':1.0,'dC1sat':1.0,'dC2ref':1.0,'dQ':1.0}
+    if testinput.Q is None:
+        testlist_rls.remove('Q')
+        del testdstate_rls['dQ']
     testlist_ils = ['Tsoil','wg']
     testdstate_ils = {'dTsoil':1.0,'dwg':1.0}
     testlist_ags = ['Ts','CO2','PARfract','cveg','w2','wfc','wwilt','sca_sto','LAI','gciCOS','wg','Tsoil','COS','E0','R10']
