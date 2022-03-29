@@ -93,8 +93,9 @@ if use_ensemble:
         raise Exception('est_post_pdf_covmatr is set to True, but both switches pert_obs_ens and pert_Hx_min_sy_ens are set to False')
     if pert_Hx_min_sy_ens and pert_obs_ens:
         raise Exception('pert_Hx_min_sy_ens and pert_obs_ens should not both be set to True')
-if type(figformat) != str:
-    raise Exception('figformat should be of type str, e.g. \'png\'')
+if write_to_f:
+    if type(figformat) != str:
+        raise Exception('figformat should be of type str, e.g. \'png\'')
 if use_ensemble or estimate_model_err:
     if run_multicore:
         if not (max_num_cores == 'all' or type(max_num_cores) == int):
