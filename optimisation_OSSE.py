@@ -55,6 +55,7 @@ if optim_method == 'tnc':
     maxnr_of_restarts = 2 #The maximum number of times to restart the optimisation if the cost function is not as low as specified in stopcrit. Only implemented for tnc method at the moment. 
     if maxnr_of_restarts > 0:
         stopcrit = 0.00001#If the cost function is equal or lower than this value, no restart will be attempted   
+    disp_fmin_tnc = False # If False, no messages from optimize.fmin_tnc function will be shown during minimisation
 elif optim_method == 'bfgs':
     gtol = 1e-05 # A parameter for the bfgs algorithm. From scipy documentation: 'Gradient norm must be less than gtol before successful termination.'
 perturb_truth_obs = False #Perturb the 'true' observations. When using ensemble, obs of members will be perturbed twice, member 0 just once
@@ -902,9 +903,9 @@ elif optim_method == 'tnc':
         bounds = [(None,None) for item in state]
     try:
         if ana_deriv:
-            minimisation = optimize.fmin_tnc(optim.min_func,optim.pstate,fprime=optim.ana_deriv,args=params,bounds=bounds,maxfun=None)
+            minimisation = optimize.fmin_tnc(optim.min_func,optim.pstate,fprime=optim.ana_deriv,args=params,bounds=bounds,maxfun=None,disp=disp_fmin_tnc)
         else:
-            minimisation = optimize.fmin_tnc(optim.min_func,optim.pstate,fprime=optim.num_deriv,args=params,bounds=bounds,maxfun=None)
+            minimisation = optimize.fmin_tnc(optim.min_func,optim.pstate,fprime=optim.num_deriv,args=params,bounds=bounds,maxfun=None,disp=disp_fmin_tnc)
         state_opt0 = minimisation[0]
         min_costf0 = optim.cost_func(state_opt0,inputcopy,state,obs_times,obs_weights) #within cost_func, the values of the variables in inputcopy that are also state variables will be overwritten by the values of the variables in state_opt0
     except (im.nan_incostfError):
@@ -939,9 +940,9 @@ elif optim_method == 'tnc':
                     open('Gradfile.txt','a').write('{0:>25s}'.format('\n restart'))
                 try:
                     if ana_deriv:
-                        minimisation = optimize.fmin_tnc(optim.min_func,state_opt0,fprime=optim.ana_deriv,args=params,bounds=bounds,maxfun=None) #restart from best sim so far to make it better if costf still too large
+                        minimisation = optimize.fmin_tnc(optim.min_func,state_opt0,fprime=optim.ana_deriv,args=params,bounds=bounds,maxfun=None,disp=disp_fmin_tnc) #restart from best sim so far to make it better if costf still too large
                     else:
-                        minimisation = optimize.fmin_tnc(optim.min_func,state_opt0,fprime=optim.num_deriv,args=params,bounds=bounds,maxfun=None) #restart from best sim so far to make it better if costf still too large
+                        minimisation = optimize.fmin_tnc(optim.min_func,state_opt0,fprime=optim.num_deriv,args=params,bounds=bounds,maxfun=None,disp=disp_fmin_tnc) #restart from best sim so far to make it better if costf still too large
                     state_opt0 = minimisation[0]
                 except (im.nan_incostfError):
                     print('Minimisation aborted due to nan, no restart')
@@ -1157,9 +1158,9 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
     elif optim_method == 'tnc':
         try:
             if ana_deriv:
-                minimisation_mem = optimize.fmin_tnc(optim_mem.min_func,optim_mem.pstate,fprime=optim_mem.ana_deriv,args=params_mem,bounds=bounds,maxfun=None)
+                minimisation_mem = optimize.fmin_tnc(optim_mem.min_func,optim_mem.pstate,fprime=optim_mem.ana_deriv,args=params_mem,bounds=bounds,maxfun=None,disp=disp_fmin_tnc)
             else:
-                minimisation_mem = optimize.fmin_tnc(optim_mem.min_func,optim_mem.pstate,fprime=optim_mem.num_deriv,args=params_mem,bounds=bounds,maxfun=None)
+                minimisation_mem = optimize.fmin_tnc(optim_mem.min_func,optim_mem.pstate,fprime=optim_mem.num_deriv,args=params_mem,bounds=bounds,maxfun=None,disp=disp_fmin_tnc)
             state_opt_mem = minimisation_mem[0]
             min_costf_mem = optim_mem.cost_func(state_opt_mem,inputcopy_mem,state,obs_times,obs_weights,PertDict) #within cost_func, the values of the variables in inputcopy_mem that are also state variables will be overwritten by the values of the variables in state_opt_mem   
         except (im.nan_incostfError):
@@ -1192,9 +1193,9 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
                         open('Gradfile'+str(counter)+'.txt','a').write('{0:>25s}'.format('\n restart'))
                     try:
                         if ana_deriv:
-                            minimisation_mem = optimize.fmin_tnc(optim_mem.min_func,state_opt_mem,fprime=optim_mem.ana_deriv,args=params_mem,bounds=bounds,maxfun=None) #restart from best sim so far to make it better if costf still too large
+                            minimisation_mem = optimize.fmin_tnc(optim_mem.min_func,state_opt_mem,fprime=optim_mem.ana_deriv,args=params_mem,bounds=bounds,maxfun=None,disp=disp_fmin_tnc) #restart from best sim so far to make it better if costf still too large
                         else:
-                            minimisation_mem = optimize.fmin_tnc(optim_mem.min_func,state_opt_mem,fprime=optim_mem.num_deriv,args=params_mem,bounds=bounds,maxfun=None) #restart from best sim so far to make it better if costf still too large
+                            minimisation_mem = optimize.fmin_tnc(optim_mem.min_func,state_opt_mem,fprime=optim_mem.num_deriv,args=params_mem,bounds=bounds,maxfun=None,disp=disp_fmin_tnc) #restart from best sim so far to make it better if costf still too large
                         state_opt_mem = minimisation_mem[0]
                     except (im.nan_incostfError):
                         print('Minimisation aborted due to nan, no restart for this member')
