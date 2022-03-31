@@ -277,9 +277,9 @@ for item in state:
     if item.startswith('obs_sca_cf_'):
         obsname = item.split("obs_sca_cf_",1)[1]
         if obsname not in obsvarlist:
-            raise Exception(item+' given in state, but '+obsname+' not given in obsvarlist')
+            raise Exception(item+' included in state, but '+obsname+' not included in obsvarlist')
     if item not in priorinput.__dict__ or priorinput.__dict__[item] is None:
-        raise Exception(item +' given in state, but no prior given!')
+        raise Exception(item +' included in state, but no prior given!')
 for item in priorinput.__dict__: #just a check
     if item.startswith('obs_sca_cf') and (item not in state):
         raise Exception(item +' given in priorinput, but not part of state. Remove from priorinput or add '+item+' to the state')
@@ -311,7 +311,8 @@ if use_backgr_in_cost or use_ensemble:
 #    priorvar['obs_sca_cf_Ts'] = 0.4**2
     priorvar['advtheta'] = 0.0005**2
     priorvar['advq'] = 0.0000005**2
-    priorvar['FracH'] = 0.3**2
+    if 'FracH' in state:
+        priorvar['FracH'] = 0.3**2
     #below we can specify covariances as well, for the background information matrix. If covariances are not specified, they are taken as 0
     #e.g. priorcovar['gammatheta,gammaq'] = 5.
 ###########################################################
