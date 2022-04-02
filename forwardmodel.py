@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# This file is the slightly adapted CLASS model used in ICLASS (Comment by Peter Bosman)
 # 
 # CLASS
 # Copyright (c) 2010-2015 Meteorology and Air Quality section, Wageningen University and Research centre
