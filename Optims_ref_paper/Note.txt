@@ -1,1 +1,1 @@
-Some minor changes to the code have been made in the main ICLASS folder compared to the code in the optimisations of the reference paper.
+Some small changes to the code have been made in the main ICLASS folder compared to the code in the optimisations of the reference paper.
