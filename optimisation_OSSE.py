@@ -336,7 +336,7 @@ if use_backgr_in_cost or use_ensemble:
         b_cov[i][i] = priorvar[item] #b_cov stands for background covariance matrix, b already exists as model parameter
         i += 1
     #in b_cov, params should have same order as in state
-    if bool(priorcovar):# check if covar matr not empty
+    if bool(priorcovar):# check if covar dictionary not empty
         for thing in priorcovar:
             if thing.count(',') != 1:
                 raise Exception('Invalid key \''+thing+'\' in priorcovar')
