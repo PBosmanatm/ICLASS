@@ -324,11 +324,11 @@ class inverse_modelling:
                         gradient[i] += (2 + (state_to_opt[i] - self.boundedvars[state_var_names[i]][1]))**(self.penalty_exp-1) 
         #add the background part of the cost function
         if self.use_backgr_in_cost:
-            dcostf_dbackground = 2*np.matmul(self.binv,state_to_opt-self.pstate) #see first term of 11.77 in chapter inverse modelling Brasseur and Jacob 2017
+            dBackgrCF_dparams = 2*np.matmul(self.binv,state_to_opt-self.pstate) #see first term of 11.77 in chapter inverse modelling Brasseur and Jacob 2017.
             for i in range(len(state_to_opt)):
-                gradient[i] += dcostf_dbackground[i] 
+                gradient[i] += dBackgrCF_dparams[i] 
                 if self.write_to_f:
-                    open(self.Gradf,'a').write('{0:>30s}'.format(str(dcostf_dbackground[i])))
+                    open(self.Gradf,'a').write('{0:>30s}'.format(str(dBackgrCF_dparams[i])))
         if self.write_to_f:
             for item in gradient:
                 open(self.Gradf,'a').write('{0:>30s}'.format(str(item)))
@@ -451,10 +451,10 @@ class inverse_modelling:
                 # in simple case:
                 #backgr_forw = (state_to_opt[i] + delta - self.pstate[i])**2/(self.b_cov[i,i])
                 #backgr_backw = (state_to_opt[i] - delta - self.pstate[i])**2/(self.b_cov[i,i])
-                dcostf_dbackground = (backgr_forw - backgr_backw) / (2 * delta) #for one variable
-                gradient[i] += dcostf_dbackground
+                dBackgrCF_dparam = (backgr_forw - backgr_backw) / (2 * delta) #for one variable.
+                gradient[i] += dBackgrCF_dparam
                 if self.write_to_f:
-                    open(self.Gradf,'a').write('{0:>30s}'.format(str(dcostf_dbackground)))
+                    open(self.Gradf,'a').write('{0:>30s}'.format(str(dBackgrCF_dparam)))
             inputdata.__dict__[state_var_names[i]] = state_to_opt[i] #reset the inputdata for the calcs of the next state param in loop!
         if self.write_to_f:
             for item in gradient:
@@ -3514,26 +3514,26 @@ class inverse_modelling:
         
     def adj_init(self,checkpoint_init,model,returnvariables=None): #this is the adjoint of the initialiation of the model run (in forwardmodel initialisation is called once in run)
         if(model.sw_ml):
-            #statement self.tl_run_mixed_layer(model,checkpoint)
+            #statement self.tl_run_mixed_layer(model,checkpoint_init[0])
             self.adj_run_mixed_layer(checkpoint_init[0],model)
         if(model.sw_cu):
-            #statement self.tl_run_cumulus(model,checkpoint)
+            #statement self.tl_run_cumulus(model,checkpoint_init[0])
             self.adj_run_cumulus(checkpoint_init[0],model)
-            #statement self.tl_run_mixed_layer(model,checkpoint)
+            #statement self.tl_run_mixed_layer(model,checkpoint_init[0])
             self.adj_run_mixed_layer(checkpoint_init[0],model)
         if(model.sw_ls):
-            #statement self.tl_run_land_surface(model,checkpoint)
+            #statement self.tl_run_land_surface(model,checkpoint_init[0])
             self.adj_run_land_surface(checkpoint_init[0],model)
             if self.model.soilCOSmodeltype == 'Sun_Ogee':
                 self.adj_init_soil_COS_mod(checkpoint_init[0],model)
         if(model.sw_sl):
             for i in range(model.nr_of_surf_lay_its-1,-1,-1): #model.nr_of_surf_lay_its-1 because index model.nr_of_surf_lay_its does not exist
-                #statement self.tl_run_surface_layer(model,checkpoint)
+                #statement self.tl_run_surface_layer(model,checkpoint_init[i])
                 self.adj_run_surface_layer(checkpoint_init[i],model)
         if(model.sw_rad):
-            #statement self.tl_run_radiation(model,checkpoint)
+            #statement self.tl_run_radiation(model,checkpoint_init[0])
             self.adj_run_radiation(checkpoint_init[0],model)
-        #statement self.tl_statistics(model,checkpoint)
+        #statement self.tl_statistics(model,checkpoint_init[0])
         self.adj_statistics(checkpoint_init[0],model)
         fac = model.mair / (model.rho*model.mco2)
         if not model.sw_ls:
@@ -7873,7 +7873,7 @@ class inverse_modelling:
                 except KeyError:
                     self.HTy[i] = locals()[HTy_variables[i]] #in case it is not a self variable
     
-    def grad_test(self,inputdata,perturbationvars,outputvar,dstate,returnvariable,output_dict,printmode='absolute'):
+    def grad_test(self,inputdata,perturbationvars,outputvar,dstate,returnvariable,output_dict,printmode='absolute',alpharange=None):
         lb_gr = 0.999 #left (lower) bound for passing gradient test
         rb_gr = 1.001
         if not hasattr(self,'failed_grad_test_list'):
@@ -7901,7 +7901,8 @@ class inverse_modelling:
         print(returnvariable+' :')
         self.initialise_tl(dstate)
         tl_output = self.tl_full_model(default_model,cpx,cpx_init,returnvariable=returnvariable,tl_dict='Output_tl_'+output_dict)
-        alpharange = [1e-2,1e-4,1e-5,1e-6,1e-7,1e-9,1e-12]
+        if alpharange == None:
+            alpharange = [1e-2,1e-4,1e-5,1e-6,1e-7,1e-9,1e-12]
         numderiv = {}
         for alpha in alpharange:
             inputdata_copy = cp.deepcopy(inputdata)            
@@ -7925,6 +7926,11 @@ class inverse_modelling:
             elif printmode == 'relative':
                 try:
                     print(numderiv[str(alpha)]/tl_output)
+                except ZeroDivisionError:
+                    print('NAN')
+            elif printmode == '1-relative':
+                try:
+                    print(1 - numderiv[str(alpha)]/tl_output)
                 except ZeroDivisionError:
                     print('NAN')
         if printmode == 'absolute':

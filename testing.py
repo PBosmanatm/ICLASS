@@ -44,11 +44,11 @@ gradtest_jarvis_stewart = False
 manual_adjointtest = False
 adjointtest = True #this is over the full model run, so multiple timesteps normally (specify time settings in input)
 gradtest = True #this is over the full model run, so multiple timesteps normally (specify time settings in input)
-test_from_ref_paper = False
+tests_from_ref_paper = False
 #gradient tests require the variable save_vars_indict (run function in forwardmodel.py) to be set to true, will be done automatically
 
 #setting for printing
-printmode = 'absolute' #the way the derivatives are printed for the gradient tests, 'relative' or 'absolute'
+printmode = 'absolute' #the way the derivatives are printed for the gradient tests, 'relative' or 'absolute'. Only for the 'grad_test' function, '1-relative' can also be chosen. For both 'relative' and '1-relative', the tangent linear output is in the denominator.
 printmodeadj = 'relative' #the way the adjoint tests are printed, 'relative' or 'absolute'
 
 testinput = fwdm.model_input()
@@ -209,11 +209,16 @@ testmodel.run(checkpoint=False,updatevals_surf_lay=True,delete_at_end=False,save
 adjoint_modelling = im.inverse_modelling(testmodel)
 adjoint_modelling.all_tests_pass = True
 
-if test_from_ref_paper:
+if tests_from_ref_paper:
     print('adjoint test example from reference paper:')
     testx = ['dTs']
     testHTy = ['adTs']
     adjoint_modelling.adjoint_test_run_radiation(testmodel,x_variables=testx,Hx_variable='dLwout',y_variable='adLwout',HTy_variables=testHTy,printmode=printmodeadj)
+    print('grad test example from reference paper:')
+    testlist = ['z0h']
+    testdstate = {'dz0h': 1.0}
+    alpharange = [0.5,0.2,1e-1,1e-2,1e-3,1e-4,1e-5,1e-6,1e-7,1e-8,1e-9,1e-12]
+    adjoint_modelling.grad_test(testinput,testlist,'T2m',testdstate,'dT2m','rsl',printmode='1-relative',alpharange=alpharange)
 
 #testing of surface layer
 if adjointtest_surf_lay:

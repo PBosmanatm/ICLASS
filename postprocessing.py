@@ -37,6 +37,8 @@ if constr_succes_state_ens:
             Start = 0 #the index where to start, default is 0
             SelectStep = 2 #The step size to sample the ensemble
 print_estim_post_param_stdev = True #print estimated standard deviation of posterior parameters
+print_NrStDev_from_truth = False #Only for OSSEs, print (for state parameters) posterior minus truth, normalised with posterior standard deviation
+save_print_to_f = True #Write the output from the print statements in this file to a file called pp_print.txt
 plot_co2profiles = False #plot co2 mixing ratios at multiple heights in one plot
 plot_manual_fitpanels = False #panels of figures, showing obs and model
 plot_auto_fitpanels = True  #a panel of figures, showing obs and model. More automated, number of rows and nr of columns are specified by two variables 
@@ -52,6 +54,11 @@ if load_second_optim:
     if load_stored_objects:
         storefolder_objects2 = '../5param2obs/pickle_objects'
     plot_two_optim_man_fitpanel =True #figure panel showing obs and model. Involving two optimisations (not just a second ensemble member)
+    load_third_optim = False #load a third optimisation (not just a third ensemble member)
+    if load_third_optim:
+        if load_stored_objects:
+            storefolder_objects3 = '../10paramnoise/pickle_objects'
+        plot_three_optim_man_fitpanel =True #figure panel showing obs and model. Involving three optimisations (not just three ensemble members)
 if plot_obsfit or plot_auto_fitpanels:
     plot_errbars_at_sca_obs = True #The y-location where to plot the error bars in the observation fit figures, if True the error bars will be placed around the scaled observations (if obs scales are used).
 ##############################
@@ -160,6 +167,40 @@ if load_stored_objects:
         if 'PertData_mems.pkl' in os.listdir(storefolder_objects2):
             with open(storefolder_objects2+'/PertData_mems.pkl', 'rb') as input:
                 PertData_mems2 = pickle.load(input)
+        if load_third_optim:
+            if 'priormodel.pkl' in os.listdir(storefolder_objects3):
+                with open(storefolder_objects3+'/priormodel.pkl', 'rb') as input:
+                    priormodel3 = pickle.load(input)
+            if 'priorinput.pkl' in os.listdir(storefolder_objects3):
+                with open(storefolder_objects3+'/priorinput.pkl', 'rb') as input:
+                    priorinput3 = pickle.load(input)
+            if 'obsvarlist.pkl' in os.listdir(storefolder_objects3):
+                with open(storefolder_objects3+'/obsvarlist.pkl', 'rb') as input:
+                    obsvarlist3 = pickle.load(input)
+            if 'optim.pkl' in os.listdir(storefolder_objects3):
+                with open(storefolder_objects3+'/optim.pkl', 'rb') as input:
+                    optim3 = pickle.load(input)
+            if 'obs_times.pkl' in os.listdir(storefolder_objects3):
+                with open(storefolder_objects3+'/obs_times.pkl', 'rb') as input:
+                    obs_times3 = pickle.load(input)
+            if 'measurement_error.pkl' in os.listdir(storefolder_objects3):
+                with open(storefolder_objects3+'/measurement_error.pkl', 'rb') as input:
+                    measurement_error3 = pickle.load(input)
+            if 'optimalinput.pkl' in os.listdir(storefolder_objects3):
+                with open(storefolder_objects3+'/optimalinput.pkl', 'rb') as input:
+                    optimalinput3 = pickle.load(input)
+            if 'optimalinput_onsp.pkl' in os.listdir(storefolder_objects3):
+                with open(storefolder_objects3+'/optimalinput_onsp.pkl', 'rb') as input:
+                    optimalinput_onsp3 = pickle.load(input)
+            if 'optimalmodel.pkl' in os.listdir(storefolder_objects3):
+                with open(storefolder_objects3+'/optimalmodel.pkl', 'rb') as input:
+                    optimalmodel3 = pickle.load(input)
+            if 'optimalmodel_onsp.pkl' in os.listdir(storefolder_objects3):
+                with open(storefolder_objects3+'/optimalmodel_onsp.pkl', 'rb') as input:
+                    optimalmodel_onsp3 = pickle.load(input)
+            if 'PertData_mems.pkl' in os.listdir(storefolder_objects3):
+                with open(storefolder_objects3+'/PertData_mems.pkl', 'rb') as input:
+                    PertData_mems3 = pickle.load(input)
        
 ########################################
 #### units and names for plots #########
@@ -322,10 +363,44 @@ for item in state:
 if (use_ensemble and SuccesColumn):  #if SuccesColumn, it means est_post_pdf_covmatr was set to True  
     success_ens = np.array([x['successful'] for x in ensemble[0:]],dtype=bool)
     if print_estim_post_param_stdev and (np.sum(success_ens[1:]) > 1):
-        print('Estimated standard deviation posterior parameters:')
+        Print1 = 'Estimated standard deviation posterior parameters:'
+        print(Print1)
+        if save_print_to_f:
+            open('pp_print.txt','a').write('{0:>69s}'.format(Print1+'\n'))
         for i in range(len(state)):
-            print(state[i]+':')
-            print(np.sqrt(post_cov_matr[i,i]))
+            Print2 = state[i]+':'
+            print(Print2)
+            Print3 = np.sqrt(post_cov_matr[i,i])
+            print(Print3)
+            if save_print_to_f:
+                open('pp_print.txt','a').write('{0:>69s}'.format(Print2+'\n'))
+                open('pp_print.txt','a').write('{0:>69s}'.format(str(Print3)+'\n'))
+    if print_NrStDev_from_truth: #(This is for OSSEs)
+        truth = {} #Below, give the true parameters
+        truth['alpha'] = 0.20
+        truth['h'] = 350
+        truth['sca_sto'] = 1.0
+        truth['gammatheta'] = 0.003
+        truth['wg'] = 0.27
+        truth['CO2'] = 422
+        truth['advCO2'] = 0.0
+        truth['gammaq'] = -1e-6
+        truth['z0m'] = 0.02
+        truth['z0h'] = 0.02
+        truth['obs_sca_cf_CO2mh'] = 1.4
+        truth['FracH'] = 0.35
+        Print1 = 'Posterior minus truth, normalised with posterior standard deviation:'
+        print(Print1)
+        if save_print_to_f:
+            open('pp_print.txt','a').write('{0:>69s}'.format(Print1+'\n'))
+        for i in range(len(state)):
+            Print2 = state[i]+':'
+            print(Print2)
+            Print3 = (optimalinput.__dict__[state[i]] - truth[state[i]])/np.sqrt(post_cov_matr[i,i])
+            print(Print3)
+            if save_print_to_f:
+                open('pp_print.txt','a').write('{0:>69s}'.format(Print2+'\n'))
+                open('pp_print.txt','a').write('{0:>69s}'.format(str(Print3)+'\n'))
     if np.sum(success_ens[1:]) > 1 and constr_succes_state_ens:
         mean_state_post = np.zeros(len(state))
         mean_state_prior = np.zeros(len(state))
@@ -499,8 +574,13 @@ if (use_ensemble and SuccesColumn):  #if SuccesColumn, it means est_post_pdf_cov
                     succes_state_ens_for_cor[i,:] = succes_state_ens[i][Start::SelectStep]
                 post_cor_matr_ss = np.corrcoef(succes_state_ens_for_cor) #no ddof for np.corrcoef, gives DeprecationWarning
                 plt.figure()
-                print('Nr of mems used for subsample colored_corr_matr:')
-                print(len(succes_state_ens_for_cor[0]))
+                Print1 = 'Nr of mems used for subsample colored_corr_matr:'
+                print(Print1)
+                Print2 = len(succes_state_ens_for_cor[0])
+                print(Print2)
+                if save_print_to_f:
+                    open('pp_print.txt','a').write('{0:>69s}'.format(Print1+'\n'))
+                    open('pp_print.txt','a').write('{0:>69s}'.format(str(Print2)+'\n'))
                 sb.set(rc={'figure.figsize':(11,11)}) 
                 sb.set(font_scale=1.05)  
                 post_cor_matr_ss_r = np.round(post_cor_matr_ss,2)
@@ -531,8 +611,13 @@ if (use_ensemble and SuccesColumn):  #if SuccesColumn, it means est_post_pdf_cov
                     for j in range(len(post_cor_matr_diff[0])):
                         if j < i:
                             post_cor_matr_diff_to_av.append(post_cor_matr_diff[i,j])
-                print('Mean abs value of change when using subsample colored_corr_matr:')
-                print(np.mean(np.abs(post_cor_matr_diff_to_av)))
+                Print3 = 'Mean abs value of change when using subsample colored_corr_matr:'
+                print(Print3)
+                Print4 = np.mean(np.abs(post_cor_matr_diff_to_av))
+                print(Print4)
+                if save_print_to_f:
+                    open('pp_print.txt','a').write('{0:>69s}'.format(Print3+'\n'))
+                    open('pp_print.txt','a').write('{0:>69s}'.format(str(Print4)+'\n'))
                 #Now reset the plot params:
                 plt.rcParams.update(plt.rcParamsDefault)
                 style.use('classic')
@@ -788,7 +873,7 @@ if plot_enbal_panel:
     ax[0].plot(obs_times['H']/3600,optim.__dict__['obs_'+'H'], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs ori')
     ax[0].plot(obs_times['H']/3600,enbal_corr_H, linestyle=' ', marker='o',color = 'red',ms=10,label = 'obs cor')
     ax[0].set_ylabel('H (' + disp_units['H']+')')
-    ax[0].set_xlabel('time (h)')   
+    ax[0].set_xlabel('Time (h)')   
     enbal_corr_LE = optim.obs_LE + (1 - optimalinput.FracH) * optim.EnBalDiffObs_atLEtimes
     ax[1].errorbar(obs_times['LE']/3600,enbal_corr_LE,yerr=optim.__dict__['error_obs_LE'],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2,capsize = 0)
     ax[1].errorbar(obs_times['LE']/3600,enbal_corr_LE,yerr=measurement_error['LE'],ecolor='black',fmt='None',label = '$\sigma_{I}$')
@@ -800,7 +885,7 @@ if plot_enbal_panel:
     ax[1].plot(obs_times['LE']/3600,optim.__dict__['obs_'+'LE'], linestyle=' ', marker='*',color = 'black',ms=10,label = 'obs ori')
     ax[1].plot(obs_times['LE']/3600,enbal_corr_LE, linestyle=' ', marker='o',color = 'red',ms=10,label = 'obs cor')
     ax[1].set_ylabel('LE (' + disp_units['LE']+')')
-    ax[1].set_xlabel('time (h)')
+    ax[1].set_xlabel('Time (h)')
     ax[1].legend(prop={'size':18},loc=0)
     plt.subplots_adjust(left=0.10, right=0.94, top=0.94, bottom=0.15,wspace=0.1)
     ax[0].annotate('(a)',
@@ -886,7 +971,44 @@ if plot_auto_fitpanels:
     ax[1,1].legend(loc=0, frameon=False,prop={'size':19})
     plt.savefig('pp_fig_fitpanel_auto2.'+figformat, format=figformat)
     plt.rc('font', size=plotfontsize) #reset plot font size
-    
+
+    #And another one
+    plotvars = ['h','qmh','wCO2','Tmh','Tmh2','Tmh7','CO2mh','CO2mh2']  #first the var for 0,0 than 0,1 than 1,0 than 1,1
+    annotatelist = ['(a)','(b)','(c)','(d)','(e)','(f)','(g)','(h)']
+    unsca = np.ones(len(plotvars)) #a scale for plotting the obs with different units
+    for i in range(len(plotvars)):
+        if (disp_units[plotvars[i]] == 'g/kg' or disp_units[plotvars[i]] == 'g kg$^{-1}$') and (plotvars[i] == 'q' or plotvars[i].startswith('qmh')): #q can be plotted differently for clarity
+            unsca[i] = 1000
+    nr_rows,nr_cols = 4,2
+    fig, ax = plt.subplots(nr_rows,nr_cols,figsize=(23,24))
+    mfs = 20 #font size
+    k = 0
+    for i in range(nr_rows):
+        for j in range(nr_cols):
+            if ('obs_sca_cf_'+plotvars[k] in state) and plot_errbars_at_sca_obs:
+                y_loc = optimalinput.__dict__['obs_sca_cf_'+plotvars[k]]*unsca[k]*optim.__dict__['obs_'+plotvars[k]]
+            else:
+                y_loc = unsca[k]*optim.__dict__['obs_'+plotvars[k]]
+            ax[i,j].errorbar(obs_times[plotvars[k]]/3600,y_loc,yerr=unsca[k]*optim.__dict__['error_obs_'+plotvars[k]],ecolor='lightgray',fmt='None',label = '$\sigma_{O}$', elinewidth=2.5,capsize = 0)
+            ax[i,j].errorbar(obs_times[plotvars[k]]/3600,y_loc,yerr=unsca[k]*measurement_error[plotvars[k]],ecolor='black',fmt='None',label = '$\sigma_{I}$', elinewidth=1.5,capsize = 5)
+            ax[i,j].plot(priormodel.out.t,unsca[k]*priormodel.out.__dict__[plotvars[k]], ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+            ax[i,j].plot(optimalmodel.out.t,unsca[k]*optimalmodel.out.__dict__[plotvars[k]], linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+            ax[i,j].plot(obs_times[plotvars[k]]/3600,unsca[k]*optim.__dict__['obs_'+plotvars[k]], linestyle=' ', marker='*',color = 'black',ms=12,label = 'obs')
+            if 'obs_sca_cf_'+plotvars[k] in state: #plot the obs scaled with the scaling factors (if applicable)
+                ax[i,j].plot(obs_times[plotvars[k]]/3600,optimalinput.__dict__['obs_sca_cf_'+plotvars[k]]*unsca[k]*optim.__dict__['obs_'+plotvars[k]], linestyle=' ', marker='o',color = 'red',ms=12,label = 'obs sca')
+            ax[i,j].set_ylabel(display_names[plotvars[k]] +' ('+ disp_units[plotvars[k]] + ')',fontsize=mfs)
+            ax[i,j].set_xlabel('Time (h)',fontsize=mfs)
+            ax[i,j].tick_params(axis='x', labelsize = mfs)
+            ax[i,j].tick_params(axis='y', labelsize = mfs)
+            ax[i,j].annotate(annotatelist[k],
+            xy=(0.00, 1.07), xytext=(0,0),
+            xycoords=('axes fraction', 'axes fraction'),
+            textcoords='offset points',
+            size=18, fontweight='bold', ha='left', va='top')
+            k += 1
+    ax[-1,-1].legend(loc=0, frameon=False,prop={'size':20})
+    plt.savefig('pp_fig_fitpanel_auto3.'+figformat, format=figformat)
+    plt.rc('font', size=plotfontsize) #reset plot font size     
     
 if load_second_optim:
     if plot_two_optim_man_fitpanel:
@@ -937,3 +1059,99 @@ if load_second_optim:
         plt.savefig('pp_fig_fitpaneltwo_optims.'+figformat, format=figformat)
         plt.rc('font', size=plotfontsize) #reset plot font size
                     
+    if load_third_optim:
+        if plot_three_optim_man_fitpanel:
+            plt.rc('font', size=20)
+            fig, ax = plt.subplots(4,2,figsize=(23,24))
+            unsca_q = 1000 #plot in g/kg
+            ax[0,0].plot(priormodel.out.t,priormodel.out.h, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+            ax[0,0].plot(optimalmodel.out.t,optimalmodel.out.h, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+            ax[0,0].plot(obs_times['h']/3600,optim.__dict__['obs_'+'h'], linestyle=' ', marker='*',color = 'black',ms=12,label = 'obs')
+            ax[0,0].set_ylabel('Boundary-layer height (m)')
+            ax[0,0].set_xlabel('Time (h)')
+            ax[0,1].plot(priormodel.out.t,unsca_q*priormodel.out.q, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+            ax[0,1].plot(optimalmodel.out.t,unsca_q*optimalmodel.out.q, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+            ax[0,1].plot(obs_times['q']/3600,unsca_q*optim.__dict__['obs_'+'q'], linestyle=' ', marker='*',color = 'black',ms=12, label = 'obs')
+            ax[0,1].set_ylabel('Specific humidity (g kg$^{-1}$)')
+            ax[0,1].set_xlabel('Time (h)')
+            ax[1,0].plot(priormodel2.out.t,priormodel2.out.h, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+            ax[1,0].plot(optimalmodel2.out.t,optimalmodel2.out.h, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+            ax[1,0].plot(obs_times2['h']/3600,optim2.__dict__['obs_'+'h'], linestyle=' ', marker='*',color = 'black',ms=12,label = 'obs')
+            ax[1,0].set_ylabel('Boundary-layer height (m)')
+            ax[1,0].set_xlabel('Time (h)')
+            ax[1,1].plot(priormodel2.out.t,unsca_q*priormodel2.out.q, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+            ax[1,1].plot(optimalmodel2.out.t,unsca_q*optimalmodel2.out.q, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+            ax[1,1].plot(obs_times2['q']/3600,unsca_q*optim2.__dict__['obs_'+'q'], linestyle=' ', marker='*',color = 'black',ms=12, label = 'obs')
+            ax[1,1].set_ylabel('Specific humidity (g kg$^{-1}$)')
+            ax[1,1].set_xlabel('Time (h)')
+            #ax[1,1].legend(loc=0, frameon=False,prop={'size':21})
+            ax[0,0].annotate('(a)',
+                        xy=(0.00, 1.07), xytext=(0,0),
+                        xycoords=('axes fraction', 'axes fraction'),
+                        textcoords='offset points',
+                        size=18, fontweight='bold', ha='left', va='top')
+            ax[0,1].annotate('(b)',
+                        xy=(0.00, 1.07), xytext=(0,0),
+                        xycoords=('axes fraction', 'axes fraction'),
+                        textcoords='offset points',
+                        size=18, fontweight='bold',ha='left', va='top')
+            ax[1,0].annotate('(c)',
+                    xy=(0.00, 1.07), xytext=(0,0),
+                    xycoords=('axes fraction', 'axes fraction'),
+                    textcoords='offset points',
+                    size=18, fontweight='bold',ha='left', va='top')
+            ax[1,1].annotate('(d)',
+                    xy=(0.00, 1.07), xytext=(0,0),
+                    xycoords=('axes fraction', 'axes fraction'),
+                    textcoords='offset points',
+                    size=18, fontweight='bold',ha='left', va='top')
+            ax[2,0].plot(priormodel3.out.t,priormodel3.out.__dict__['h'], ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+            ax[2,0].plot(optimalmodel3.out.t,optimalmodel3.out.__dict__['h'], linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+            ax[2,0].plot(obs_times3['h']/3600,optim3.__dict__['obs_'+'h'], linestyle=' ', marker='*',color = 'black',ms=12,label = 'obs')
+            ax[2,0].errorbar(obs_times3['h']/3600,optim3.__dict__['obs_'+'h'],yerr=optim3.__dict__['error_obs_'+'h'],ecolor='black',fmt='None')
+            ax[2,0].set_ylabel('Boundary-layer height (m)')
+            ax[2,0].set_xlabel('Time (h)')
+            ax[2,1].plot(priormodel3.out.t,1000*priormodel3.out.q, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+            ax[2,1].plot(optimalmodel3.out.t,1000*optimalmodel3.out.q, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+            ax[2,1].plot(obs_times3['q']/3600,1000*optim3.__dict__['obs_q'], linestyle=' ', marker='*',color = 'black',ms=12, label = 'obs')
+            ax[2,1].errorbar(obs_times3['q']/3600,1000*optim3.__dict__['obs_'+'q'],yerr=1000*optim3.__dict__['error_obs_'+'q'],ecolor='black',fmt='None')
+            ax[2,1].set_ylabel('Specific humidity ('+disp_units['q']+')')
+            ax[2,1].set_xlabel('Time (h)')
+            
+            ax[3,0].plot(priormodel3.out.t,priormodel3.out.__dict__['wCO2'], ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+            ax[3,0].plot(optimalmodel3.out.t,optimalmodel3.out.__dict__['wCO2'], linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+            ax[3,0].plot(obs_times3['wCO2']/3600,optim3.__dict__['obs_'+'wCO2'], linestyle=' ', marker='*',color = 'black',ms=12,label = 'obs')
+            ax[3,0].errorbar(obs_times3['wCO2']/3600,optim3.__dict__['obs_'+'wCO2'],yerr=optim3.__dict__['error_obs_'+'wCO2'],ecolor='black',fmt='None')
+            ax[3,0].set_ylabel('Surface CO$_2$ flux (mg CO$_2$ m$^{-2}$s$^{-1}$)')
+            ax[3,0].set_xlabel('Time (h)')
+            ax[3,1].plot(priormodel3.out.t,priormodel3.out.Tmh, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+            ax[3,1].plot(optimalmodel3.out.t,optimalmodel3.out.Tmh, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+            ax[3,1].plot(obs_times3['Tmh']/3600,optim3.__dict__['obs_Tmh'], linestyle=' ', marker='*',color = 'black',ms=12, label = 'obs')
+            ax[3,1].errorbar(obs_times3['Tmh']/3600,optim3.__dict__['obs_'+'Tmh'],yerr=optim3.__dict__['error_obs_'+'Tmh'],ecolor='black',fmt='None')
+            ax[3,1].set_ylabel('2 m temperature (K)')
+            ax[3,1].set_xlabel('Time (h)')
+            ax[3,1].legend(loc=0, frameon=False,prop={'size':20})
+            
+            ax[2,0].annotate('(e)',
+                        xy=(0.00, 1.07), xytext=(0,0),
+                        xycoords=('axes fraction', 'axes fraction'),
+                        textcoords='offset points',
+                        size=18, fontweight='bold', ha='left', va='top')
+            ax[2,1].annotate('(f)',
+                        xy=(0.00, 1.07), xytext=(0,0),
+                        xycoords=('axes fraction', 'axes fraction'),
+                        textcoords='offset points',
+                        size=18, fontweight='bold',ha='left', va='top')
+            ax[3,0].annotate('(g)',
+                        xy=(0.00, 1.07), xytext=(0,0),
+                        xycoords=('axes fraction', 'axes fraction'),
+                        textcoords='offset points',
+                        size=18, fontweight='bold',ha='left', va='top')
+            ax[3,1].annotate('(h)',
+                        xy=(0.00, 1.07), xytext=(0,0),
+                        xycoords=('axes fraction', 'axes fraction'),
+                        textcoords='offset points',
+                        size=18, fontweight='bold',ha='left', va='top')
+            plt.subplots_adjust(left=0.10, right=0.94, top=0.94, bottom=0.07,wspace=0.15)
+            plt.savefig('pp_fig_fitpanelthree_optims.'+figformat, format=figformat)
+            plt.rc('font', size=plotfontsize) #reset plot font size

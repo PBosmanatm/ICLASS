@@ -28,7 +28,7 @@ write_to_f = True #write output and figures to files
 use_ensemble = True #use an ensemble of optimisations
 if use_ensemble:
     nr_of_members = 175 #number of members in the ensemble of optimisations (including the one with unperturbed prior)
-    use_covar_to_pert = False #whether to take prior covariance (if specified) into account when perturbing the ensemble 
+    use_covar_to_pert = True #whether to take prior covariance (if specified) into account when perturbing the ensemble 
     pert_non_state_param = False #perturb parameters that are not in the state
     est_post_pdf_covmatr = True #estimate the posterior pdf and covariance matrix of the state (and more)
     if est_post_pdf_covmatr:
@@ -40,7 +40,7 @@ if use_ensemble:
         plot_perturbed_obs = False #Plot the perturbed observations of the ensemble members
     pert_Hx_min_sy_ens = True #Perturb the data part of the cost function (in every ensemble member except member 0), by perturbing H(x) - sy with a random number from a distribution with standard deviation sigma_O
     print_status_dur_ens = False #whether to print state etc info during ensemble of optimisations (during member 0 printing will always take place)
-estimate_model_err = False #estimate the model error by perturbing specified non-state parameters
+estimate_model_err = False #estimate the model error standard deviations by perturbing specified non-state parameters
 if estimate_model_err:
     nr_of_members_moderr = 30 #number of members for the ensemble that estimates the model error
 imposeparambounds = True #force the optimisation to keep parameters within specified bounds (tnc only) and when using ensemble, keep priors within bounds (tnc and bfgs)
@@ -446,7 +446,7 @@ for i in range(len(time_CO2)):
         hour_CO2[i] = hour_CO2[i] - 0.5
     else:
         hour_CO2[i] = 23.5
-        day_CO2[i] = day_CO2[i] - 1 #than it is from previous day
+        day_CO2[i] = day_CO2[i] - 1 #then it is from previous day
 month_True_False = np.zeros(len(time_CO2),dtype=bool)
 year_True_False = np.zeros(len(time_CO2),dtype=bool)
 for i in range(len(month_True_False)):
@@ -698,7 +698,7 @@ if use_backgr_in_cost or use_ensemble:
 ###########################################################
 ###### user input: prior variance/covar (if used) #########
 ###########################################################
-    #if not use_backgr_in_cost, than these are only used for perturbing the ensemble (when use_ensemble = True)
+    #if not use_backgr_in_cost, then these are only used for perturbing the ensemble (when use_ensemble = True)
     #prior variances of the items in the state:
     priorvar['alpha'] = 0.1**2
     priorvar['gammatheta'] = 0.003**2 
@@ -821,6 +821,10 @@ if imposeparambounds or paramboundspenalty:
     for param in boundedvars:    
         if not hasattr(priorinput,param):
             raise Exception('Parameter \''+ param + '\' in boundedvars does not occur in priorinput')
+        if boundedvars[param][0] is None:
+            boundedvars[param][0] = -np.inf
+        if boundedvars[param][1] is None:
+            boundedvars[param][1] = np.inf
 
 #create inverse modelling framework, do check,...
 optim = im.inverse_modelling(priormodel,write_to_file=write_to_f,use_backgr_in_cost=use_backgr_in_cost,StateVarNames=state,obsvarlist=obsvarlist,
@@ -841,7 +845,7 @@ for item in obsvarlist:
 ###### user input: observation information ################
 ########################################################### 
     #for each of the variables provided in the observation list, link the model output variable 
-    #to the correct observations that were read in. Also, specify the times and observational errors, and optional weights 
+    #to the correct observations that were read in. Also, specify the times, standard deviations of observational errors, and optional weights 
     #Optionally, you can provide a display name here, a name which name will be shown for the observations in the plots
     #please use np.array or list as datastructure for the obs, obs errors, observation times or weights
     if use_mean:
@@ -1193,7 +1197,7 @@ if use_ensemble:
 ###### user input: units and displayed names of parameters for pdf figures (optional) ############
 ##################################################################################################
         disp_units_par['theta'] = 'K'
-        disp_units_par['advtheta'] = 'Ks$^{-1}$'
+        disp_units_par['advtheta'] = 'K s$^{-1}$'
         disp_units_par['advq'] = 'kg kg$^{-1}$s$^{-1}$'
         disp_units_par['advCO2'] = 'ppm s$^{-1}$'
         disp_units_par['deltatheta'] = 'K'
@@ -1248,20 +1252,20 @@ if 'FracH' in state:
             if type(optim.__dict__['EnBalDiffObs_at'+item+'times']) not in [np.ndarray,list]: #a check to see whether data is of a correct type
                 raise Exception('Please convert EnBalDiffObs_at'+item+'times data into type \'numpy.ndarray\' or list!')
                             
-mod_error = {} #model error
-repr_error = {} #representation error, see eq 11.11 in chapter inverse modelling Brasseur and Jacob 2017
+mod_error = {} #model error (standard deviations)
+repr_error = {} #representation error (standard deviations), see eq 11.11 in chapter inverse modelling Brasseur and Jacob 2017
 if estimate_model_err:  
     me_paramdict = {} #dictionary of dictionaries, me means model error
 ########################################################################
 ###### user input: model and representation error ######################
 ########################################################################
-    #in case the model error is estimated with a model ensemble (switch estimate_model_err), specify here the parameters to perturb for this estimation
+    #in case the model error standard deviations are estimated with a model ensemble (switch estimate_model_err), specify here the parameters to perturb for this estimation
     #and the distributions to sample random numbers from (to add to these parameters in the ensemble):
     me_paramdict['cveg'] = {'distr':'uniform','leftbound': -0.2,'rightbound': 0.2}
-    me_paramdict['Lambda'] = {'distr':'normal','scale': 0.3}
+    me_paramdict['Lambda'] = {'distr':'normal','mean':0.0,'scale': 0.3}
 else:
     pass
-    #in case you want to specify directly the model errors (estimate_model_err = False), specify them here:
+    #in case you want to specify directly the model error standard deviations (estimate_model_err = False), specify them here:
     #e.g. mod_error['theta'] = [0.5 for j in range(len(measurement_error['theta']))]
     mod_error['Tmh'],mod_error['Tmh2'],mod_error['Tmh3'],mod_error['Tmh4'],mod_error['Tmh5'],mod_error['Tmh6'],mod_error['Tmh7'] = [np.zeros(len(measurement_error['Tmh'])) for x in range(7)]
     for j in range(len(measurement_error['Tmh'])):
@@ -1321,7 +1325,7 @@ else:
             mod_error['Swout'][j] = 15
         else:
             mod_error['Swout'][j] = 3.0
-#specify the representation error here, if nothing specified it is assumed 0 #e.g. :
+#specify the representation error standard deviations here, if nothing specified for an observation stream, the representation error for that stream is assumed 0 #e.g. :
 #repr_error['theta'] = [0.3 for j in range(len(measurement_error['theta']))]
 ########################################################################
 ###### end user input: model and representation error ##################
@@ -1387,7 +1391,7 @@ for item in obsvarlist:
     for i in range(len(optim.__dict__['obs_'+item])):
         if np.isnan(optim.__dict__['obs_'+item][i]):
             itoremove += [i]
-    if 'FracH' in state and item in ['H','LE']: #Check also for a nan in optim.__dict__['EnBalDiffObs_at'+item+'times'], than the corresponding obs are discarded as well
+    if 'FracH' in state and item in ['H','LE']: #Check also for a nan in optim.__dict__['EnBalDiffObs_at'+item+'times'], then the corresponding obs are discarded as well
         for j in range(len(optim.__dict__['obs_'+item])):
             if np.isnan(optim.__dict__['EnBalDiffObs_at'+item+'times'][j]):
                 if j not in itoremove:
@@ -1448,7 +1452,7 @@ if use_ensemble:
 if estimate_model_err:
     for param in me_paramdict:    
         if not hasattr(priorinput,param):
-            raise Exception('Parameter \''+ param + '\' in me_paramdict for estimating the model error does not occur in priorinput')            
+            raise Exception('Parameter \''+ param + '\' in me_paramdict for estimating the model error standard deviations does not occur in priorinput')            
     def run_mod_pert_par(counter,seed,modelinput,paramdict,obsvarlist,obstimes):
         modelinput_mem = cp.deepcopy(modelinput) 
         if seed != None:
@@ -1459,12 +1463,12 @@ if estimate_model_err:
         np.random.seed(seed) #VERY IMPORTANT! You have to explicitly set the seed (to None is ok), otherwise multicore implementation will use same random number for all ensemble members. 
         for param in paramdict:
             if paramdict[param]['distr'] == 'normal':
-                rand_nr = np.random.normal(0,paramdict[param]['scale'])
+                rand_nr = np.random.normal(paramdict[param]['mean'],paramdict[param]['scale'])
             elif paramdict[param]['distr'] == 'bounded normal':
                 counter_while_loop = 1
-                rand_nr = np.random.normal(0,paramdict[param]['scale'])
-                while (modelinput_mem.__dict__[param] + rand_nr < paramdict[param]['leftbound'] or modelinput_mem.__dict__[param] + rand_nr > paramdict[param]['rightbound']): #lower than lower bound or higher than upper bound
-                    rand_nr = np.random.normal(0,paramdict[param]['scale'])
+                rand_nr = np.random.normal(paramdict[param]['mean'],paramdict[param]['scale'])
+                while (rand_nr < paramdict[param]['leftbound'] or rand_nr > paramdict[param]['rightbound']): #lower than lower bound or higher than upper bound
+                    rand_nr = np.random.normal(paramdict[param]['mean'],paramdict[param]['scale'])
                     if counter_while_loop >= 100:
                         raise Exception('Problem for estimating model error: no parameter value within bounds obtained for an ensemble member for parameter '+param+' after '+str(counter_while_loop)+ ' attempts')
                     counter_while_loop += 1
@@ -1508,7 +1512,7 @@ if estimate_model_err:
         for t in range(len(result_array[0][item])):
             seq = np.array([x[item][t] for x in result_array[0:]]) #in case of nan for the first member, the length does not change
             if np.sum(~np.isnan(seq)) < 2:
-                raise Exception('Cannot estimate model error for '+item+' at t = '+str(obs_times[item][t]/3600)+ ' h, since less than 2 non-nan data points')
+                raise Exception('Cannot estimate model error standard deviation for '+item+' at t = '+str(obs_times[item][t]/3600)+ ' h, since less than 2 non-nan data points')
             mod_error[item][t] =  np.nanstd(seq,ddof = 1)
     if write_to_f:
         open('Modelerrorfile.txt','w').write('{0:>36s}'.format('nr of members in model err ensemble:'))
@@ -1520,7 +1524,7 @@ if estimate_model_err:
         open('Modelerrorfile.txt','a').write('{0:>36s}'.format(str(nr_of_members_moderr)))
         open('Modelerrorfile.txt','a').write('{0:>49s}'.format(str(nr_of_members_moderr-nan_members)))
         open('Modelerrorfile.txt','a').write('\n')
-        open('Modelerrorfile.txt','a').write('{0:>30s}'.format('Time-mean model errors on obs:\n'))
+        open('Modelerrorfile.txt','a').write('{0:>56s}'.format('Time-mean model error standard deviations on obs:\n'))
         open('Modelerrorfile.txt','a').write('     ')
         for item in obsvarlist:
             open('Modelerrorfile.txt','a').write('{0:>25s}'.format(str(item)))
@@ -1528,7 +1532,7 @@ if estimate_model_err:
         for item in obsvarlist:
             open('Modelerrorfile.txt','a').write('{0:>25s}'.format(str(np.mean(mod_error[item]))))
         open('Modelerrorfile.txt','a').write('\n')
-        open('Modelerrorfile.txt','a').write('{0:>31s}'.format('Median model errors on obs:\n'))
+        open('Modelerrorfile.txt','a').write('{0:>56s}'.format('Median model error standard deviations on obs:\n'))
         open('Modelerrorfile.txt','a').write('     ')
         for item in obsvarlist:
             open('Modelerrorfile.txt','a').write('{0:>25s}'.format(str(item)))
@@ -1536,7 +1540,7 @@ if estimate_model_err:
         for item in obsvarlist:
             open('Modelerrorfile.txt','a').write('{0:>25s}'.format(str(np.median(mod_error[item]))))
         open('Modelerrorfile.txt','a').write('\n')
-        open('Modelerrorfile.txt','a').write('{0:>31s}'.format('Max model errors on obs:\n'))
+        open('Modelerrorfile.txt','a').write('{0:>56s}'.format('Max model error standard deviations on obs:\n'))
         open('Modelerrorfile.txt','a').write('     ')
         for item in obsvarlist:
             open('Modelerrorfile.txt','a').write('{0:>25s}'.format(str(item)))
@@ -1544,7 +1548,7 @@ if estimate_model_err:
         for item in obsvarlist:
             open('Modelerrorfile.txt','a').write('{0:>25s}'.format(str(np.max(mod_error[item]))))
         open('Modelerrorfile.txt','a').write('\n')
-        open('Modelerrorfile.txt','a').write('{0:>31s}'.format('Min model errors on obs:\n'))
+        open('Modelerrorfile.txt','a').write('{0:>56s}'.format('Min model error standard deviations on obs:\n'))
         open('Modelerrorfile.txt','a').write('     ')
         for item in obsvarlist:
             open('Modelerrorfile.txt','a').write('{0:>25s}'.format(str(item)))
@@ -1735,7 +1739,7 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
     if seed != None:
         seed = seed + counter#create a unique seed for every member
     np.random.seed(seed) #VERY IMPORTANT! You have to explicitly set the seed (to None is ok), otherwise multicore implementation will use same random number for all ensemble members. 
-    if np.count_nonzero(b_cov) == len(state) or not use_covar_to_pert: #than covariances all zero
+    if np.count_nonzero(b_cov) == len(state) or not use_covar_to_pert: #then covariances all zero
         for j in range(len(state)):
             rand_nr_norm_distr = np.random.normal(0,np.sqrt(b_cov[j,j]))
             priorinput_mem.__dict__[state[j]] += rand_nr_norm_distr
@@ -1772,14 +1776,14 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
     if pert_non_state_param:
         for param in non_state_paramdict:
             if non_state_paramdict[param]['distr'] == 'normal':
-                rand_nr = np.random.normal(0,non_state_paramdict[param]['scale'])
+                rand_nr = np.random.normal(non_state_paramdict[param]['mean'],non_state_paramdict[param]['scale'])
             elif non_state_paramdict[param]['distr'] == 'bounded normal':
                 counter_while_loop = 1
-                rand_nr = np.random.normal(0,non_state_paramdict[param]['scale'])
-                while (priorinput_mem.__dict__[param] + rand_nr < non_state_paramdict[param]['leftbound'] or priorinput_mem.__dict__[param] + rand_nr > non_state_paramdict[param]['rightbound']): #lower than lower bound or higher than upper bound
-                    rand_nr = np.random.normal(0,non_state_paramdict[param]['scale'])
+                rand_nr = np.random.normal(non_state_paramdict[param]['mean'],non_state_paramdict[param]['scale'])
+                while (rand_nr < non_state_paramdict[param]['leftbound'] or rand_nr > non_state_paramdict[param]['rightbound']): #lower than lower bound or higher than upper bound
+                    rand_nr = np.random.normal(non_state_paramdict[param]['mean'],non_state_paramdict[param]['scale'])
                     if counter_while_loop >= 100:
-                        raise Exception('No non_state parameter value within bounds obtained for an ensemble member for parameter '+param+' after '+str(counter_while_loop)+ ' attempts')
+                        raise Exception('No non-state parameter value within bounds obtained for an ensemble member for parameter '+param+' after '+str(counter_while_loop)+ ' attempts')
                     counter_while_loop += 1
             elif non_state_paramdict[param]['distr'] == 'uniform':
                 rand_nr = np.random.uniform(non_state_paramdict[param]['leftbound'],non_state_paramdict[param]['rightbound'])
@@ -1809,7 +1813,7 @@ def run_ensemble_member(counter,seed,non_state_paramdict={}):
                 rand_nr_list = ([np.random.normal(0,optim_mem.__dict__['error_obs_' + item][i]) for i in range(len(measurement_error[item]))])
             else:
                 rand_nr_list = ([np.random.normal(0,measurement_error[item][i]) for i in range(len(measurement_error[item]))])            
-            PertDict_to_return[item] = rand_nr_list #Not PertDict, since than Hx_min_sy would additionally get perturbed
+            PertDict_to_return[item] = rand_nr_list #Not PertDict, since then Hx_min_sy would additionally get perturbed
             optim_mem.__dict__['obs_'+item] += rand_nr_list
             if plot_perturbed_obs:
                 unsca = 1 #a scale for plotting the obs with different units

@@ -1532,7 +1532,7 @@ class model:
             f1 = 1.
   
         if(self.w2 > self.wwilt):# and self.w2 <= self.wfc):
-            f2js = (self.wfc - self.wwilt) / (self.w2 - self.wwilt)  #•Peter Bosman: I have changed variable f2 into f2js, to prevent two vars with the same name
+            f2js = (self.wfc - self.wwilt) / (self.w2 - self.wwilt)  #Peter Bosman: I have changed variable f2 into f2js, to prevent two vars with the same name
         else:
             f2js = 1.e8
  
