@@ -54,6 +54,11 @@ if load_second_optim:
     if load_stored_objects:
         storefolder_objects2 = '../5param2obs/pickle_objects'
     plot_two_optim_man_fitpanel =True #figure panel showing obs and model. Involving two optimisations (not just a second ensemble member)
+    load_third_optim = True #load a third optimisation (not just a third ensemble member)
+    if load_third_optim:
+        if load_stored_objects:
+            storefolder_objects3 = '../10paramnoise/pickle_objects'
+        plot_three_optim_man_fitpanel =True #figure panel showing obs and model. Involving three optimisations (not just three ensemble members)
 if plot_obsfit or plot_auto_fitpanels:
     plot_errbars_at_sca_obs = True #The y-location where to plot the error bars in the observation fit figures, if True the error bars will be placed around the scaled observations (if obs scales are used).
 ##############################
@@ -162,6 +167,40 @@ if load_stored_objects:
         if 'PertData_mems.pkl' in os.listdir(storefolder_objects2):
             with open(storefolder_objects2+'/PertData_mems.pkl', 'rb') as input:
                 PertData_mems2 = pickle.load(input)
+        if load_third_optim:
+            if 'priormodel.pkl' in os.listdir(storefolder_objects3):
+                with open(storefolder_objects3+'/priormodel.pkl', 'rb') as input:
+                    priormodel3 = pickle.load(input)
+            if 'priorinput.pkl' in os.listdir(storefolder_objects3):
+                with open(storefolder_objects3+'/priorinput.pkl', 'rb') as input:
+                    priorinput3 = pickle.load(input)
+            if 'obsvarlist.pkl' in os.listdir(storefolder_objects3):
+                with open(storefolder_objects3+'/obsvarlist.pkl', 'rb') as input:
+                    obsvarlist3 = pickle.load(input)
+            if 'optim.pkl' in os.listdir(storefolder_objects3):
+                with open(storefolder_objects3+'/optim.pkl', 'rb') as input:
+                    optim3 = pickle.load(input)
+            if 'obs_times.pkl' in os.listdir(storefolder_objects3):
+                with open(storefolder_objects3+'/obs_times.pkl', 'rb') as input:
+                    obs_times3 = pickle.load(input)
+            if 'measurement_error.pkl' in os.listdir(storefolder_objects3):
+                with open(storefolder_objects3+'/measurement_error.pkl', 'rb') as input:
+                    measurement_error3 = pickle.load(input)
+            if 'optimalinput.pkl' in os.listdir(storefolder_objects3):
+                with open(storefolder_objects3+'/optimalinput.pkl', 'rb') as input:
+                    optimalinput3 = pickle.load(input)
+            if 'optimalinput_onsp.pkl' in os.listdir(storefolder_objects3):
+                with open(storefolder_objects3+'/optimalinput_onsp.pkl', 'rb') as input:
+                    optimalinput_onsp3 = pickle.load(input)
+            if 'optimalmodel.pkl' in os.listdir(storefolder_objects3):
+                with open(storefolder_objects3+'/optimalmodel.pkl', 'rb') as input:
+                    optimalmodel3 = pickle.load(input)
+            if 'optimalmodel_onsp.pkl' in os.listdir(storefolder_objects3):
+                with open(storefolder_objects3+'/optimalmodel_onsp.pkl', 'rb') as input:
+                    optimalmodel_onsp3 = pickle.load(input)
+            if 'PertData_mems.pkl' in os.listdir(storefolder_objects3):
+                with open(storefolder_objects3+'/PertData_mems.pkl', 'rb') as input:
+                    PertData_mems3 = pickle.load(input)
        
 ########################################
 #### units and names for plots #########
@@ -939,3 +978,99 @@ if load_second_optim:
         plt.savefig('pp_fig_fitpaneltwo_optims.'+figformat, format=figformat)
         plt.rc('font', size=plotfontsize) #reset plot font size
                     
+    if load_third_optim:
+        if plot_three_optim_man_fitpanel:
+            plt.rc('font', size=20)
+            fig, ax = plt.subplots(4,2,figsize=(23,24))
+            unsca_q = 1000 #plot in g/kg
+            ax[0,0].plot(priormodel.out.t,priormodel.out.h, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+            ax[0,0].plot(optimalmodel.out.t,optimalmodel.out.h, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+            ax[0,0].plot(obs_times['h']/3600,optim.__dict__['obs_'+'h'], linestyle=' ', marker='*',color = 'black',ms=12,label = 'obs')
+            ax[0,0].set_ylabel('Boundary-layer height (m)')
+            ax[0,0].set_xlabel('Time (h)')
+            ax[0,1].plot(priormodel.out.t,unsca_q*priormodel.out.q, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+            ax[0,1].plot(optimalmodel.out.t,unsca_q*optimalmodel.out.q, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+            ax[0,1].plot(obs_times['q']/3600,unsca_q*optim.__dict__['obs_'+'q'], linestyle=' ', marker='*',color = 'black',ms=12, label = 'obs')
+            ax[0,1].set_ylabel('Specific humidity (g kg$^{-1}$)')
+            ax[0,1].set_xlabel('Time (h)')
+            ax[1,0].plot(priormodel2.out.t,priormodel2.out.h, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+            ax[1,0].plot(optimalmodel2.out.t,optimalmodel2.out.h, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+            ax[1,0].plot(obs_times2['h']/3600,optim2.__dict__['obs_'+'h'], linestyle=' ', marker='*',color = 'black',ms=12,label = 'obs')
+            ax[1,0].set_ylabel('Boundary-layer height (m)')
+            ax[1,0].set_xlabel('Time (h)')
+            ax[1,1].plot(priormodel2.out.t,unsca_q*priormodel2.out.q, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+            ax[1,1].plot(optimalmodel2.out.t,unsca_q*optimalmodel2.out.q, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+            ax[1,1].plot(obs_times2['q']/3600,unsca_q*optim2.__dict__['obs_'+'q'], linestyle=' ', marker='*',color = 'black',ms=12, label = 'obs')
+            ax[1,1].set_ylabel('Specific humidity (g kg$^{-1}$)')
+            ax[1,1].set_xlabel('Time (h)')
+            #ax[1,1].legend(loc=0, frameon=False,prop={'size':21})
+            ax[0,0].annotate('(a)',
+                        xy=(0.00, 1.07), xytext=(0,0),
+                        xycoords=('axes fraction', 'axes fraction'),
+                        textcoords='offset points',
+                        size=18, fontweight='bold', ha='left', va='top')
+            ax[0,1].annotate('(b)',
+                        xy=(0.00, 1.07), xytext=(0,0),
+                        xycoords=('axes fraction', 'axes fraction'),
+                        textcoords='offset points',
+                        size=18, fontweight='bold',ha='left', va='top')
+            ax[1,0].annotate('(c)',
+                    xy=(0.00, 1.07), xytext=(0,0),
+                    xycoords=('axes fraction', 'axes fraction'),
+                    textcoords='offset points',
+                    size=18, fontweight='bold',ha='left', va='top')
+            ax[1,1].annotate('(d)',
+                    xy=(0.00, 1.07), xytext=(0,0),
+                    xycoords=('axes fraction', 'axes fraction'),
+                    textcoords='offset points',
+                    size=18, fontweight='bold',ha='left', va='top')
+            ax[2,0].plot(priormodel3.out.t,priormodel3.out.__dict__['h'], ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+            ax[2,0].plot(optimalmodel3.out.t,optimalmodel3.out.__dict__['h'], linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+            ax[2,0].plot(obs_times3['h']/3600,optim3.__dict__['obs_'+'h'], linestyle=' ', marker='*',color = 'black',ms=12,label = 'obs')
+            ax[2,0].errorbar(obs_times3['h']/3600,optim3.__dict__['obs_'+'h'],yerr=optim3.__dict__['error_obs_'+'h'],ecolor='black',fmt='None')
+            ax[2,0].set_ylabel('Boundary-layer height (m)')
+            ax[2,0].set_xlabel('Time (h)')
+            ax[2,1].plot(priormodel3.out.t,1000*priormodel3.out.q, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+            ax[2,1].plot(optimalmodel3.out.t,1000*optimalmodel3.out.q, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+            ax[2,1].plot(obs_times3['q']/3600,1000*optim3.__dict__['obs_q'], linestyle=' ', marker='*',color = 'black',ms=12, label = 'obs')
+            ax[2,1].errorbar(obs_times3['q']/3600,1000*optim3.__dict__['obs_'+'q'],yerr=1000*optim3.__dict__['error_obs_'+'q'],ecolor='black',fmt='None')
+            ax[2,1].set_ylabel('Specific humidity ('+disp_units['q']+')')
+            ax[2,1].set_xlabel('Time (h)')
+            
+            ax[3,0].plot(priormodel3.out.t,priormodel3.out.__dict__['wCO2'], ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+            ax[3,0].plot(optimalmodel3.out.t,optimalmodel3.out.__dict__['wCO2'], linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+            ax[3,0].plot(obs_times3['wCO2']/3600,optim3.__dict__['obs_'+'wCO2'], linestyle=' ', marker='*',color = 'black',ms=12,label = 'obs')
+            ax[3,0].errorbar(obs_times3['wCO2']/3600,optim3.__dict__['obs_'+'wCO2'],yerr=optim3.__dict__['error_obs_'+'wCO2'],ecolor='black',fmt='None')
+            ax[3,0].set_ylabel('Surface CO$_2$ flux (mg CO$_2$ m$^{-2}$s$^{-1}$)')
+            ax[3,0].set_xlabel('Time (h)')
+            ax[3,1].plot(priormodel3.out.t,priormodel3.out.Tmh, ls='dashed', marker='None',color='gold',linewidth = 4.0,label = 'prior',dashes = (4,4))
+            ax[3,1].plot(optimalmodel3.out.t,optimalmodel3.out.Tmh, linestyle='-', marker='None',color='red',linewidth = 4.0,label = 'post')
+            ax[3,1].plot(obs_times3['Tmh']/3600,optim3.__dict__['obs_Tmh'], linestyle=' ', marker='*',color = 'black',ms=12, label = 'obs')
+            ax[3,1].errorbar(obs_times3['Tmh']/3600,optim3.__dict__['obs_'+'Tmh'],yerr=optim3.__dict__['error_obs_'+'Tmh'],ecolor='black',fmt='None')
+            ax[3,1].set_ylabel('2 m temperature (K)')
+            ax[3,1].set_xlabel('Time (h)')
+            ax[3,1].legend(loc=0, frameon=False,prop={'size':20})
+            
+            ax[2,0].annotate('(e)',
+                        xy=(0.00, 1.07), xytext=(0,0),
+                        xycoords=('axes fraction', 'axes fraction'),
+                        textcoords='offset points',
+                        size=18, fontweight='bold', ha='left', va='top')
+            ax[2,1].annotate('(f)',
+                        xy=(0.00, 1.07), xytext=(0,0),
+                        xycoords=('axes fraction', 'axes fraction'),
+                        textcoords='offset points',
+                        size=18, fontweight='bold',ha='left', va='top')
+            ax[3,0].annotate('(g)',
+                        xy=(0.00, 1.07), xytext=(0,0),
+                        xycoords=('axes fraction', 'axes fraction'),
+                        textcoords='offset points',
+                        size=18, fontweight='bold',ha='left', va='top')
+            ax[3,1].annotate('(h)',
+                        xy=(0.00, 1.07), xytext=(0,0),
+                        xycoords=('axes fraction', 'axes fraction'),
+                        textcoords='offset points',
+                        size=18, fontweight='bold',ha='left', va='top')
+            plt.subplots_adjust(left=0.10, right=0.94, top=0.94, bottom=0.07,wspace=0.15)
+            plt.savefig('pp_fig_fitpanelthree_optims.'+figformat, format=figformat)
+            plt.rc('font', size=plotfontsize) #reset plot font size
