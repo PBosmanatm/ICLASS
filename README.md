@@ -8,4 +8,6 @@ it under the terms of the GNU General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
+See https://doi.org/10.5194/gmd-16-47-2023 for a paper about version 1.1 of ICLASS.
+
 Peter Bosman and Maarten Krol
